@@ -12,7 +12,6 @@ Package: sysbox
 Architecture: linux-any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
-         debconf,
          jq,
          fuse,
          lsb-release,
