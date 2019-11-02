@@ -1,11 +1,20 @@
 SHELL:=/bin/bash
 ARCH=$(shell uname -m)
 
+#
+# TODO:
+# - Eliminate specific image-build targets (e.g. ubuntu-bionic) from here. This
+#   is a hack to workaround an unsolved issue, but it hurts on my eyes.
+#
 .PHONY: help      \
 		build-deb \
 		build-rpm \
 		clean     \
 		clean-deb \
+		ubuntu-rodny \
+		ubuntu-bionic \
+		ubuntu-cosmic \
+		ubuntu-disco \
 		clean-rpm
 
 .DEFAULT := help
