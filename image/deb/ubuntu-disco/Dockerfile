@@ -45,8 +45,12 @@ ENV SUITE disco
 
 COPY --from=golang /usr/local/go /usr/local/go
 
-# Explicit activation of go-module feature (by default in 'auto' mode as per Go 1.13).
-ENV GO111MODULE=on
+# Let's explicitly set go-module feature to 'auto' mode (default as per Go 1.13) to avoid
+# potential changes to this feature's default mode in the future. Even though we are
+# relying on modules for the package's building process, we are enabling 'auto' mode to
+# allow 'go get' traditional behavior (fetch entire git repo). Notice that we need git's
+# metadata to allow a git-checkout operation further below.
+ENV GO111MODULE=auto
 RUN go env -w GONOSUMDB=github.com/nestybox
 
 # install protoc compiler for gRPC
@@ -58,7 +62,10 @@ RUN mkdir -p ~/bin/protoc \
     && cp bin/protoc /usr/local/bin/ \
     && cd \
     && rm -rf ~/bin/protoc/ \
-    && go get -u github.com/golang/protobuf/protoc-gen-go
+    && GIT_TAG="v1.3.1" \
+    && go get -d -u github.com/golang/protobuf/protoc-gen-go \
+    && git -C "$GOPATH"/src/github.com/golang/protobuf checkout $GIT_TAG > /dev/null \
+    && go install github.com/golang/protobuf/protoc-gen-go
 
 WORKDIR /root/build-deb
 COPY build-deb /root/build-deb/build-deb
