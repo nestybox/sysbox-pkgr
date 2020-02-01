@@ -15,6 +15,7 @@ ARCH=$(shell uname -m)
 		ubuntu-bionic \
 		ubuntu-cosmic \
 		ubuntu-disco \
+		ubuntu-eoan \
 		clean-rpm
 
 .DEFAULT := help

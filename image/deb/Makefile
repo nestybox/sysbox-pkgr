@@ -54,6 +54,7 @@ DOCKER_RUN=docker run --rm -i                \
 	debian-buster  \
 	debian-stretch \
 	ubuntu         \
+	ubuntu-eoan    \
 	ubuntu-disco   \
 	ubuntu-cosmic  \
 	ubuntu-bionic  \
@@ -85,7 +86,13 @@ debian-stretch: $(SOURCES)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
 ubuntu: ## Build all Ubuntu deb packages
-ubuntu: ubuntu-bionic ubuntu-cosmic ubuntu-disco
+ubuntu: ubuntu-bionic ubuntu-cosmic ubuntu-disco ubuntu-eoan
+
+ubuntu-eoan: ## Build Ubuntu Eoan (19.10) deb packages
+ubuntu-eoan: $(SOURCES)
+	$(DOCKER_BUILD)
+	$(DOCKER_RUN)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
 ubuntu-disco: ## Build Ubuntu Disco (19.04) deb packages
 ubuntu-disco: $(SOURCES)
