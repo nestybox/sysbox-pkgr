@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright: (C) 2019 Nestybox Inc.  All rights reserved.
+# Copyright: (C) 2019-2020 Nestybox Inc.  All rights reserved.
 #
 
 set -e
@@ -11,6 +11,10 @@ dockerCfgFile="${dockerCfgDir}/daemon.json"
 
 # sysbox-fs' default mountpoint path.
 sysboxfs_mountpoint="/var/lib/sysboxfs"
+
+# Kernel's pool-size of inotify resources.
+inotify_pool_size=1048576
+
 
 # Creates sysbox-fs mountpoint.
 create_sysboxfs_mountpoint() {
@@ -31,6 +35,26 @@ enable_unprivileged_userns() {
     val=$(sysctl kernel.unprivileged_userns_clone)
     if [[ "${val##* }" = 0 ]]; then
         sysctl -w kernel.unprivileged_userns_clone=1 2>/dev/null
+    fi
+}
+
+# Ensure kernel's 'inotify' resources meet sysbox requirements -- default values
+# in most distros are too low for decent-size scenarios.
+define_inotify_resources() {
+
+    val=$(sysctl fs.inotify.max_queued_events)
+    if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
+        sysctl -w fs.inotify.max_queued_events=${inotify_pool_size} 2>/dev/null
+    fi
+
+    val=$(sysctl fs.inotify.max_user_watches)
+    if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
+        sysctl -w fs.inotify.max_user_watches=${inotify_pool_size} 2>/dev/null
+    fi
+
+    val=$(sysctl fs.inotify.max_user_instances)
+    if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
+        sysctl -w inotify.max_user_instances=${inotify_pool_size} 2>/dev/null
     fi
 }
 
@@ -94,7 +118,10 @@ config_sysbox() {
     # generated as part of this package's installation process.
     enable_unprivileged_userns
 
-	# Add 'sysbox' user to host a large pool of subordinate UIDs/GIDs to be
+    # Ensure kernel's inotify resources can meet Sysbox's scaling requirements.
+    define_inotify_resources
+
+    # Add 'sysbox' user to host a large pool of subordinate UIDs/GIDs to be
     # shared across all system-containers. This user must match the one defined
     # in the docker configuration file.
     add_sysbox_user
