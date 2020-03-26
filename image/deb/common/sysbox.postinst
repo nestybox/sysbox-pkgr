@@ -34,7 +34,7 @@ enable_unprivileged_userns() {
 
     val=$(sysctl kernel.unprivileged_userns_clone)
     if [[ "${val##* }" = 0 ]]; then
-        sysctl -w kernel.unprivileged_userns_clone=1 2>/dev/null
+        sysctl -w kernel.unprivileged_userns_clone=1 >/dev/null 2>&1
     fi
 }
 
@@ -44,17 +44,17 @@ define_inotify_resources() {
 
     val=$(sysctl fs.inotify.max_queued_events)
     if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
-        sysctl -w fs.inotify.max_queued_events=${inotify_pool_size} 2>/dev/null
+        sysctl -w fs.inotify.max_queued_events=${inotify_pool_size} >/dev/null 2>&1
     fi
 
     val=$(sysctl fs.inotify.max_user_watches)
     if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
-        sysctl -w fs.inotify.max_user_watches=${inotify_pool_size} 2>/dev/null
+        sysctl -w fs.inotify.max_user_watches=${inotify_pool_size} >/dev/null 2>&1
     fi
 
     val=$(sysctl fs.inotify.max_user_instances)
     if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
-        sysctl -w inotify.max_user_instances=${inotify_pool_size} 2>/dev/null
+        sysctl -w fs.inotify.max_user_instances=${inotify_pool_size} >/dev/null 2>&1
     fi
 }
 
