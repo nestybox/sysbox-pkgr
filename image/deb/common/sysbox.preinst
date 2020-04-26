@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright: (C) 2019 Nestybox Inc.  All rights reserved.
+# Copyright: (C) 2019-2020 Nestybox Inc.  All rights reserved.
 #
 
 set -e
@@ -10,6 +10,8 @@ set -e
 #   +========================================================================================+
 #   |  Supported Distributions  |  Supported Kernels  |  uid-shift mode  |   regular mode    |
 #   +========================================================================================+
+#   |                           |                     |                  |                   |
+#   |   Ubuntu Focal (20.04)    |        5.4+         |      yes         |        yes        |
 #   |                           |                     |                  |                   |
 #   |   Ubuntu Eoan (19.10)     |        5.3+         |      yes         |        yes        |
 #   |                           |                     |                  |                   |
@@ -36,6 +38,7 @@ set -e
 # At the moment, only Ubuntu distro is supported.
 declare -A sysbox_support_matrix
 sysbox_support_matrix=(
+    ["Ubuntu Focal Fossa"]="5.4"
     ["Ubuntu 19.10"]="5.3"
     ["Ubuntu 19.04"]="5.0"
     ["Ubuntu 18.10"]="4.18"
@@ -100,7 +103,7 @@ version_compare() {
 #
 verify_compatibility() {
 
-    local cur_distro=$(lsb_release -ds | cut -d'.' -f1-2)
+    local cur_distro=$(lsb_release -ds | cut -d'.' -f1-2 | cut -d'(' -f1 | awk '{$1=$1;print}')
     local cur_kernel=$(uname -r | cut -d'-' -f1)
     local found_supported_distro=false
     local found_supported_kernel=false
@@ -143,7 +146,6 @@ case "$1" in
         ;;
 
     upgrade|abort-upgrade)
-        # TBD
         ;;
 
     *)

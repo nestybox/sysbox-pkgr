@@ -48,16 +48,17 @@ DOCKER_RUN=docker run --rm -i                \
 	debbuild-$@/$(ARCH)
 
 
-.PHONY: help       \
-	deb            \
-	debian         \
-	debian-buster  \
-	debian-stretch \
-	ubuntu         \
-	ubuntu-eoan    \
-	ubuntu-disco   \
-	ubuntu-cosmic  \
-	ubuntu-bionic  \
+.PHONY: help               \
+	deb                \
+	debian             \
+	debian-buster      \
+	debian-stretch     \
+	ubuntu             \
+	ubuntu-focal       \
+	ubuntu-eoan        \
+	ubuntu-disco       \
+	ubuntu-cosmic      \
+	ubuntu-bionic      \
 	clean
 
 help:
@@ -86,7 +87,13 @@ debian-stretch: $(SOURCES)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
 ubuntu: ## Build all Ubuntu deb packages
-ubuntu: ubuntu-bionic ubuntu-cosmic ubuntu-disco ubuntu-eoan
+ubuntu: ubuntu-bionic ubuntu-cosmic ubuntu-disco ubuntu-eoan ubuntu-focal
+
+ubuntu-focal: ## Build Ubuntu Focal (20.04) deb packages
+ubuntu-focal: $(SOURCES)
+	$(DOCKER_BUILD)
+	$(DOCKER_RUN)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
 ubuntu-eoan: ## Build Ubuntu Eoan (19.10) deb packages
 ubuntu-eoan: $(SOURCES)
