@@ -45,12 +45,12 @@ ENV SUITE cosmic
 
 COPY --from=golang /usr/local/go /usr/local/go
 
-+# Let's explicitly set go-module feature to 'auto' mode (default as per Go 1.13) to avoid
-+# potential changes to this feature's default mode in the future. Even though we are
-+# relying on modules for the package's building process, we are enabling 'auto' mode to
-+# allow 'go get' traditional behavior (fetch entire git repo). Notice that we need git's
-+# metadata to allow a git-checkout operation further below.
-+ENV GO111MODULE=auto
+# Let's explicitly set go-module feature to 'auto' mode (default as per Go 1.13) to avoid
+# potential changes to this feature's default mode in the future. Even though we are
+# relying on modules for the package's building process, we are enabling 'auto' mode to
+# allow 'go get' traditional behavior (fetch entire git repo). Notice that we need git's
+# metadata to allow a git-checkout operation further below.
+ENV GO111MODULE=auto
 RUN go env -w GONOSUMDB=github.com/nestybox
 
 # install protoc compiler for gRPC
