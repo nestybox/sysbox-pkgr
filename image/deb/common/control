@@ -16,6 +16,7 @@ Depends: ${shlibs:Depends},
          fuse,
          lsb-release,
          rsync,
+         iptables,
          linux-headers-generic
 Description: System-containers runtime
  Sysbox is a container runtime that enables the creation of
