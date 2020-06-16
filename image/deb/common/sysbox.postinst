@@ -5,6 +5,9 @@
 
 set -e
 
+# Source debconf library.
+. /usr/share/debconf/confmodule
+
 # Dockerd default configuration dir/file.
 dockerCfgDir="/etc/docker"
 dockerCfgFile="${dockerCfgDir}/daemon.json"
@@ -12,8 +15,16 @@ dockerCfgFile="${dockerCfgDir}/daemon.json"
 # sysbox-fs' default mountpoint path.
 sysboxfs_mountpoint="/var/lib/sysboxfs"
 
+# UID-shifting module
+shiftfs_module="shiftfs"
+
 # Kernel's pool-size of inotify resources.
 inotify_pool_size=1048576
+
+# Docker restart/sighup globals.
+docker_restart_required=false
+docker_sighup_required=false
+
 
 # Kernel's keyring max keys limit. In debian-based distros (e.g.,
 # Ubuntu) the kernel keyring max keys limit is set to 200 for non-root
@@ -93,19 +104,62 @@ add_sysbox_user() {
     fi
 }
 
-# Create/Modify dockerd configuration (i.e. /etc/docker/daemon.json) to add Sysbox
-# runtime.
-adjust_docker_config() {
+#
+# There are two operational-modes in which Sysbox can function. Sysbox installer
+# will automatically pick mode 1) if 'shiftfs' module is available AND docker is
+# not operating in userns-remap mode. Otherwise, we will choose option 2).
+#
+# 1) uid-shifting mode: In this case no 'userns-remap' should be present in
+#    dockerd's configuration.
+# 2) non-uid-shifting mode: In this mode a 'userns-remap' entry will be added (if
+#    not already present) along the 'sysbox' user previously created.
+#
+adjust_docker_config_userns() {
+    local uid_shift_mode=true
 
-    local docker_sighup_required=false
-
-    # If no dockerd default config-file exist, or if there's no content on it,
-    # create one with a bare json layout.
-    if [[ ! -f ${dockerCfgFile} ]] || [[ ! -s ${dockerCfgFile} ]]; then
-        mkdir -p ${dockerCfgDir}
-        touch ${dockerCfgFile}
-        echo -e "{\n}" > ${dockerCfgFile}
+    # Skip userns-remap config processing if docker is already operating in this
+    # mode.
+    if jq --exit-status 'has("userns-remap")' ${dockerCfgFile} &> /dev/null &&
+        jq --exit-status '."userns-remap"' ${dockerCfgFile} | egrep -q -v "\"\"" &> /dev/null; then
+        docker_restart_required=false
+        return
     fi
+
+    # If 'shiftfs' is not present, then check user's debconf response to our
+    # config-automation question.
+    if ! lsmod | grep "${shiftfs_module}" &> /dev/null ; then
+        uid_shift_mode=false
+
+        db_get sysbox/docker_userns_autoconfig
+        if [ "$RET" = "false" ]; then
+            docker_restart_required=false
+            return
+        fi
+    fi
+
+    # Consider adding a 'userns-remap' entry only if uid-shift-mode is turned
+    # off.
+    if [[ ${uid_shift_mode} = false ]]; then
+        # If no 'userns-remap' key-entry is present, or if its associated value
+        # is empty, proceed to create a key and set its value to 'sysbox' user.
+        # Note that 'jq' does not provide 'in-place' editing capabilities (i.e.
+        # it displays inconsistent behavior), hence the need for the auxiliar
+        # 'tmp' file.
+        if [[ $(jq 'has("userns-remap")' ${dockerCfgFile}) = false ]] ||
+            [[ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ]]; then
+
+            jq --indent 4 '. + {"userns-remap": "sysbox"}' \
+                ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
+
+            docker_restart_required=true
+        fi
+    fi
+}
+
+#
+# Add sysbox runtime to docker configuration.
+#
+adjust_docker_config_runtime() {
 
     # If no 'runtimes' key-entry is present, proceed to add one.
     if [[ $(jq 'has("runtimes")' ${dockerCfgFile}) = false ]]; then
@@ -121,19 +175,44 @@ adjust_docker_config() {
 
         docker_sighup_required=true
     fi
+}
 
-    # Skip docker restart/sighup related processing if this one is not installed.
-    if ! dpkg -s docker-ce >/dev/null 2>&1; then
+#
+# Create/Modify dockerd configuration to meet Sysbox requirements.
+#
+adjust_docker_config() {
+
+    # If no dockerd default config-file exist, or if there's no content on it,
+    # create one with a bare json layout.
+    if [[ ! -f ${dockerCfgFile} ]] || [[ ! -s ${dockerCfgFile} ]]; then
+        mkdir -p ${dockerCfgDir}
+        touch ${dockerCfgFile}
+        echo -e "{\n}" > ${dockerCfgFile}
+    fi
+
+    adjust_docker_config_userns
+
+    adjust_docker_config_runtime
+
+    # Return here if docker is not installed. We can't do it earlier than this
+    # as the user could potentially install docker after sysbox.
+    if ! command -v docker >/dev/null 2>&1; then
         return
     fi
 
-    # If sysbox runtime was added above, send a sighup to dockerd to have its
-    # config file getting re-parsed. Note that changes made by this function are
-    # being processed on the fly -- no need for cold-restart.
+    # Restart docker if required.
+    if [[ ${docker_restart_required} = true ]]; then
+        systemctl restart docker
+        return
+    fi
+
+    # If non-disruptive changes have been made to docker config, then send it a
+    # sighup to have its config file getting re-parsed (no need to cold-boot).
     if [[ ${docker_sighup_required} = true ]]; then
 	    kill -SIGHUP $(pidof dockerd)
     fi
 }
+
 
 config_sysbox() {
 

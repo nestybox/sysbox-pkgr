@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright: (C) 2019 Nestybox Inc.  All rights reserved.
+# Copyright: (C) 2019-2020 Nestybox Inc.  All rights reserved.
 #
 
 set -e
@@ -34,6 +34,15 @@ adjust_docker_config() {
             ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
 
         docker_sighup_required=true
+    fi
+
+    # If present, eliminate sysbox's userns-remap entry added during installation.
+    # It will be up to the user to restart dockerd for changes to be digested.
+    if [[ $(jq 'has("userns-remap")' ${dockerCfgFile}) = true ]] &&
+        [[ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"sysbox\"" ]]; then
+
+        jq 'del(."userns-remap")' \
+            ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
     fi
 
     # Skip all docker-related processing if this one is not installed.
