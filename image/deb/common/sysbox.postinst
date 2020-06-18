@@ -202,6 +202,18 @@ adjust_docker_config() {
 
     # Restart docker if required.
     if [[ ${docker_restart_required} = true ]]; then
+
+        # If existing containers are found then skip docker-restart to avoid any
+        # service disruption.
+        if ! docker ps -a | wc -l | egrep -q "1"; then
+            echo -e "\nDocker service was not restarted to avoid affecting existing" \
+                    "containers. Please remove them and restart Docker by doing:\n" \
+                    "\t\"docker stop \$(docker ps -a -q) &&" \
+                    "docker container prune -f &&" \
+                    "sudo systemctl restart docker\"\n"
+            return
+        fi
+
         systemctl restart docker
         return
     fi
@@ -213,6 +225,19 @@ adjust_docker_config() {
     fi
 }
 
+#
+# Verify if kernel-headers are properly installed and alert user otherwise.
+#
+check_kernel_headers() {
+
+    #if ! dpkg-query -W -f='${Status} ${Version}\n' linux-headers-$(uname -r) \
+    if ! dpkg -s linux-headers-$(uname -r) | egrep -q "install ok installed"; then
+        echo -e "\nThe linux kernel headers package was not found. This may be"\
+                "expected by user applications running within Sysbox containers."\
+                "Please install it with this command:\n"\
+                "\t\"sudo apt-get install -y linux-headers-\$(uname -r)\"\n"
+    fi
+}
 
 config_sysbox() {
 
@@ -237,6 +262,9 @@ config_sysbox() {
 
     # Adjust dockerd configuration.
     adjust_docker_config
+
+    # Check for kernel-headers.
+    check_kernel_headers
 }
 
 

@@ -5,6 +5,9 @@
 
 set -e
 
+# Source debconf library.
+. /usr/share/debconf/confmodule
+
 # Dockerd default configuration dir/file.
 dockerCfgDir="/etc/docker"
 dockerCfgFile="${dockerCfgDir}/daemon.json"
@@ -16,9 +19,11 @@ dockerCfgFile="${dockerCfgDir}/daemon.json"
 # dangling ownership.
 #
 
+#
 # Modify dockerd configuration to eliminate Sysbox runtime.
+#
 adjust_docker_config() {
-
+    local docker_restart_required=false
     local docker_sighup_required=false
 
     # There is not much to do here if docker config file is not present.
@@ -43,15 +48,45 @@ adjust_docker_config() {
 
         jq 'del(."userns-remap")' \
             ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
+
+        docker_restart_required=true
     fi
 
-    # Skip all docker-related processing if this one is not installed.
+    # Skip all docker-related processing if this one is not installed at
+    # the moment.
     if ! dpkg -s docker-ce >/dev/null 2>&1; then
         return
     fi
 
+    # Restart docker if required.
+    if [[ ${docker_restart_required} = true ]]; then
+
+        # Find out if user opted for automatic docker reconfiguration during
+        # installation. If that's not the case, we will avoid restarting
+        # docker and will expect user to do so.
+        db_get sysbox/docker_userns_autoconfig
+        if [[ "$RET" = "true" ]]; then
+
+            # If existing containers are found then let's skip docker-restart
+            # to avoid any service disruption on non-sysbox containers.
+            if ! docker ps -a | wc -l | egrep -q "1"; then
+                echo -e "\nDocker service was not restarted to avoid affecting existing" \
+                        "containers. Please remove them and restart Docker by doing:\n" \
+                        "\t\"docker stop \$(docker ps -a -q) &&" \
+                        "docker container prune -f &&" \
+                        "sudo systemctl restart docker\"\n"
+            else
+                systemctl restart docker
+                return
+            fi
+        fi
+    fi
+
+    # We will only reach this point if docker was not rebooted above. In that
+    # case we will always send docker a sighup to digest the absense of sysbox
+    # runtime. This should not impact current non-sysbox containers.
     if [[ ${docker_sighup_required} = true ]]; then
-	    kill -SIGHUP $(pidof dockerd)
+            kill -SIGHUP $(pidof dockerd)
     fi
 }
 
