@@ -38,7 +38,12 @@ adjust_docker_config() {
         jq 'del(.runtimes."sysbox-runc")' \
             ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
 
-        docker_sighup_required=true
+        # If sysbox is a docker registered runtime, ensure that the uninstallation
+        # process updates dockerd.
+        if command -v docker >/dev/null 2>&1 &&
+            docker info | egrep -q "Runtimes:.*sysbox-runc"; then
+            docker_sighup_required=true
+        fi
     fi
 
     # If present, eliminate sysbox's userns-remap entry added during installation.
