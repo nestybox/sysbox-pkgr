@@ -4,8 +4,6 @@
 #
 
 set -e
-#set -v
-set -x
 
 # Source debconf library.
 . /usr/share/debconf/confmodule
@@ -29,7 +27,7 @@ adjust_docker_config() {
     local docker_sighup_required=false
 
     # There is not much to do here if docker config file is not present.
-    if [[ ! -f ${dockerCfgFile} ]]; then
+    if [ ! -f ${dockerCfgFile} ]; then
         return
     fi
 
@@ -44,6 +42,21 @@ adjust_docker_config() {
         # process updates dockerd.
         if command -v docker >/dev/null 2>&1 &&
             docker info | egrep -q "Runtimes:.*sysbox-runc"; then
+            docker_sighup_required=true
+        fi
+    fi
+
+    # Eliminate sysbox's default-runtime entry if present.
+    if [ $(jq 'has("default-runtime")' ${dockerCfgFile}) = "true" ] &&
+       [ $(jq '."default-runtime"' ${dockerCfgFile}) = "\"sysbox-runc\"" ]; then
+
+        jq 'del(."default-runtime")' \
+            ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
+
+        # If sysbox is docker's default runtime, ensure that the uninstallation
+        # process updates dockerd.
+        if command -v docker >/dev/null 2>&1 &&
+            docker info | egrep -q "Default Runtime:.*sysbox-runc"; then
             docker_sighup_required=true
         fi
     fi
