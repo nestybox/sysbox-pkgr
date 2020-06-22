@@ -68,10 +68,10 @@ adjust_docker_config() {
     # Restart docker if required.
     if [ ${docker_restart_required} = "true" ]; then
 
-        # Find out if user opted for automatic docker reconfiguration during
+        # Find out if user opted for automatic docker restart during
         # installation. If that's not the case, we will avoid restarting
         # docker and will expect user to do so.
-        db_get sysbox/docker_userns_autoconfig
+        db_get sysbox/docker_autorestart
         if [ "$RET" = "true" ]; then
 
             # If existing containers are found then let's skip docker-restart

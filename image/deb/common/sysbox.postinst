@@ -107,7 +107,7 @@ add_sysbox_user() {
 #
 # There are two operational-modes in which Sysbox can function. Sysbox installer
 # will automatically pick mode 1) if 'shiftfs' module is available AND docker is
-# not operating in 'userns-remap' mode. Otherwise, we will choose option 2).
+# not operating in 'userns-remap' mode. Otherwise, it will choose option 2).
 #
 # 1) uid-shifting mode: In this case no 'userns-remap' should be present in
 #    dockerd's configuration.
@@ -134,11 +134,9 @@ adjust_docker_config_userns() {
     if ! lsmod | grep "${shiftfs_module}" &> /dev/null ; then
         uid_shift_mode=false
 
-        db_get sysbox/docker_userns_autoconfig
+        db_get sysbox/docker_autorestart
         if [ "$RET" = "false" ]; then
-            #docker_restart_required=false
             docker_manual_restart=true
-            #return
         fi
     fi
 
