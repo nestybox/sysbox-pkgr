@@ -5,18 +5,18 @@
 
 set -e
 
-# Sysbox kernel requirements matrix:
+# Sysbox's kernel requirements matrix:
 #
-#   +========================================================================================+
-#   |  Supported Distributions  |  Supported Kernels  |  uid-shift mode  |   regular mode    |
-#   +========================================================================================+
-#   |                           |                     |                  |                   |
-#   |   Ubuntu Focal (20.04)    |        5.4+         |      yes         |        yes        |
-#   |                           |                     |                  |                   |
-#   |   Ubuntu Eoan (19.10)     |        5.3+         |      yes         |        yes        |
-#   |                           |                     |                  |                   |
-#   |   Ubuntu Bionic (18.04)   |        5.0.0-22+    |      yes         |        yes        |
-#   |___________________________|_____________________|__________________|___________________|
+#   +=================================================+
+#   |  Supported Distributions  |  Supported Kernels  |
+#   +=================================================+
+#   |                           |                     |
+#   |   Ubuntu Focal (20.04)    |        5.4+         |
+#   |                           |                     |
+#   |   Ubuntu Eoan (19.10)     |        5.3+         |
+#   |                           |                     |
+#   |   Ubuntu Bionic (18.04)   |        5.0.0-22+    |
+#   |___________________________|_____________________|
 
 
 # At the moment, only Ubuntu distro is supported.
@@ -26,16 +26,6 @@ sysbox_support_matrix=(
     ["Ubuntu 19.10"]="5.3"
     ["Ubuntu 18.04"]="5.0.0-22"
 )
-
-# Placeholder, not used at the moment.
-USERNS_MIN_SUPPORTED_KERNEL="4.10.0"
-USERNS_SUPPORTED_DISTROS=("Ubuntu" "Debian")
-
-# Shiftfs globals, not used at the moment.
-SHIFTFS_MIN_SUPPORTED_KERNEL="5.0.0"
-SHIFTFS_SUPPORTED_DISTROS=( "Ubuntu" )
-SHFITFS_MIN_SUPPORTED_DISTRO_RELEASE="18.04"
-
 
 # Compare two versions in SemVer format.
 #
