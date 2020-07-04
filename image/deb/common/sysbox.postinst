@@ -100,7 +100,7 @@ define_keyring_resources() {
 add_sysbox_user() {
 
     if ! getent passwd | grep "^sysbox:" >/dev/null 2>&1; then
-        useradd -r -s /bin/false sysbox
+        useradd -s /bin/false sysbox
     fi
 }
 
