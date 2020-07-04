@@ -41,7 +41,7 @@ adjust_docker_config() {
         # If sysbox is a docker registered runtime, ensure that the uninstallation
         # process updates dockerd.
         if command -v docker >/dev/null 2>&1 &&
-            docker info | egrep -q "Runtimes:.*sysbox-runc"; then
+            docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
             docker_sighup_required=true
         fi
     fi
@@ -56,7 +56,7 @@ adjust_docker_config() {
         # If sysbox is docker's default runtime, ensure that the uninstallation
         # process updates dockerd.
         if command -v docker >/dev/null 2>&1 &&
-            docker info | egrep -q "Default Runtime:.*sysbox-runc"; then
+            docker info 2>&1 | egrep -q "Default Runtime:.*sysbox-runc"; then
             docker_sighup_required=true
         fi
     fi

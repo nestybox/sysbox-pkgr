@@ -197,7 +197,7 @@ adjust_docker_config_runtime() {
     elif [ $(jq 'has("runtimes")' ${dockerCfgFile}) = true ] &&
          [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = true ] &&
          command -v docker >/dev/null 2>&1 &&
-         ! docker info | egrep -q "Runtimes:.*sysbox-runc"; then
+         ! docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
 
         docker_sighup_required=true
     fi
