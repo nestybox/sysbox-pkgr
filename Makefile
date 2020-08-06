@@ -3,7 +3,7 @@ ARCH=$(shell uname -m)
 
 #
 # TODO:
-# - Eliminate specific image-build targets (e.g. ubuntu-bionic) from here. This
+# - Eliminate specific pkg-build targets (e.g. ubuntu-bionic) from here. This
 #   is a hack to workaround an unsolved issue, but it hurts on my eyes.
 #
 .PHONY: help                  \
