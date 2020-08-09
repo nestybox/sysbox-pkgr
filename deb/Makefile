@@ -37,7 +37,7 @@ DOCKER_BUILD=docker build                                  \
 	-t debbuild-$@/$(ARCH)                             \
 	-f $(CURDIR)/$@/Dockerfile .
 
-DOCKER_RUN=docker run --rm -i                \
+DOCKER_RUN=docker run --privileged --rm -i       \
 	-e PLATFORM                              \
 	-e VERSION                               \
 	-e COMMIT_ID                             \
@@ -45,6 +45,12 @@ DOCKER_RUN=docker run --rm -i                \
 	-e HOSTNAME                              \
 	-v $(CURDIR)/debbuild/$@:/build          \
 	-v $(GOPATH)/pkg/mod:/go/pkg/mod         \
+	-v $(TEST_VOL1):/var/lib/docker          \
+	-v $(TEST_VOL2):/var/lib/sysbox          \
+	-v $(TEST_VOL3):/mnt/scratch             \
+	-v /lib/modules/$(KERNEL_REL):/lib/modules/$(KERNEL_REL):ro \
+	-v /usr/src/$(HEADERS):/usr/src/$(HEADERS):ro \
+	-v /usr/src/$(HEADERS_BASE):/usr/src/$(HEADERS_BASE):ro \
 	debbuild-$@/$(ARCH)
 
 

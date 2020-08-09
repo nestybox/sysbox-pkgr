@@ -18,19 +18,20 @@ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selectio
     libnet-dev                                   \
     libseccomp2                                  \
     libseccomp-dev                               \
+    iproute2                                     \
     unzip &&                                     \
-                                                 \
+    \
     # Housekeeping
     apt-get clean -y &&                          \
     rm -rf                                       \
-       /var/cache/debconf/*                      \
-       /var/lib/apt/lists/*                      \
-       /var/log/*                                \
-       /tmp/*                                    \
-       /var/tmp/*                                \
-       /usr/share/doc/*                          \
-       /usr/share/man/*                          \
-       /usr/share/local/*
+    /var/cache/debconf/*                      \
+    /var/lib/apt/lists/*                      \
+    /var/log/*                                \
+    /tmp/*                                    \
+    /var/tmp/*                                \
+    /usr/share/doc/*                          \
+    /usr/share/man/*                          \
+    /usr/share/local/*
 
 ARG GO_VERSION
 ENV GOPATH /go
@@ -68,6 +69,23 @@ RUN mkdir -p ~/bin/protoc \
     && go get -d -u github.com/golang/protobuf/protoc-gen-go \
     && git -C "$GOPATH"/src/github.com/golang/protobuf checkout $GIT_TAG > /dev/null \
     && go install github.com/golang/protobuf/protoc-gen-go
+
+# install Docker.
+RUN apt-get update \
+    && apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg2 \
+    software-properties-common \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - \
+    && apt-key fingerprint 0EBFCD88 \
+    && add-apt-repository \
+    "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+    focal \
+    stable" \
+    && apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
+ADD https://raw.githubusercontent.com/docker/docker-ce/master/components/cli/contrib/completion/bash/docker /etc/bash_completion.d/docker.sh
 
 WORKDIR /root/build-deb
 COPY build-deb /root/build-deb/build-deb
