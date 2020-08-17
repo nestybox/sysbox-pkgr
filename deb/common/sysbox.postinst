@@ -21,6 +21,10 @@ shiftfs_module="shiftfs"
 # Kernel's pool-size of inotify resources.
 inotify_pool_size=1048576
 
+# Default docker network parameters
+bip_subnet="172.101.0.1/16"
+pool_subnet="172.102.0.0/16"
+
 # Docker restart/sighup globals.
 docker_restart_required=false
 docker_sighup_required=false
@@ -130,11 +134,11 @@ adjust_docker_config_userns() {
     fi
 
     # If 'uid-shifting' mode is not an option, then check user's debconf response
-    # to the docker autorestart question.
+    # to the docker userns_remap autoconfig question.
     if ! modprobe "${shiftfs_module}" &> /dev/null ; then
         uid_shift_mode=false
 
-        db_get sysbox/docker_autorestart
+        db_get sysbox/docker_userns_remap
         if [ "$RET" = "false" ]; then
             docker_manual_restart=true
         fi
@@ -142,14 +146,14 @@ adjust_docker_config_userns() {
 
     # Consider adding a 'userns-remap' entry only if uid-shift-mode is turned
     # off.
-    if [ ${uid_shift_mode} = false ]; then
+    if [ ${uid_shift_mode} = "false" ]; then
 
         # If no 'userns-remap' key-entry is present, or if its associated value
         # is empty, proceed to create a key and set its value to 'sysbox' user.
         # Note that 'jq' does not provide 'in-place' editing capabilities (i.e.
         # it displays inconsistent behavior), hence the need for the auxiliar
         # 'tmp' file.
-        if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = false ] ||
+        if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "false" ] ||
             [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ]; then
 
             jq --indent 4 '. + {"userns-remap": "sysbox"}' \
@@ -159,7 +163,7 @@ adjust_docker_config_userns() {
 
         # If a valid userns entry already exists, but docker is not aware of it,
         # ensure that docker is restarted at the end of the installation cycle.
-        elif [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = true ] &&
+        elif [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "true" ] &&
              [ ! $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ] &&
              ! docker info 2>&1 | egrep -q "^  userns$"; then
 
@@ -178,14 +182,14 @@ adjust_docker_config_userns() {
 adjust_docker_config_runtime() {
 
     # If no 'runtimes' key-entry is present, proceed to add one.
-    if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = false ]; then
+    if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "false" ]; then
         jq --indent 4 '. + {"runtimes": {"sysbox-runc": {"path": "/usr/local/sbin/sysbox-runc"}}}' \
             ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
 
         docker_sighup_required=true
 
     # If no 'sysbox-runc' runtime entry is present, proceed to add it.
-    elif [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = false ]; then
+    elif [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = "false" ]; then
         jq --indent 4 '.runtimes |= . + {"sysbox-runc": {"path": "/usr/local/sbin/sysbox-runc"}}' \
             ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
 
@@ -194,12 +198,74 @@ adjust_docker_config_runtime() {
     # If the runtime config is complete (i.e. both 'runtimes' and 'sysbox-runc'
     # entries exist), but this state has not been digested by docker yet, ensure
     # that docker processes it before this installation concludes.
-    elif [ $(jq 'has("runtimes")' ${dockerCfgFile}) = true ] &&
+    elif [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "true" ] &&
          [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = true ] &&
          command -v docker >/dev/null 2>&1 &&
          ! docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
 
         docker_sighup_required=true
+    fi
+}
+
+#
+# Returns 'true' if passed ipv4 address overlaps with any of the system local
+# subnets. Return 'false' otherwise.
+#
+system_local_subnet() {
+
+    if ip route get ${1} | egrep -q "via $(ip route | awk '/default/ {print $3}')"; then
+        return 1
+    fi
+
+    return 0
+}
+
+#
+# Adjust docker's network configuracion to avoid subnet overlapping ranges.
+#
+adjust_docker_config_network() {
+
+    local bip_host=$(echo ${bip_subnet} | cut -d'/' -f 1)
+    local pool_host=$(echo $pool_subnet} | cut -d'/' -f 1)
+
+    # If no 'bip' key-entry is present, proceed to add one.
+    if [ $(jq 'has("bip")' ${dockerCfgFile}) = "false" ] ||
+       [ $(jq '."bip"' ${dockerCfgFile}) = "\"\"" ]; then
+
+        # If bip address to add overlaps with an existing local subnet, then
+        # dump a log message to user and skip bip's configuration.
+        if system_local_subnet ${bip_host} &&
+            ! ip -4 address show dev docker0 | egrep -q "${bip_subnet}"; then
+            echo -e "\nDocker bridge-ip network to configure (${bip_subnet}) overlaps"\
+                    "with existing system subnet. Installation process will skip this docker"\
+                    "network setting. Please manually configure docker's 'bip' subnet to"\
+                    "avoid connectivity issues.\n"
+        else
+            jq --arg bip ${bip_subnet} --indent 4 '. + {"bip": $bip}' ${dockerCfgFile} \
+                > tmp.json && mv tmp.json ${dockerCfgFile}
+
+            docker_restart_required=true
+        fi
+    fi
+
+    # If no 'default-address-pool' is found, do add one here.
+    if [ $(jq 'has("default-address-pools")' ${dockerCfgFile}) = "false" ] ||
+       [ $(jq '."default-address-pools" | length' ${dockerCfgFile}) -eq "0" ]; then
+
+        # If address-pool overlaps with an existing local subnet, then
+        # dump a log message to user and skip this attribute's configuration.
+        if system_local_subnet ${pool_host}; then
+            echo -e "\nDocker default-address-pool to configure (${pool_subnet}) overlaps"\
+                    "with existing system subnet. Installation process will skip this docker"\
+                    "network setting. Please manually configure docker's 'default-address-pool'"\
+                    "subnet to avoid connectivity issues.\n"
+        else
+            jq --arg subnet ${pool_subnet} --indent 4 \
+                '."default-address-pools"[0] |= . + {"base": $subnet, "size": 24}' ${dockerCfgFile} \
+                > tmp.json && mv tmp.json ${dockerCfgFile}
+
+            docker_restart_required=true
+        fi
     fi
 }
 
@@ -219,6 +285,8 @@ adjust_docker_config() {
     adjust_docker_config_userns
 
     adjust_docker_config_runtime
+
+    adjust_docker_config_network
 
     # Return here if docker is not installed. We can't do it earlier than this
     # as the user could potentially install docker after sysbox.

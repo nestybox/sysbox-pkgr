@@ -1,10 +1,9 @@
-
-Template: sysbox/docker_autorestart
+Template: sysbox/docker_userns_remap
 Type: boolean
 Default: "true"
-Description: Automatically restart Docker service?
+Description: Configure Docker service in 'userns-remap' mode?
  Your OS does not include the 'shiftfs' module. As a result, using Sysbox
- requires that you put Docker in 'userns-remap' mode. This installer takes
- care of the configuration process, but for these changes to be processed,
- Docker must be restarted. Refer to this link for more details:
- https://github.com/nestybox/sysbox-external/blob/master/docs/distro-compat.md#using-sysbox-on-kernels-without-the-shiftfs-module
+ requires that you put Docker in 'userns-remap' mode. If you answer "yes"
+ here, the installer will take care of this configuration process. Otherwise,
+ you will be expected to do this manually. Please refer to Sysbox installation
+ documentation for more details.
