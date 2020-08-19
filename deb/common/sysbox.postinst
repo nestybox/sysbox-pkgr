@@ -22,8 +22,8 @@ shiftfs_module="shiftfs"
 inotify_pool_size=1048576
 
 # Default docker network parameters
-bip_subnet="172.101.0.1/16"
-pool_subnet="172.102.0.0/16"
+bip_subnet="172.20.0.1/16"
+pool_subnet="172.25.0.0/16"
 
 # Docker restart/sighup globals.
 docker_restart_required=false
