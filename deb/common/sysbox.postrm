@@ -12,6 +12,10 @@ set -e
 dockerCfgDir="/etc/docker"
 dockerCfgFile="${dockerCfgDir}/daemon.json"
 
+# Temp file for jq write operations.
+tmpfile=$(mktemp /tmp/installer-scr.XXXXXX)
+trap 'rm -f "${tmpfile}"' EXIT
+
 #
 # Note: As per Debian packaging policies, package elimination should not remove
 # logfiles. Therefore we shouldn't delete the 'sysbox' user/group previously
@@ -36,7 +40,7 @@ adjust_docker_config() {
        [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = true ]; then
 
         jq 'del(.runtimes."sysbox-runc")' \
-            ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
+            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
         # If sysbox is a docker registered runtime, ensure that the uninstallation
         # process updates dockerd.
@@ -51,7 +55,7 @@ adjust_docker_config() {
        [ $(jq '."default-runtime"' ${dockerCfgFile}) = "\"sysbox-runc\"" ]; then
 
         jq 'del(."default-runtime")' \
-            ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
+            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
         # If sysbox is docker's default runtime, ensure that the uninstallation
         # process updates dockerd.
@@ -67,7 +71,7 @@ adjust_docker_config() {
        [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"sysbox\"" ]; then
 
         jq 'del(."userns-remap")' \
-            ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
+            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
         docker_restart_required=true
     fi
