@@ -29,6 +29,9 @@ pool_subnet="172.25.0.0/16"
 docker_restart_required=false
 docker_sighup_required=false
 
+# Temp file for jq write operations.
+tmpfile=$(mktemp /tmp/installer-scr.XXXXXX)
+trap 'rm -f "${tmpfile}"' EXIT
 
 # Kernel's keyring max keys limit. In debian-based distros (e.g.,
 # Ubuntu) the kernel keyring max keys limit is set to 200 for non-root
@@ -157,7 +160,7 @@ adjust_docker_config_userns() {
             [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ]; then
 
             jq --indent 4 '. + {"userns-remap": "sysbox"}' \
-                ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
+                ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
             docker_restart_required=true
 
@@ -184,14 +187,14 @@ adjust_docker_config_runtime() {
     # If no 'runtimes' key-entry is present, proceed to add one.
     if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "false" ]; then
         jq --indent 4 '. + {"runtimes": {"sysbox-runc": {"path": "/usr/local/sbin/sysbox-runc"}}}' \
-            ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
+            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
         docker_sighup_required=true
 
     # If no 'sysbox-runc' runtime entry is present, proceed to add it.
     elif [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = "false" ]; then
         jq --indent 4 '.runtimes |= . + {"sysbox-runc": {"path": "/usr/local/sbin/sysbox-runc"}}' \
-            ${dockerCfgFile} > tmp.json && mv tmp.json ${dockerCfgFile}
+            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
         docker_sighup_required=true
 
@@ -221,7 +224,7 @@ system_local_subnet() {
 }
 
 #
-# Adjust docker's network configuracion to avoid subnet overlapping ranges.
+# Adjust docker's network configuration to avoid subnet overlapping ranges.
 #
 adjust_docker_config_network() {
 
@@ -242,7 +245,7 @@ adjust_docker_config_network() {
                     "avoid connectivity issues.\n"
         else
             jq --arg bip ${bip_subnet} --indent 4 '. + {"bip": $bip}' ${dockerCfgFile} \
-                > tmp.json && mv tmp.json ${dockerCfgFile}
+                > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
             docker_restart_required=true
         fi
@@ -262,7 +265,7 @@ adjust_docker_config_network() {
         else
             jq --arg subnet ${pool_subnet} --indent 4 \
                 '."default-address-pools"[0] |= . + {"base": $subnet, "size": 24}' ${dockerCfgFile} \
-                > tmp.json && mv tmp.json ${dockerCfgFile}
+                > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
             docker_restart_required=true
         fi
