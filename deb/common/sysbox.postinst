@@ -165,6 +165,19 @@ adjust_docker_config_userns() {
 
             docker_userns_config_changed="true"
         fi
+
+    else
+        # If 'shiftfs' module is present but there's an unprocessed 'userns-remap' entry
+        # in docker config, go ahead and eliminate it. Notice that here we are referring
+        # to 'superficial' (unprocessed) userns config entries; if docker were to be
+        # operating in 'userns' mode, we would not be touching this configuration (see
+        # function's first code-block).
+        if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "true" ] &&
+            [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"sysbox\"" ]; then
+
+            jq 'del(."userns-remap")' \
+                ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+        fi
     fi
 }
 
