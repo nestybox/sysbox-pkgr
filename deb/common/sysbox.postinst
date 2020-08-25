@@ -25,9 +25,10 @@ inotify_pool_size=1048576
 bip_subnet="172.20.0.1/16"
 pool_subnet="172.25.0.0/16"
 
-# Docker restart/sighup globals.
-docker_restart_required=false
-docker_sighup_required=false
+# Docker config vars.
+docker_network_config_changed="false"
+docker_userns_config_changed="false"
+docker_runtime_config_changed="false"
 
 # Temp file for jq write operations.
 tmpfile=$(mktemp /tmp/installer-scr.XXXXXX)
@@ -123,46 +124,38 @@ add_sysbox_user() {
 #    created.
 #
 adjust_docker_config_userns() {
-    local uid_shift_mode=true
-    local docker_manual_restart=false
 
     # Skip userns-remap config processing if docker config is already holding
     # a userns-remap entry AND docker is operating in this mode.
     if jq --exit-status 'has("userns-remap")' ${dockerCfgFile} &> /dev/null &&
         jq --exit-status '."userns-remap"' ${dockerCfgFile} | egrep -q -v "\"\"" &> /dev/null &&
         docker info 2>&1 | egrep -q "^  userns$"; then
-
-        docker_restart_required=false
         return
     fi
 
-    # If 'uid-shifting' mode is not an option, then check user's debconf response
-    # to the docker userns_remap autoconfig question.
+    # If shiftfs module is not present then consider configuring docker in userns
+    # mode.
     if ! modprobe "${shiftfs_module}" &> /dev/null ; then
-        uid_shift_mode=false
 
-        db_get sysbox/docker_userns_remap
+        # Check for user's debconf response to determine if we will take care of
+        # the userns-remap configuration process.
+        db_get sysbox/docker_userns_remap_autoconfig
         if [ "$RET" = "false" ]; then
-            docker_manual_restart=true
+            return
         fi
-    fi
-
-    # Consider adding a 'userns-remap' entry only if uid-shift-mode is turned
-    # off.
-    if [ ${uid_shift_mode} = "false" ]; then
 
         # If no 'userns-remap' key-entry is present, or if its associated value
         # is empty, proceed to create a key and set its value to 'sysbox' user.
         # Note that 'jq' does not provide 'in-place' editing capabilities (i.e.
         # it displays inconsistent behavior), hence the need for the auxiliar
-        # 'tmp' file.
+        # 'tmpfile'.
         if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "false" ] ||
             [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ]; then
 
             jq --indent 4 '. + {"userns-remap": "sysbox"}' \
                 ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
-            docker_restart_required=true
+            docker_userns_config_changed="true"
 
         # If a valid userns entry already exists, but docker is not aware of it,
         # ensure that docker is restarted at the end of the installation cycle.
@@ -170,12 +163,8 @@ adjust_docker_config_userns() {
              [ ! $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ] &&
              ! docker info 2>&1 | egrep -q "^  userns$"; then
 
-            docker_restart_required=true
+            docker_userns_config_changed="true"
         fi
-    fi
-
-    if [ ${docker_manual_restart} = "true" ]; then
-        docker_restart_required=false
     fi
 }
 
@@ -189,14 +178,14 @@ adjust_docker_config_runtime() {
         jq --indent 4 '. + {"runtimes": {"sysbox-runc": {"path": "/usr/local/sbin/sysbox-runc"}}}' \
             ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
-        docker_sighup_required=true
+        docker_runtime_config_changed="true"
 
     # If no 'sysbox-runc' runtime entry is present, proceed to add it.
     elif [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = "false" ]; then
         jq --indent 4 '.runtimes |= . + {"sysbox-runc": {"path": "/usr/local/sbin/sysbox-runc"}}' \
             ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
-        docker_sighup_required=true
+        docker_runtime_config_changed="true"
 
     # If the runtime config is complete (i.e. both 'runtimes' and 'sysbox-runc'
     # entries exist), but this state has not been digested by docker yet, ensure
@@ -206,7 +195,7 @@ adjust_docker_config_runtime() {
          command -v docker >/dev/null 2>&1 &&
          ! docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
 
-        docker_sighup_required=true
+        docker_runtime_config_changed="true"
     fi
 }
 
@@ -247,7 +236,7 @@ adjust_docker_config_network() {
             jq --arg bip ${bip_subnet} --indent 4 '. + {"bip": $bip}' ${dockerCfgFile} \
                 > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
-            docker_restart_required=true
+	    docker_network_config_changed="true"
         fi
     fi
 
@@ -267,7 +256,7 @@ adjust_docker_config_network() {
                 '."default-address-pools"[0] |= . + {"base": $subnet, "size": 24}' ${dockerCfgFile} \
                 > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
-            docker_restart_required=true
+	    docker_network_config_changed="true"
         fi
     fi
 }
@@ -297,8 +286,9 @@ adjust_docker_config() {
         return
     fi
 
-    # Restart docker if required.
-    if [[ ${docker_restart_required} = true ]]; then
+    # Restart docker if disruptive changes have been made.
+    if [[ ${docker_userns_config_changed} = "true" ]] ||
+        [[ ${docker_network_config_changed} = "true" ]]; then
 
         # If existing containers are found then skip docker-restart to avoid any
         # service disruption.
@@ -316,7 +306,7 @@ adjust_docker_config() {
 
     # If non-disruptive changes have been made to docker config, then send it a
     # sighup to have its config file getting re-parsed (no need to cold-boot).
-    if [ ${docker_sighup_required} = true ]; then
+    if [ ${docker_runtime_config_changed} = true ]; then
 	    kill -SIGHUP $(pidof dockerd)
     fi
 }

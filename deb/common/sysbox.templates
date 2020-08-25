@@ -1,4 +1,4 @@
-Template: sysbox/docker_userns_remap
+Template: sysbox/docker_userns_remap_autoconfig
 Type: boolean
 Default: "true"
 Description: Configure Docker service in 'userns-remap' mode?

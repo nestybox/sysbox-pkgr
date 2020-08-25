@@ -12,9 +12,14 @@ set -e
 dockerCfgDir="/etc/docker"
 dockerCfgFile="${dockerCfgDir}/daemon.json"
 
+# Docker config vars.
+docker_userns_config_changed="false"
+docker_runtime_config_changed="false"
+
 # Temp file for jq write operations.
 tmpfile=$(mktemp /tmp/installer-scr.XXXXXX)
 trap 'rm -f "${tmpfile}"' EXIT
+
 
 #
 # Note: As per Debian packaging policies, package elimination should not remove
@@ -22,6 +27,45 @@ trap 'rm -f "${tmpfile}"' EXIT
 # created by Sysbox's installation process, as it would leave files with
 # dangling ownership.
 #
+
+adjust_docker_config_userns() {
+
+    # If present, eliminate sysbox's userns-remap entry added during installation.
+    # It will be up to the user to restart dockerd for changes to be digested.
+    if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "true" ] &&
+       [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"sysbox\"" ]; then
+
+        # Find out if user opted for automatic userns_remap configuration during
+        # installation. If that's the case we will assume that user also wants
+        # docker userns-remap configuration to be eliminated during uninstallation.
+        db_get sysbox/docker_userns_remap_autoconfig
+        if [ "$RET" = "true" ]; then
+            jq 'del(."userns-remap")' \
+                ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+
+            docker_userns_config_changed="true"
+        fi
+    fi
+}
+
+adjust_docker_config_runtime() {
+
+    # Eliminate sysbox's runtime entry if present.
+    if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "true" ] &&
+       [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = "true" ]; then
+
+        jq 'del(.runtimes."sysbox-runc")' \
+            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+
+        # If sysbox is a docker registered runtime, ensure that the uninstallation
+        # process updates dockerd.
+        if command -v docker >/dev/null 2>&1 &&
+            docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
+
+            docker_runtime_config_changed="true"
+        fi
+    fi
+}
 
 #
 # Modify dockerd configuration to eliminate Sysbox runtime.
@@ -35,46 +79,9 @@ adjust_docker_config() {
         return
     fi
 
-    # Eliminate sysbox's runtime entry if present.
-    if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "true" ] &&
-       [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = true ]; then
+    adjust_docker_config_userns
 
-        jq 'del(.runtimes."sysbox-runc")' \
-            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
-
-        # If sysbox is a docker registered runtime, ensure that the uninstallation
-        # process updates dockerd.
-        if command -v docker >/dev/null 2>&1 &&
-            docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
-            docker_sighup_required=true
-        fi
-    fi
-
-    # Eliminate sysbox's default-runtime entry if present.
-    if [ $(jq 'has("default-runtime")' ${dockerCfgFile}) = "true" ] &&
-       [ $(jq '."default-runtime"' ${dockerCfgFile}) = "\"sysbox-runc\"" ]; then
-
-        jq 'del(."default-runtime")' \
-            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
-
-        # If sysbox is docker's default runtime, ensure that the uninstallation
-        # process updates dockerd.
-        if command -v docker >/dev/null 2>&1 &&
-            docker info 2>&1 | egrep -q "Default Runtime:.*sysbox-runc"; then
-            docker_sighup_required=true
-        fi
-    fi
-
-    # If present, eliminate sysbox's userns-remap entry added during installation.
-    # It will be up to the user to restart dockerd for changes to be digested.
-    if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "true" ] &&
-       [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"sysbox\"" ]; then
-
-        jq 'del(."userns-remap")' \
-            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
-
-        docker_restart_required=true
-    fi
+    adjust_docker_config_runtime
 
     # Skip all docker-related processing if this one is not installed at
     # the moment.
@@ -82,34 +89,26 @@ adjust_docker_config() {
         return
     fi
 
-    # Restart docker if required.
-    if [ ${docker_restart_required} = "true" ]; then
+    # Restart docker if disruptive changes have been made.
+    if [ ${docker_userns_config_changed} = "true" ]; then
 
-        # Find out if user opted for automatic userns_remap configuration during
-        # installation. If that's the case we will assume that user also wants
-        # docker process to be restarted by the uninstallation process.
-        db_get sysbox/docker_userns_remap
-        if [ "$RET" = "true" ]; then
-
-            # If existing containers are found then let's skip docker-restart
-            # to avoid any service disruption on non-sysbox containers.
-            if ! docker ps -a | wc -l | egrep -q "1$"; then
-                echo -e "\nDocker service was not restarted to avoid affecting existing" \
-                        "containers. Please remove them and restart Docker by doing:\n" \
-                        "\t\"docker stop \$(docker ps -a -q) &&" \
-                        "docker container prune -f &&" \
-                        "sudo systemctl restart docker\"\n"
-            else
-                systemctl restart docker
-                return
-            fi
+        # If existing containers are found then let's skip docker-restart
+        # to avoid any service disruption on non-sysbox containers.
+        if ! docker ps -a | wc -l | egrep -q "1$"; then
+            echo -e "\nDocker service was not restarted to avoid affecting existing" \
+                    "containers. Please remove them and restart Docker by doing:\n" \
+                    "\t\"docker rm \$(docker ps -a -q) -f &&" \
+                    "sudo systemctl restart docker\"\n"
+        else
+            systemctl restart docker
+            return
         fi
     fi
 
     # We will only reach this point if docker was not rebooted above. In that
     # case we will always send docker a sighup to digest the absense of sysbox
     # runtime. This should not impact current non-sysbox containers.
-    if [ ${docker_sighup_required} = "true" ]; then
+    if [ ${docker_runtime_config_changed} = "true" ]; then
             kill -SIGHUP $(pidof dockerd)
     fi
 }
