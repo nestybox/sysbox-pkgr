@@ -249,7 +249,7 @@ adjust_docker_config_network() {
             jq --arg bip ${bip_subnet} --indent 4 '. + {"bip": $bip}' ${dockerCfgFile} \
                 > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
-	    docker_network_config_changed="true"
+	        docker_network_config_changed="true"
         fi
     fi
 
@@ -269,7 +269,7 @@ adjust_docker_config_network() {
                 '."default-address-pools"[0] |= . + {"base": $subnet, "size": 24}' ${dockerCfgFile} \
                 > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
-	    docker_network_config_changed="true"
+	        docker_network_config_changed="true"
         fi
     fi
 }
