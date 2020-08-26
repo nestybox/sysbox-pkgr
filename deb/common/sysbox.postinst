@@ -305,11 +305,10 @@ adjust_docker_config() {
 
         # If existing containers are found then skip docker-restart to avoid any
         # service disruption.
-        if ! docker ps -a | wc -l | egrep -q "1"; then
+        if ! docker ps -a | wc -l | egrep -q "1$"; then
             echo -e "\nDocker service was not restarted to avoid affecting existing" \
                     "containers. Please remove them and restart Docker by doing:\n" \
-                    "\t\"docker stop \$(docker ps -a -q) &&" \
-                    "docker container prune -f &&" \
+                    "\t\"docker rm \$(docker ps -a -q) -f &&" \
                     "sudo systemctl restart docker\"\n"
         else
             systemctl restart docker
