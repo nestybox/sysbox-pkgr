@@ -12,9 +12,6 @@ ARCH=$(shell uname -m)
 		clean         \
 		clean-deb     \
 		ubuntu-bionic \
-		ubuntu-cosmic \
-		ubuntu-disco  \
-		ubuntu-eoan   \
 		ubuntu-focal  \
 		clean-rpm
 
