@@ -87,6 +87,18 @@ RUN apt-get update \
     && apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
 ADD https://raw.githubusercontent.com/docker/docker-ce/master/components/cli/contrib/completion/bash/docker /etc/bash_completion.d/docker.sh
 
+# Use the old definition for SECCOMP_NOTIF_ID_VALID in /usr/include/linux/seccomp.h
+#
+# This is needed because the definition changed in the mainline kernel
+# on 06/2020 (from SECCOMP_IOR -> SECCOMP_IOW), and some distros we
+# support have picked it up in their latest releases / kernels
+# updates. The kernel change was backward compatible, so by using the
+# old definition, we are guaranteed it will work on kernels before and
+# after the change. On the other hand, if we were to use the new
+# definition, seccomp notify would fail when sysbox runs in old
+# kernels.
+RUN sed -i 's/^#define SECCOMP_IOCTL_NOTIF_ID_VALID[ \t]*SECCOMP_IOW(2, __u64)/#define SECCOMP_IOCTL_NOTIF_ID_VALID   SECCOMP_IOR(2, __u64)/g' /usr/include/linux/seccomp.h
+
 WORKDIR /root/build-deb
 COPY build-deb /root/build-deb/build-deb
 COPY changelog_convert.sh /root/build-deb/changelog_convert.sh

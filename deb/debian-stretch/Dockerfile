@@ -46,6 +46,18 @@ RUN mkdir -p ~/bin/protoc \
     && rm -rf ~/bin/protoc/ \
     && go get -u github.com/golang/protobuf/protoc-gen-go
 
+# Use the old definition for SECCOMP_NOTIF_ID_VALID in /usr/include/linux/seccomp.h
+#
+# This is needed because the definition changed in the mainline kernel
+# on 06/2020 (from SECCOMP_IOR -> SECCOMP_IOW), and some distros we
+# support have picked it up in their latest releases / kernels
+# updates. The kernel change was backward compatible, so by using the
+# old definition, we are guaranteed it will work on kernels before and
+# after the change. On the other hand, if we were to use the new
+# definition, seccomp notify would fail when sysbox runs in old
+# kernels.
+RUN sed -i 's/^#define SECCOMP_IOCTL_NOTIF_ID_VALID[ \t]*SECCOMP_IOW(2, __u64)/#define SECCOMP_IOCTL_NOTIF_ID_VALID   SECCOMP_IOR(2, __u64)/g' /usr/include/linux/seccomp.h
+
 WORKDIR /root/build-deb
 COPY build-deb /root/build-deb/build-deb
 
