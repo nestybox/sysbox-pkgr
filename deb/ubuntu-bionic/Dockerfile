@@ -40,8 +40,6 @@ ARG COMMON_FILES
 COPY ${COMMON_FILES} /root/build-deb/debian
 RUN mk-build-deps -t "apt-get -o Debug::pkgProblemResolver=yes --no-install-recommends -y" -i /root/build-deb/debian/control
 
-COPY sources/ /sources
-
 ENV DISTRO ubuntu
 ENV SUITE bionic
 
@@ -99,6 +97,7 @@ ADD https://raw.githubusercontent.com/docker/docker-ce/master/components/cli/con
 RUN sed -i 's/^#define SECCOMP_IOCTL_NOTIF_ID_VALID[ \t]*SECCOMP_IOW(2, __u64)/#define SECCOMP_IOCTL_NOTIF_ID_VALID   SECCOMP_IOR(2, __u64)/g' /usr/include/linux/seccomp.h
 
 WORKDIR /root/build-deb
+COPY sources/ /sources
 COPY build-deb /root/build-deb/build-deb
 COPY changelog_convert.sh /root/build-deb/changelog_convert.sh
 
