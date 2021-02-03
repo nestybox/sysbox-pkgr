@@ -22,14 +22,16 @@ help: ## Show build targets
 	$$2);printf " \033[36m%-20s\033[0m  %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 build: ## Build debian and rpm packages
-build:
+build: clean
 	$(MAKE) -C deb help
 	$(MAKE) -C rpm help
 
 build-deb: ## Build debian packages
+build-deb: clean-deb
 	$(MAKE) -C deb $(filter-out $@,$(MAKECMDGOALS))
 
 build-rpm: ## Build rpm packages (not supported yet)
+build-rpm: clean-rpm
 	$(MAKE) -C rpm $(filter-out $@,$(MAKECMDGOALS))
 
 clean: ## Remove build artifacts
