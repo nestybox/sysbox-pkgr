@@ -12,6 +12,7 @@ TimeoutStopSec=10
 StartLimitInterval=0
 NotifyAccess=main
 OOMScoreAdjust=-500
+LimitNOFILE=32768
 
 [Install]
 WantedBy=sysbox.service
