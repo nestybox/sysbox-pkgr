@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright: (C) 2019-2020 Nestybox Inc. All rights reserved.
+# Copyright: (C) 2019-2021 Nestybox Inc. All rights reserved.
 #
 
 set -e
@@ -13,7 +13,7 @@ set -e
 #   |                           |                     |
 #   |   Ubuntu Focal (20.04)    |        5.4+         |
 #   |                           |                     |
-#   |   Ubuntu Bionic (18.04)   |        5.0.0-22+    |
+#   |   Ubuntu Bionic (18.04)   |        5.2+         |
 #   |___________________________|_____________________|
 
 
@@ -21,8 +21,7 @@ set -e
 declare -A sysbox_support_matrix
 sysbox_support_matrix=(
     ["Ubuntu 20.04"]="5.4"
-    ["Ubuntu 19.10"]="5.3"
-    ["Ubuntu 18.04"]="5.0.0-22"
+    ["Ubuntu 18.04"]="5.2"
 )
 
 # Compare two versions in SemVer format.
