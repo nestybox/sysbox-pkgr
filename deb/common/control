@@ -10,6 +10,7 @@ Vcs-Git: git://github.com/nestybox/sysbox.git
 
 Package: sysbox
 Architecture: linux-any
+Pre-Depends: jq
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          debconf,
