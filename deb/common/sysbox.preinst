@@ -35,7 +35,7 @@ sysbox_support_matrix=(
 #            (5.0.0-22, 5.0.0-21) = 1
 #            (5.0.0-21, 5.0.0-22) = 2
 #
-version_compare() {
+function version_compare() {
 
     if [[ $1 == $2 ]]
     then
@@ -74,7 +74,7 @@ version_compare() {
 #
 # Enforce sysbox's kernel-requirements matrix.
 #
-verify_compatibility() {
+function verify_compatibility() {
 
     local cur_distro=$(lsb_release -ds | cut -d'.' -f1-2 | awk '{print $1,$2}')
     local cur_kernel=$(uname -r | cut -d'-' -f1)

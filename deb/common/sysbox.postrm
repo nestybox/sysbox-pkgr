@@ -28,7 +28,7 @@ trap 'rm -f "${tmpfile}"' EXIT
 # dangling ownership.
 #
 
-adjust_docker_config_userns() {
+function adjust_docker_config_userns() {
 
     # If present, eliminate sysbox's userns-remap entry added during installation.
     # It will be up to the user to restart dockerd for changes to be digested.
@@ -48,7 +48,7 @@ adjust_docker_config_userns() {
     fi
 }
 
-adjust_docker_config_runtime() {
+function adjust_docker_config_runtime() {
 
     # Eliminate sysbox's runtime entry if present.
     if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "true" ] &&
@@ -70,7 +70,7 @@ adjust_docker_config_runtime() {
 #
 # Modify dockerd configuration to eliminate Sysbox runtime.
 #
-adjust_docker_config() {
+function adjust_docker_config() {
     local docker_restart_required=false
     local docker_sighup_required=false
 
