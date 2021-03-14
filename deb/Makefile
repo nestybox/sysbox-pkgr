@@ -18,7 +18,8 @@ SOURCE_FILES =  sysbox.tgz           \
 		sysbox.service       \
 		sysbox-fs.service    \
 		sysbox-mgr.service   \
-		sysbox-systemd.conf
+		sysbox-systemd.conf  \
+		sysbox-configfs.conf
 
 SOURCES=$(addprefix sources/, $(SOURCE_FILES))
 
@@ -133,5 +134,9 @@ sources/sysbox-mgr.service: ../systemd/sysbox-mgr.service
 	cp $< $@
 
 sources/sysbox-systemd.conf: ../systemd/sysbox-systemd.conf
+	mkdir -p $(@D)
+	cp $< $@
+
+sources/sysbox-configfs.conf: ../systemd/sysbox-configfs.conf
 	mkdir -p $(@D)
 	cp $< $@

@@ -18,6 +18,9 @@ sysboxfs_mountpoint="/var/lib/sysboxfs"
 # UID-shifting module
 shiftfs_module="shiftfs"
 
+# Configfs module
+configfs_module="configfs"
+
 # Kernel's pool-size of inotify resources.
 inotify_pool_size=1048576
 
@@ -72,6 +75,16 @@ function enable_unprivileged_userns() {
     fi
 }
 
+# Ensures that 'configfs' module is properly loaded.
+function check_configfs_loaded() {
+
+    # Return error if configfs module is not present or can't be loaded.
+    if ! modprobe "${configfs_module}" &> /dev/null ; then
+	echo -e "\nConfigfs kernel module could not be loaded. Configfs may be required"\
+	     "by certain applications running inside a Sysbox container.\n"
+	exit 1
+    fi
+}
 
 # Ensure kernel's 'inotify' resources meet sysbox requirements -- default values
 # in most distros are too low for decent-size scenarios.
@@ -347,6 +360,9 @@ function config_sysbox() {
     # persist through system reboots by relying on a sysctl.d config-file to be
     # generated as part of this package's installation process.
     enable_unprivileged_userns
+
+    # Load configfs kernel module if not already present.
+    check_configfs_loaded
 
     # Ensure kernel's inotify resources can meet Sysbox's scaling requirements.
     define_inotify_resources

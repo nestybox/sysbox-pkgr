@@ -38,6 +38,10 @@ override_dh_auto_install:
 	install -D -m 0644 /sources/sysbox-systemd.conf \
 		debian/sysbox/lib/sysctl.d/99-sysbox.conf
 
+	# Setup configfs module requirement.
+	install -D -m 0644 /sources/sysbox-configfs.conf \
+		debian/sysbox/etc/modules-load.d/sysbox-configfs.conf
+
 override_dh_install:
 	dh_install
 
