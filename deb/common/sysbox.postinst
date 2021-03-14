@@ -51,7 +51,7 @@ trap 'rm -f "${tmpfile}"' EXIT
 keyring_maxkeys=20000
 
 # Creates sysbox-fs mountpoint.
-create_sysboxfs_mountpoint() {
+function create_sysboxfs_mountpoint() {
 
     if [[ -d ${sysboxfs_mountpoint} ]]; then
         return
@@ -64,7 +64,7 @@ create_sysboxfs_mountpoint() {
 }
 
 # Enables the utilization of unprivileged user-namespaces.
-enable_unprivileged_userns() {
+function enable_unprivileged_userns() {
 
     val=$(sysctl kernel.unprivileged_userns_clone)
     if [[ "${val##* }" = 0 ]]; then
@@ -72,9 +72,10 @@ enable_unprivileged_userns() {
     fi
 }
 
+
 # Ensure kernel's 'inotify' resources meet sysbox requirements -- default values
 # in most distros are too low for decent-size scenarios.
-define_inotify_resources() {
+function define_inotify_resources() {
 
     val=$(sysctl fs.inotify.max_queued_events)
     if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
@@ -96,7 +97,7 @@ define_inotify_resources() {
 # default values in most distros are too low for decent-size
 # scenarios. See definition of keyring_maxkeys variable above for
 # details.
-define_keyring_resources() {
+function define_keyring_resources() {
 
     val=$(sysctl kernel.keys.maxkeys)
     if [[ "${val##* }" -lt ${keyring_maxkeys} ]]; then
@@ -105,7 +106,7 @@ define_keyring_resources() {
 }
 
 # Adds user/group in charge of running all sysbox components.
-add_sysbox_user() {
+function add_sysbox_user() {
 
     if ! getent passwd | grep "^sysbox:" >/dev/null 2>&1; then
         useradd -s /bin/false sysbox
@@ -123,7 +124,7 @@ add_sysbox_user() {
 #    will be added (if not already present) along the 'sysbox' user previously
 #    created.
 #
-adjust_docker_config_userns() {
+function adjust_docker_config_userns() {
 
     # Skip userns-remap config processing if docker config is already holding
     # a userns-remap entry AND docker is operating in this mode.
@@ -184,7 +185,7 @@ adjust_docker_config_userns() {
 #
 # Add sysbox runtime to docker configuration.
 #
-adjust_docker_config_runtime() {
+function adjust_docker_config_runtime() {
 
     # If no 'runtimes' key-entry is present, proceed to add one.
     if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "false" ]; then
@@ -216,7 +217,7 @@ adjust_docker_config_runtime() {
 # Returns 'true' if passed ipv4 address overlaps with any of the system local
 # subnets. Return 'false' otherwise.
 #
-system_local_subnet() {
+function system_local_subnet() {
 
     if ip route get ${1} | egrep -q "via $(ip route | awk '/default/ {print $3}')"; then
         return 1
@@ -228,7 +229,7 @@ system_local_subnet() {
 #
 # Adjust docker's network configuration to avoid subnet overlapping ranges.
 #
-adjust_docker_config_network() {
+function adjust_docker_config_network() {
 
     local bip_host=$(echo ${bip_subnet} | cut -d'/' -f 1)
     local pool_host=$(echo $pool_subnet} | cut -d'/' -f 1)
@@ -277,7 +278,7 @@ adjust_docker_config_network() {
 #
 # Create/Modify dockerd configuration to meet Sysbox requirements.
 #
-adjust_docker_config() {
+function adjust_docker_config() {
 
     # If no dockerd default config-file exist, or if there's no content on it,
     # create one with a bare json layout.
@@ -326,7 +327,7 @@ adjust_docker_config() {
 #
 # Verify if kernel-headers are properly installed and alert user otherwise.
 #
-check_kernel_headers() {
+function check_kernel_headers() {
 
     #if ! dpkg-query -W -f='${Status} ${Version}\n' linux-headers-$(uname -r) \
     if ! dpkg -s linux-headers-$(uname -r) 2>&1 | egrep -q "install ok installed"; then
@@ -337,7 +338,7 @@ check_kernel_headers() {
     fi
 }
 
-config_sysbox() {
+function config_sysbox() {
 
     # Ensure sysbox-fs' default mountpoint is created in the file-system.
     create_sysboxfs_mountpoint
