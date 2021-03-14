@@ -59,5 +59,6 @@ RUN sed -i 's/^#define SECCOMP_IOCTL_NOTIF_ID_VALID[ \t]*SECCOMP_IOW(2, __u64)/#
 WORKDIR /root/build-deb
 COPY sources/ /sources
 COPY build-deb /root/build-deb/build-deb
+COPY changelog_convert.sh /root/build-deb/changelog_convert.sh
 
 ENTRYPOINT ["/root/build-deb/build-deb"]
