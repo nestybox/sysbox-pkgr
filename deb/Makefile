@@ -59,10 +59,10 @@ DOCKER_RUN=docker run --privileged --rm -i       \
 	deb                \
 	debian             \
 	debian-buster      \
-	debian-stretch     \
+	debian-bullseye    \
 	ubuntu             \
-	ubuntu-focal       \
 	ubuntu-bionic      \
+	ubuntu-focal       \
 	clean
 
 help:
@@ -76,7 +76,7 @@ help:
 deb: debian ubuntu
 
 debian: ## Build all Debian deb packages
-debian: debian-stretch debian-buster
+debian: debian-buster debian-bullseye
 
 debian-buster: ## Build Debian Buster (10) packages
 debian-buster: $(SOURCES)
@@ -84,8 +84,8 @@ debian-buster: $(SOURCES)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
-debian-stretch: ## Build Debian Buster (9) packages
-debian-stretch: $(SOURCES)
+debian-bullseye: ## Build Bullseye (11) packages
+debian-bullseye: $(SOURCES)
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
@@ -93,18 +93,17 @@ debian-stretch: $(SOURCES)
 ubuntu: ## Build all Ubuntu deb packages
 ubuntu: ubuntu-bionic ubuntu-focal
 
-ubuntu-focal: ## Build Ubuntu Focal (20.04) deb packages
-ubuntu-focal: $(SOURCES)
-	$(DOCKER_BUILD)
-	$(DOCKER_RUN)
-	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
-
 ubuntu-bionic: ## Build Ubuntu Bionic (18.04) deb packages
 ubuntu-bionic: $(SOURCES)
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
+ubuntu-focal: ## Build Ubuntu Focal (20.04) deb packages
+ubuntu-focal: $(SOURCES)
+	$(DOCKER_BUILD)
+	$(DOCKER_RUN)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
 clean: ## Remove build artifacts
 	[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
