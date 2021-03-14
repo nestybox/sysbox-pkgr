@@ -1,5 +1,5 @@
 ARG GO_IMAGE
-ARG BUILD_IMAGE=debian:stretch
+ARG BUILD_IMAGE=debian:bullseye
 FROM ${GO_IMAGE} as golang
 
 FROM ${BUILD_IMAGE}
@@ -25,7 +25,7 @@ COPY ${COMMON_FILES} /root/build-deb/debian
 RUN mk-build-deps -t "apt-get -o Debug::pkgProblemResolver=yes --no-install-recommends -y" -i /root/build-deb/debian/control
 
 ENV DISTRO debian
-ENV SUITE stretch
+ENV SUITE bullseye
 
 COPY --from=golang /usr/local/go /usr/local/go
 
@@ -59,5 +59,6 @@ RUN sed -i 's/^#define SECCOMP_IOCTL_NOTIF_ID_VALID[ \t]*SECCOMP_IOW(2, __u64)/#
 WORKDIR /root/build-deb
 COPY sources/ /sources
 COPY build-deb /root/build-deb/build-deb
+COPY changelog_convert.sh /root/build-deb/changelog_convert.sh
 
 ENTRYPOINT ["/root/build-deb/build-deb"]
