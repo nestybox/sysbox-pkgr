@@ -12,9 +12,9 @@ set -e
 #   |  Supported Distributions  |  Supported Kernels  |
 #   +=================================================+
 #   |                           |                     |
-#   |   Ubuntu Focal (20.04)    |        5.4+         |
-#   |                           |                     |
 #   |   Ubuntu Bionic (18.04)   |        5.2+         |
+#   |                           |                     |
+#   |   Ubuntu Focal (20.04)    |        5.4+         |
 #   |                           |                     |
 #   |   Debian Buster (10)      |        5.5+         |
 #   |                           |                     |
@@ -24,8 +24,8 @@ set -e
 
 declare -A sysbox_support_matrix
 sysbox_support_matrix=(
-    ["Ubuntu 18.04"]="5.4"
-    ["Ubuntu 20.04"]="5.2"
+    ["Ubuntu 18.04"]="5.2"
+    ["Ubuntu 20.04"]="5.4"
     ["Debian 10"]="5.5"
     ["Debian 11"]="5.5"
 )
