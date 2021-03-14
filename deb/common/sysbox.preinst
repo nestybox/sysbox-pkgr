@@ -5,7 +5,8 @@
 
 set -e
 
-# Sysbox's kernel requirements matrix:
+# The following table enumerates the Linux distributions supported by this
+# installer and the required kernel releases.
 #
 #   +=================================================+
 #   |  Supported Distributions  |  Supported Kernels  |
@@ -14,14 +15,19 @@ set -e
 #   |   Ubuntu Focal (20.04)    |        5.4+         |
 #   |                           |                     |
 #   |   Ubuntu Bionic (18.04)   |        5.2+         |
+#   |                           |                     |
+#   |   Debian Buster (10)      |        5.5+         |
+#   |                           |                     |
+#   |   Debian Bullseye (11)    |        5.5+         |
 #   |___________________________|_____________________|
 
 
-# At the moment, only Ubuntu distro is supported.
 declare -A sysbox_support_matrix
 sysbox_support_matrix=(
-    ["Ubuntu 20.04"]="5.4"
-    ["Ubuntu 18.04"]="5.2"
+    ["Ubuntu 18.04"]="5.4"
+    ["Ubuntu 20.04"]="5.2"
+    ["Debian 10"]="5.5"
+    ["Debian 11"]="5.5"
 )
 
 # Compare two versions in SemVer format.
@@ -71,12 +77,21 @@ function version_compare() {
     return 0
 }
 
+# Extract required distro details.
+function current_distro_details() {
+
+    local distro=$(lsb_release -is)
+    local release=$(lsb_release -rs)
+
+    echo "${distro}" "${release}"
+}
+
 #
 # Enforce sysbox's kernel-requirements matrix.
 #
 function verify_compatibility() {
 
-    local cur_distro=$(lsb_release -ds | cut -d'.' -f1-2 | awk '{print $1,$2}')
+    local cur_distro=$(current_distro_details)
     local cur_kernel=$(uname -r | cut -d'-' -f1)
     local found_supported_distro=false
     local found_supported_kernel=false
