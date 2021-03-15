@@ -12,6 +12,7 @@ RUN apt-get update &&  \
     git                \
     wget               \
     pkg-config         \
+    kmod               \
     libnet-dev         \
     libseccomp2        \
     libseccomp-dev
