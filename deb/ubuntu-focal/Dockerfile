@@ -19,6 +19,7 @@ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selectio
     libseccomp2                                  \
     libseccomp-dev                               \
     iproute2                                     \
+    kmod                                         \
     unzip &&                                     \
     \
     # Housekeeping

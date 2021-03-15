@@ -17,6 +17,7 @@ RUN apt-get update &&                            \
     libseccomp2                                  \
     libseccomp-dev                               \
     iproute2                                     \
+    kmod                                         \
     unzip &&                                     \
     \
     # Housekeeping
