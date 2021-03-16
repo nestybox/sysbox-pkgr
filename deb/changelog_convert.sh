@@ -90,15 +90,12 @@ function print_tag_trailer() {
     local tag_date=""
 
     if [[ "$unreleased" = true ]]; then
-        tag_author="Nestybox builder-bot"
-        tag_email="builder-bot@nestybox.com"
+        tag_author=$(git config user.name)
+        tag_email=$(git config user.email)
         tag_date=$(date --rfc-2822)
     else
-        # Temporarily commenting these lines out to avoid exposing personal emails.
-        #local tag_author=$(git -C sysbox log -1 --format=%aN v$1)
-        #local tag_email=$(git -C sysbox log -1 --format=%ae v$1)
-        tag_author="Nestybox builder-bot"
-        tag_email="builder-bot@nestybox.com"
+        tag_author=$(git -C sysbox log -1 --format=%aN v$1)
+        tag_email=$(git -C sysbox log -1 --format=%ae v$1)
         tag_date=$(git -C sysbox log -1 --format=%aD v$tag)
     fi
     

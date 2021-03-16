@@ -49,6 +49,7 @@ DOCKER_RUN=docker run --privileged --rm -i       \
 	-v $(TEST_VOL1):/var/lib/docker          \
 	-v $(TEST_VOL2):/var/lib/sysbox          \
 	-v $(TEST_VOL3):/mnt/scratch             \
+	-v $(HOME)/.gitconfig:/root/.gitconfig:ro     \
 	-v /lib/modules/$(KERNEL_REL):/lib/modules/$(KERNEL_REL):ro \
 	-v /usr/src/$(HEADERS):/usr/src/$(HEADERS):ro \
 	-v /usr/src/$(HEADERS_BASE):/usr/src/$(HEADERS_BASE):ro \
