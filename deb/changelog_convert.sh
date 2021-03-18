@@ -23,16 +23,16 @@
 #
 # Expected output:
 #
-# $ cat image/deb/common/changelog
+# $ cat sysbox-pkgr/deb/common/sysbox-ce/changelog
 # ...
-# sysbox (0.0.2) unstable; urgency=low
+# sysbox-ce (0.0.2-0) unstable; urgency=medium
 #
 #  * Generate external documentation: README, user-guide, design-guide, etc.
 #  * Extend Sysbox support to Ubuntu-Bionic.
 #
 #  -- Rodny Molina <rmolina@nestybox.com> Tue, 20 Aug 2019 16:21:10 -0700
 #
-# sysbox (0.0.1) unstable; urgency=low
+# sysbox-ce (0.0.1-0) unstable; urgency=medium
 #
 #  * Initial public release.
 #
@@ -74,9 +74,9 @@ function print_tag_header() {
     local unreleased=$2
 
     if [[ $unreleased = true ]]; then
-        echo -e "sysbox (${tag}-0.${DISTRO}-${SUITE}) ${SUITE} UNRELEASED; urgency=medium\n"
+	echo -e "sysbox-${PLATFORM} (${tag}-0.${DISTRO}-${SUITE}) UNRELEASED; urgency=medium\n"
     else
-        echo -e "sysbox (${tag}-0.${DISTRO}-${SUITE}) ${SUITE} unstable; urgency=medium\n"
+        echo -e "sysbox-${PLATFORM} (${tag}-0.${DISTRO}-${SUITE}) unstable; urgency=medium\n"
     fi
 }
 

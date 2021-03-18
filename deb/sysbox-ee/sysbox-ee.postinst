@@ -1,0 +1,402 @@
+#!/bin/bash
+#
+# Copyright: (C) 2019-2020 Nestybox Inc.  All rights reserved.
+#
+
+set -e
+
+# Source debconf library.
+. /usr/share/debconf/confmodule
+
+# Dockerd default configuration dir/file.
+dockerCfgDir="/etc/docker"
+dockerCfgFile="${dockerCfgDir}/daemon.json"
+
+# sysbox-fs' default mountpoint path.
+sysboxfs_mountpoint="/var/lib/sysboxfs"
+
+# UID-shifting module
+shiftfs_module="shiftfs"
+
+# Configfs module
+configfs_module="configfs"
+
+# Kernel's pool-size of inotify resources.
+inotify_pool_size=1048576
+
+# Default docker network parameters
+bip_subnet="172.20.0.1/16"
+pool_subnet="172.25.0.0/16"
+
+# Docker config vars.
+docker_network_config_changed="false"
+docker_userns_config_changed="false"
+docker_runtime_config_changed="false"
+
+# Temp file for jq write operations.
+tmpfile=$(mktemp /tmp/installer-scr.XXXXXX)
+trap 'rm -f "${tmpfile}"' EXIT
+
+# Kernel's keyring max keys limit. In debian-based distros (e.g.,
+# Ubuntu) the kernel keyring max keys limit is set to 200 for non-root
+# users.  This is too low for Sysbox. For example, for a sys container
+# based K8s cluster, the number of keys required is:
+#
+#             keys = 35 + (k8s_workers * 23) + (2 * pods)
+#
+# That is, a 10-node cluster would need 282 keys.
+#
+# In a large bare-metal machine, we expect ~100 sys containers. That
+# would consume ~11K keys.  To be conservative, we set maxkeys to
+# 20K. Note that since each key consumes 20KB, the total mem
+# consumption assuming all 20K keys are used is 400MB.
+#
+keyring_maxkeys=20000
+
+# Creates sysbox-fs mountpoint.
+function create_sysboxfs_mountpoint() {
+
+    if [[ -d ${sysboxfs_mountpoint} ]]; then
+        return
+    fi
+
+    mkdir -p ${sysboxfs_mountpoint}
+    if [[ ! -d ${sysboxfs_mountpoint} ]]; then
+        exit 1
+    fi
+}
+
+# Enables the utilization of unprivileged user-namespaces.
+function enable_unprivileged_userns() {
+
+    val=$(sysctl kernel.unprivileged_userns_clone)
+    if [[ "${val##* }" = 0 ]]; then
+        sysctl -w kernel.unprivileged_userns_clone=1 >/dev/null 2>&1
+    fi
+}
+
+# Ensures that 'configfs' module is properly loaded.
+function check_configfs_loaded() {
+
+    # Return error if configfs module is not present or can't be loaded.
+    if ! modprobe "${configfs_module}" &> /dev/null ; then
+        echo -e "\nConfigfs kernel module could not be loaded. Configfs may be required"\
+                "by certain applications running inside a Sysbox container.\n"
+        exit 1
+    fi
+}
+
+# Ensure kernel's 'inotify' resources meet sysbox requirements -- default values
+# in most distros are too low for decent-size scenarios.
+function define_inotify_resources() {
+
+    val=$(sysctl fs.inotify.max_queued_events)
+    if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
+        sysctl -w fs.inotify.max_queued_events=${inotify_pool_size} >/dev/null 2>&1
+    fi
+
+    val=$(sysctl fs.inotify.max_user_watches)
+    if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
+        sysctl -w fs.inotify.max_user_watches=${inotify_pool_size} >/dev/null 2>&1
+    fi
+
+    val=$(sysctl fs.inotify.max_user_instances)
+    if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
+        sysctl -w fs.inotify.max_user_instances=${inotify_pool_size} >/dev/null 2>&1
+    fi
+}
+
+# Ensure kernel's 'keyring' resources meet sysbox requirements --
+# default values in most distros are too low for decent-size
+# scenarios. See definition of keyring_maxkeys variable above for
+# details.
+function define_keyring_resources() {
+
+    val=$(sysctl kernel.keys.maxkeys)
+    if [[ "${val##* }" -lt ${keyring_maxkeys} ]]; then
+        sysctl -w kernel.keys.maxkeys=${keyring_maxkeys} >/dev/null 2>&1
+    fi
+}
+
+# Adds user/group in charge of running all sysbox components.
+function add_sysbox_user() {
+
+    if ! getent passwd | grep "^sysbox:" >/dev/null 2>&1; then
+        useradd -s /bin/false sysbox
+    fi
+}
+
+#
+# There are two operational-modes in which Sysbox can function. Sysbox installer
+# will automatically pick mode 1) if 'shiftfs' module is available AND docker is
+# not operating in 'userns-remap' mode. Otherwise, it will choose option 2).
+#
+# 1) uid-shifting mode: In this case no 'userns-remap' should be present in
+#    dockerd's configuration.
+# 2) non-uid-shifting mode (userns-remap): In this mode a 'userns-remap' entry
+#    will be added (if not already present) along the 'sysbox' user previously
+#    created.
+#
+function adjust_docker_config_userns() {
+
+    # Skip userns-remap config processing if docker config is already holding
+    # a userns-remap entry AND docker is operating in this mode.
+    if jq --exit-status 'has("userns-remap")' ${dockerCfgFile} &> /dev/null &&
+        jq --exit-status '."userns-remap"' ${dockerCfgFile} | egrep -q -v "\"\"" &> /dev/null &&
+        docker info 2>&1 | egrep -q "^  userns$"; then
+        return
+    fi
+
+    # If shiftfs module is not present then consider configuring docker in userns
+    # mode.
+    if ! modprobe "${shiftfs_module}" &> /dev/null ; then
+
+        # Check for user's debconf response to determine if we will take care of
+        # the userns-remap configuration process.
+        db_get sysbox/docker_userns_remap_autoconfig
+        if [ "$RET" = "false" ]; then
+            return
+        fi
+
+        # If no 'userns-remap' key-entry is present, or if its associated value
+        # is empty, proceed to create a key and set its value to 'sysbox' user.
+        # Note that 'jq' does not provide 'in-place' editing capabilities (i.e.
+        # it displays inconsistent behavior), hence the need for the auxiliar
+        # 'tmpfile'.
+        if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "false" ] ||
+            [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ]; then
+
+            jq --indent 4 '. + {"userns-remap": "sysbox"}' \
+                ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+
+            docker_userns_config_changed="true"
+
+        # If a valid userns entry already exists, but docker is not aware of it,
+        # ensure that docker is restarted at the end of the installation cycle.
+        elif [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "true" ] &&
+             [ ! $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ] &&
+             ! docker info 2>&1 | egrep -q "^  userns$"; then
+
+            docker_userns_config_changed="true"
+        fi
+
+    else
+        # If 'shiftfs' module is present but there's an unprocessed 'userns-remap' entry
+        # in docker config, go ahead and eliminate it. Notice that here we are referring
+        # to 'superficial' (unprocessed) userns config entries; if docker were to be
+        # operating in 'userns' mode, we would not be touching this configuration (see
+        # function's first code-block).
+        if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "true" ] &&
+            [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"sysbox\"" ]; then
+
+            jq 'del(."userns-remap")' \
+                ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+        fi
+    fi
+}
+
+#
+# Add sysbox runtime to docker configuration.
+#
+function adjust_docker_config_runtime() {
+
+    # If no 'runtimes' key-entry is present, proceed to add one.
+    if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "false" ]; then
+        jq --indent 4 '. + {"runtimes": {"sysbox-runc": {"path": "/usr/local/sbin/sysbox-runc"}}}' \
+            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+
+        docker_runtime_config_changed="true"
+
+    # If no 'sysbox-runc' runtime entry is present, proceed to add it.
+    elif [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = "false" ]; then
+        jq --indent 4 '.runtimes |= . + {"sysbox-runc": {"path": "/usr/local/sbin/sysbox-runc"}}' \
+            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+
+        docker_runtime_config_changed="true"
+
+    # If the runtime config is complete (i.e. both 'runtimes' and 'sysbox-runc'
+    # entries exist), but this state has not been digested by docker yet, ensure
+    # that docker processes it before this installation concludes.
+    elif [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "true" ] &&
+         [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = true ] &&
+         command -v docker >/dev/null 2>&1 &&
+         ! docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
+
+        docker_runtime_config_changed="true"
+    fi
+}
+
+#
+# Returns 'true' if passed ipv4 address overlaps with any of the system local
+# subnets. Return 'false' otherwise.
+#
+function system_local_subnet() {
+
+    if ip route get ${1} | egrep -q "via $(ip route | awk '/default/ {print $3}')"; then
+        return 1
+    fi
+
+    return 0
+}
+
+#
+# Adjust docker's network configuration to avoid subnet overlapping ranges.
+#
+function adjust_docker_config_network() {
+
+    local bip_host=$(echo ${bip_subnet} | cut -d'/' -f 1)
+    local pool_host=$(echo $pool_subnet} | cut -d'/' -f 1)
+
+    # If no 'bip' key-entry is present, proceed to add one.
+    if [ $(jq 'has("bip")' ${dockerCfgFile}) = "false" ] ||
+       [ $(jq '."bip"' ${dockerCfgFile}) = "\"\"" ]; then
+
+        # If bip address to add overlaps with an existing local subnet, then
+        # dump a log message to user and skip bip's configuration.
+        if system_local_subnet ${bip_host} &&
+            ! ip -4 address show dev docker0 | egrep -q "${bip_subnet}"; then
+            echo -e "\nDocker bridge-ip network to configure (${bip_subnet}) overlaps"\
+                    "with existing system subnet. Installation process will skip this docker"\
+                    "network setting. Please manually configure docker's 'bip' subnet to"\
+                    "avoid connectivity issues.\n"
+        else
+            jq --arg bip ${bip_subnet} --indent 4 '. + {"bip": $bip}' ${dockerCfgFile} \
+                > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+
+	        docker_network_config_changed="true"
+        fi
+    fi
+
+    # If no 'default-address-pool' is found, do add one here.
+    if [ $(jq 'has("default-address-pools")' ${dockerCfgFile}) = "false" ] ||
+       [ $(jq '."default-address-pools" | length' ${dockerCfgFile}) -eq "0" ]; then
+
+        # If address-pool overlaps with an existing local subnet, then
+        # dump a log message to user and skip this attribute's configuration.
+        if system_local_subnet ${pool_host}; then
+            echo -e "\nDocker default-address-pool to configure (${pool_subnet}) overlaps"\
+                    "with existing system subnet. Installation process will skip this docker"\
+                    "network setting. Please manually configure docker's 'default-address-pool'"\
+                    "subnet to avoid connectivity issues.\n"
+        else
+            jq --arg subnet ${pool_subnet} --indent 4 \
+                '."default-address-pools"[0] |= . + {"base": $subnet, "size": 24}' ${dockerCfgFile} \
+                > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+
+	        docker_network_config_changed="true"
+        fi
+    fi
+}
+
+#
+# Create/Modify dockerd configuration to meet Sysbox requirements.
+#
+function adjust_docker_config() {
+
+    # If no dockerd default config-file exist, or if there's no content on it,
+    # create one with a bare json layout.
+    if [[ ! -f ${dockerCfgFile} ]] || [[ ! -s ${dockerCfgFile} ]]; then
+        mkdir -p ${dockerCfgDir}
+        touch ${dockerCfgFile}
+        echo -e "{\n}" > ${dockerCfgFile}
+    fi
+
+    adjust_docker_config_userns
+
+    adjust_docker_config_runtime
+
+    adjust_docker_config_network
+
+    # Return here if docker is not installed. We can't do it earlier than this
+    # as the user could potentially install docker after sysbox.
+    if ! command -v docker >/dev/null 2>&1; then
+        return
+    fi
+
+    # Restart docker if disruptive changes have been made.
+    if [[ ${docker_userns_config_changed} = "true" ]] ||
+        [[ ${docker_network_config_changed} = "true" ]]; then
+
+        # If existing containers are found then skip docker-restart to avoid any
+        # service disruption.
+        if ! docker ps -a | wc -l | egrep -q "1$"; then
+            echo -e "\nDocker service was not restarted to avoid affecting existing" \
+                    "containers. Please remove them and restart Docker by doing:\n" \
+                    "\t\"docker rm \$(docker ps -a -q) -f &&" \
+                    "sudo systemctl restart docker\"\n"
+        else
+            systemctl restart docker
+            return
+        fi
+    fi
+
+    # If non-disruptive changes have been made to docker config, then send it a
+    # sighup to have its config file getting re-parsed (no need to cold-boot).
+    if [ ${docker_runtime_config_changed} = true ]; then
+	    kill -SIGHUP $(pidof dockerd)
+    fi
+}
+
+#
+# Verify if kernel-headers are properly installed and alert user otherwise.
+#
+function check_kernel_headers() {
+
+    #if ! dpkg-query -W -f='${Status} ${Version}\n' linux-headers-$(uname -r) \
+    if ! dpkg -s linux-headers-$(uname -r) 2>&1 | egrep -q "install ok installed"; then
+        echo -e "\nThe linux kernel headers package was not found. This may be"\
+                "expected by user applications running within Sysbox containers."\
+                "Please install it with this command:\n"\
+                "\t\"sudo apt-get install -y linux-headers-\$(uname -r)\"\n"
+    fi
+}
+
+function config_sysbox() {
+
+    # Ensure sysbox-fs' default mountpoint is created in the file-system.
+    create_sysboxfs_mountpoint
+
+    # Allows user-namespaces creation for unprivileged users. This change will
+    # persist through system reboots by relying on a sysctl.d config-file to be
+    # generated as part of this package's installation process.
+    enable_unprivileged_userns
+
+    # Load configfs kernel module if not already present.
+    check_configfs_loaded
+
+    # Ensure kernel's inotify resources can meet Sysbox's scaling requirements.
+    define_inotify_resources
+
+    # Ensure kernel's keyring resources can meet Sysbox's scaling requirements.
+    define_keyring_resources
+
+    # Add 'sysbox' user to host a large pool of subordinate UIDs/GIDs to be
+    # shared across all system-containers. This user must match the one defined
+    # in the docker configuration file.
+    add_sysbox_user
+
+    # Adjust dockerd configuration.
+    adjust_docker_config
+
+    # Check for kernel-headers.
+    check_kernel_headers
+}
+
+
+case "$1" in
+    configure)
+        # Adjust system's configuration to satisfy Sysbox requirements.
+        config_sysbox
+
+        # Avoid calling exit() here to allow debhelper tools to add their
+        # auto-generated code further below.
+        ;;
+
+    abort-*)
+        ;;
+
+    *)
+        ;;
+esac
+
+#DEBHELPER#

@@ -38,8 +38,8 @@ ARG GO_VERSION
 ENV GOPATH /go
 ENV PATH $PATH:/usr/local/go/bin:$GOPATH/bin
 
-ARG COMMON_FILES
-COPY ${COMMON_FILES} /root/build-deb/debian
+ARG DEB_FILES
+COPY ${DEB_FILES} /root/build-deb/debian
 RUN mk-build-deps -t "apt-get -o Debug::pkgProblemResolver=yes --no-install-recommends -y" -i /root/build-deb/debian/control
 
 ENV DISTRO ubuntu
