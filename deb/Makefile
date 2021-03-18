@@ -1,3 +1,7 @@
+#
+# Sysbox Packager Makefile
+#
+
 SHELL:=/bin/bash
 ARCH:=$(shell uname -m)
 
@@ -10,7 +14,7 @@ SYSBOX_RUNC := $(SYSBOX_DIR)/sysbox-runc
 SYSBOX_SOURCE_CODE := SYSBOX_FS SYSBOX_IPC SYSBOX_MGR SYSBOX_RUNC
 
 # Sysbox build-instructions locations.
-SYSBOX_IMAGE_COMMON := common
+SYSBOX_DEB_FILES     := ""
 SYSBOX_IMAGE_SYSTEMD := ../systemd
 SYSBOX_IMAGE_SOURCES := SYSBOX_IMAGE_COMMON SYSBOX_IMAGE_SYSTEMD
 
@@ -34,7 +38,7 @@ CHOWN:=docker run --rm -v $(CURDIR):/v -w /v alpine chown
 
 DOCKER_BUILD=docker build                                  \
 	--build-arg GO_IMAGE=$(GO_IMAGE)                   \
-	--build-arg COMMON_FILES=$(SYSBOX_IMAGE_COMMON)    \
+	--build-arg DEB_FILES=sysbox-${PLATFORM}           \
 	-t debbuild-$@/$(ARCH)                             \
 	-f $(CURDIR)/$@/Dockerfile .
 
@@ -55,7 +59,6 @@ DOCKER_RUN=docker run --privileged --rm -i       \
 	-v /usr/src/$(HEADERS_BASE):/usr/src/$(HEADERS_BASE):ro \
 	debbuild-$@/$(ARCH)
 
-
 .PHONY: help               \
 	deb                \
 	debian             \
@@ -66,52 +69,63 @@ DOCKER_RUN=docker run --privileged --rm -i       \
 	ubuntu-focal       \
 	clean
 
+.DEFAULT := help
+
 help:
 	@awk 'BEGIN {FS = ":.*##"; printf "\n\033[1mUsage:\n  \
-	make package build-deb \033[36m<target>\033[0m\n"} \
+	make <sysbox-package> \033[36m<deb-distro>\033[0m\n"} \
 	/^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2 } /^##@/ \
 	{ printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-##@ DEB building targets
+##@ DEB package targets
 
-deb: debian ubuntu
+all: ## Build all DEB packages
+all: debian ubuntu
 
-debian: ## Build all Debian deb packages
+debian: ## Build Debian packages
 debian: debian-buster debian-bullseye
 
-debian-buster: ## Build Debian Buster (10) packages
+debian-buster: ## Build Debian Buster package
 debian-buster: $(SOURCES)
+	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
-debian-bullseye: ## Build Bullseye (11) packages
+debian-bullseye: ## Build Debian Bullseye package
 debian-bullseye: $(SOURCES)
+	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
-ubuntu: ## Build all Ubuntu deb packages
+ubuntu: ## Build Ubuntu packages
 ubuntu: ubuntu-bionic ubuntu-focal
 
-ubuntu-bionic: ## Build Ubuntu Bionic (18.04) deb packages
+ubuntu-bionic: ## Build Ubuntu Bionic package
 ubuntu-bionic: $(SOURCES)
+	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
-ubuntu-focal: ## Build Ubuntu Focal (20.04) deb packages
+ubuntu-focal: ## Build Ubuntu Focal package
 ubuntu-focal: $(SOURCES)
+	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
-clean: ## Remove build artifacts
+clean: ## Remove all DEB packages
+ifeq ($(PLATFORM),ce)
 	[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
-	$(RM) -r debbuild
+	$(RM) -r debbuild/*/sysbox-ce*
+else ifeq ($(PLATFORM),ee)
+	[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
+	$(RM) -r debbuild/*/sysbox-ee*
+endif
 	[ ! -d sources ] || $(CHOWN) -R $(shell id -u):$(shell id -g) sources
 	$(RM) -r sources
-
 
 sources/sysbox.tgz:
 	mkdir -p $(@D)

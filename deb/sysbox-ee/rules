@@ -1,0 +1,59 @@
+#!/usr/bin/make -f
+
+# Output every command that modifies files on the build system. Enable me for
+# debugging purposes.
+export DH_VERBOSE = 1
+
+override_dh_auto_build:
+	# Build sysbox's components.
+	cd sysbox && make sysbox-local
+
+override_dh_auto_test:
+
+# Go has lots of problems with stripping, so don't do it.
+override_dh_strip:
+
+
+# ONESHELL attribute to ensure that all instruccions in this target are executed
+# within a single shell process.
+.ONESHELL:
+SHELL=/bin/bash
+override_dh_auto_install:
+	# Sysbox binaries will be installed through the regular (makefile) process.
+	install -D -m0755 sysbox/sysbox-fs/sysbox-fs \
+		debian/sysbox-ee/usr/local/sbin/sysbox-fs
+	install -D -m0755 sysbox/sysbox-mgr/sysbox-mgr \
+		debian/sysbox-ee/usr/local/sbin/sysbox-mgr
+	install -D -m0755 sysbox/sysbox-runc/sysbox-runc \
+		debian/sysbox-ee/usr/local/sbin/sysbox-runc
+
+	# Sysbox's sysctl.d config-file to hold the required procfs settings.
+	# Notice we're picking the largest two-digit integer to name this file
+	# to avoid collisions with other package's requirements -- we expect
+	# our requirements to be more generic, so we want ours to prevail.
+	install -D -m 0644 /sources/sysbox-systemd.conf \
+		debian/sysbox-ee/lib/sysctl.d/99-sysbox.conf
+
+	# Setup configfs module requirement.
+	install -D -m 0644 /sources/sysbox-configfs.conf \
+		debian/sysbox-ee/etc/modules-load.d/sysbox-configfs.conf
+
+override_dh_installinit:
+	# Use "sysbox" as our service name, not "sysbox-ee".
+	dh_installinit --name=sysbox
+
+override_dh_install:
+	dh_install
+
+# Override dh_usrlocal to prevent error after placing sysbox binaries in
+# /usr/local path.
+override_dh_usrlocal:
+
+override_dh_installsystemd:
+	dh_installsystemd --name=sysbox
+	dh_installsystemd --name=sysbox-fs
+	dh_installsystemd --name=sysbox-mgr
+
+%:
+	dh $@
+

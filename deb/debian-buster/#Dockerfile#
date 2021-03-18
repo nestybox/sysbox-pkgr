@@ -1,11 +1,12 @@
 ARG GO_IMAGE
-ARG BUILD_IMAGE=ubuntu:bionic
+ARG BUILD_IMAGE=debian:buster
 ARG DEBIAN_FRONTEND=noninteractive
 FROM ${GO_IMAGE} as golang
 
 FROM ${BUILD_IMAGE}
 
-RUN apt-get update &&                            \
+RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections && \
+    apt-get update &&                            \
     apt-get install -y --no-install-recommends   \
     build-essential                              \
     ca-certificates                              \
@@ -33,7 +34,6 @@ RUN apt-get update &&                            \
     /usr/share/man/*                          \
     /usr/share/local/*
 
-
 ARG GO_VERSION
 ENV GOPATH /go
 ENV PATH $PATH:/usr/local/go/bin:$GOPATH/bin
@@ -42,8 +42,8 @@ ARG DEB_FILES
 COPY ${DEB_FILES} /root/build-deb/debian
 RUN mk-build-deps -t "apt-get -o Debug::pkgProblemResolver=yes --no-install-recommends -y" -i /root/build-deb/debian/control
 
-ENV DISTRO ubuntu
-ENV SUITE bionic
+ENV DISTRO debian
+ENV SUITE buster
 
 COPY --from=golang /usr/local/go /usr/local/go
 
@@ -80,8 +80,8 @@ RUN apt-get update \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - \
     && apt-key fingerprint 0EBFCD88 \
     && add-apt-repository \
-    "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-    bionic \
+    "deb [arch=amd64] https://download.docker.com/linux/debian \
+    buster \
     stable" \
     && apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
 ADD https://raw.githubusercontent.com/docker/docker-ce/master/components/cli/contrib/completion/bash/docker /etc/bash_completion.d/docker.sh

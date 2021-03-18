@@ -1,0 +1,9 @@
+Template: sysbox/docker_userns_remap_autoconfig
+Type: boolean
+Default: "true"
+Description: Configure Docker service in 'userns-remap' mode?
+ Your OS does not include the 'shiftfs' module. As a result, using Sysbox
+ requires that you put Docker in 'userns-remap' mode. If you answer "yes"
+ here, the installer will take care of this configuration process. Otherwise,
+ you will be expected to do this manually. Please refer to Sysbox installation
+ documentation for more details.

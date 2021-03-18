@@ -47,49 +47,43 @@ DOCKER_RUN=docker run --rm -i                    \
 .PHONY: help     \
 	rpm          \
 	centos       \
-	centos-7     \
+	centos-8     \
 	fedora       \
-	fedora-30    \
-	fedora-29    \
-	fedora-28    \
+	fedora-31    \
+	fedora-32    \
 	clean
 
 help:
 	@awk 'BEGIN {FS = ":.*##"; printf "\n\033[1mUsage:\n  \
-	make image build-rpm \033[36m<target>\033[0m\n"} \
-	/^[a-zA-Z_-0-9]+:.*?##/ { printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2 } /^##@/ \
+	make <sysbox-package> \033[36m<rpm-distro>\033[0m\n"} \
+	/^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2 } /^##@/ \
 	{ printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ RPM building targets
 
-rpm: centos fedora
+all: ## Build all RPM packages
+all: centos fedora
 
-centos: ## Build all Centos rpm packages
-centos: centos-7
+centos: ## Build Centos packages
+centos: centos-8
 
-centos-7: ## Build Centos-7 packages
-centos-7: $(SOURCES)
+centos-8: ## Build Centos-8 package
+centos-8: $(SOURCES)
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild/$@
 
-fedora: ## Build all Fedora rpm packages
-fedora: fedora-30 fedora-29 fedora-28
+fedora: ## Build Fedora packages
+fedora: fedora-31 fedora-32
 
-fedora-30: ## Build Fedora-30 packages
-fedora-30: $(SOURCES)
+fedora-31: ## Build Fedora-31 package
+fedora-31: $(SOURCES)
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild/$@
 
-fedora-29: ## Build Fedora-29 packages
-fedora-29: $(SOURCES)
-	$(DOCKER_BUILD)
-	$(DOCKER_RUN)
-	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild/$@
-
-fedora-28: ## Build Fedora-28 packages
-fedora-28: $(SOURCES)
+fedora-32: ## Build Fedora-32 packages
+fedora-32: $(SOURCES)
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild/$@
