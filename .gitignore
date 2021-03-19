@@ -1,4 +1,3 @@
 deb/debbuild
 deb/sources
-sysbox-internal
-sysbox
+sources
