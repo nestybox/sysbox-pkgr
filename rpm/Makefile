@@ -22,12 +22,12 @@ GO_VERSION:=1.13
 GO_IMAGE=$(GO_BASE_IMAGE):$(GO_VERSION)
 
 # Sysbox source-code locations.
-ifeq ($(PLATFORM),ce)
+ifeq ($(EDITION),ce)
 	SYSBOX_DIR  := $(CURDIR)/../sources/sysbox
-else ifeq ($(PLATFORM),ee)
+else ifeq ($(EDITION),ee)
 	SYSBOX_DIR  := $(CURDIR)/../sources/sysbox-internal
 else
-	echo "Unsupported Sysbox platform: $(PLATFORM)"
+	echo "Unsupported Sysbox edition: $(EDITION)"
 	exit 1
 endif
 
@@ -52,7 +52,7 @@ DOCKER_BUILD=docker build                                  \
 	-f $(CURDIR)/$@/Dockerfile .
 
 DOCKER_RUN=docker run --rm -i                    \
-	-e PLATFORM                              \
+	-e EDITION                               \
 	-v $(CURDIR)/rpmbuild/$@:/build          \
 	-v $(GOPATH)/pkg/mod:/go/pkg/mod         \
 	rpmbuild-$@/$(ARCH)
