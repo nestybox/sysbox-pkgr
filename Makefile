@@ -56,22 +56,22 @@ sysbox-rpm: clean-rpm sysbox-ce-rpm sysbox-ee-rpm
 
 sysbox-ce-deb: ## Build sysbox-ce DEB package
 sysbox-ce-deb: $(CE_SOURCES) clean-ce-deb
-	$(eval export PLATFORM=ce)
+	$(eval export EDITION=ce)
 	@$(MAKE) -C deb --no-print-directory $(filter-out sysbox-ce sysbox-deb $@,$(MAKECMDGOALS))
 
 sysbox-ce-rpm: ## Build sysbox-ce RPM package
 sysbox-ce-rpm: $(CE_SOURCES) clean-ce-rpm
-	$(eval export PLATFORM=ce)
+	$(eval export EDITION=ce)
 	@$(MAKE) -C rpm --no-print-directory $(filter-out sysbox-ce sysbox-rpm $@,$(MAKECMDGOALS))
 
 sysbox-ee-deb: ## Build sysbox-ee DEB package
 sysbox-ee-deb: $(EE_SOURCES) clean-ee-deb
-	$(eval export PLATFORM=ee)
+	$(eval export EDITION=ee)
 	@$(MAKE) -C deb --no-print-directory $(filter-out sysbox-ee sysbox-deb $@,$(MAKECMDGOALS))
 
 sysbox-ee-rpm: ## Build sysbox-ee RPM package
 sysbox-ee-rpm: $(EE_SOURCES) clean-ee-rpm
-	$(eval export PLATFORM=ee)
+	$(eval export EDITION=ee)
 	@$(MAKE) -C rpm --no-print-directory $(filter-out sysbox-ee sysbox-rpm $@,$(MAKECMDGOALS))
 
 sources/sysbox:
@@ -98,17 +98,17 @@ clean-rpm: ## Remove sysbox RPM packages
 clean-ee: clean-ce-rpm clean-ee-rpm
 
 clean-ce-deb: ## Remove sysbox-ce DEB package
-	$(eval export PLATFORM=ce)
+	$(eval export EDITION=ce)
 	@$(MAKE) -C deb --no-print-directory clean
 
 clean-ce-rpm: ## Remove sysbox-ce RPM package
-	$(eval export PLATFORM=ce)
+	$(eval export EDITION=ce)
 	@$(MAKE) -C rpm --no-print-directory clean
 
 clean-ee-deb: ## Remove sysbox-ee DEB package
-	$(eval export PLATFORM=ee)
+	$(eval export EDITION=ee)
 	@$(MAKE) -C deb --no-print-directory clean
 
 clean-ee-rpm: ## Remove sysbox-ee RPM package
-	$(eval export PLATFORM=ee)
+	$(eval export EDITION=ee)
 	@$(MAKE) -C rpm --no-print-directory clean

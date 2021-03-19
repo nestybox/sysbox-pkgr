@@ -23,12 +23,12 @@ GO_VERSION:=1.13
 GO_IMAGE=$(GO_BASE_IMAGE):$(GO_VERSION)
 
 # Sysbox source-code locations.
-ifeq ($(PLATFORM),ce)
+ifeq ($(EDITION),ce)
 	SYSBOX_DIR  := $(CURDIR)/../sources/sysbox
-else ifeq ($(PLATFORM),ee)
+else ifeq ($(EDITION),ee)
 	SYSBOX_DIR  := $(CURDIR)/../sources/sysbox-internal
 else
-	echo "Unsupported Sysbox platform: $(PLATFORM)"
+	echo "Unsupported Sysbox edition: $(EDITION)"
 	exit 1
 endif
 
@@ -48,12 +48,12 @@ CHOWN:=docker run --rm -v $(CURDIR):/v -w /v alpine chown
 
 DOCKER_BUILD=docker build                                  \
 	--build-arg GO_IMAGE=$(GO_IMAGE)                   \
-	--build-arg DEB_FILES=sysbox-${PLATFORM}           \
+	--build-arg DEB_FILES=sysbox-${EDITION}            \
 	-t debbuild-$@/$(ARCH)                             \
 	-f $(CURDIR)/$@/Dockerfile .
 
 DOCKER_RUN=docker run --privileged --rm -i       \
-	-e PLATFORM                              \
+	-e EDITION                               \
 	-e VERSION                               \
 	-e COMMIT_ID                             \
 	-e BUILT_BY                              \
@@ -118,10 +118,10 @@ ubuntu-focal: $(SOURCES)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
 
 clean: ## Remove all DEB packages
-ifeq ($(PLATFORM),ce)
+ifeq ($(EDITION),ce)
 	@[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
 	@$(RM) -r debbuild/*/sysbox-ce*
-else ifeq ($(PLATFORM),ee)
+else ifeq ($(EDITION),ee)
 	@[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
 	@$(RM) -r debbuild/*/sysbox-ee*
 else
