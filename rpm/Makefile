@@ -1,26 +1,18 @@
+#
+# Sysbox DEB Packager Makefile
+#
+
+.PHONY: help     \
+	rpm          \
+	centos       \
+	centos-8     \
+	fedora       \
+	fedora-31    \
+	fedora-32    \
+	clean
+
 SHELL:=/bin/bash
 ARCH:=$(shell uname -m)
-
-# Sysbox source-code locations.
-SYSBOX_DIR  := $(CURDIR)/../..
-SYSBOX_FS   := $(SYSBOX_DIR)/sysbox-fs
-SYSBOX_IPC  := $(SYSBOX_DIR)/sysbox-ipc
-SYSBOX_MGR  := $(SYSBOX_DIR)/sysbox-mgr
-SYSBOX_RUNC := $(SYSBOX_DIR)/sysbox-runc
-SYSBOX_SOURCE_CODE := SYSBOX_FS SYSBOX_IPC SYSBOX_MGR SYSBOX_RUNC
-
-# Sysbox build-instructions locations.
-SYSBOX_IMAGE_COMMON := common
-SYSBOX_IMAGE_SYSTEMD := ../systemd
-SYSBOX_IMAGE_SOURCES := SYSBOX_IMAGE_COMMON SYSBOX_IMAGE_SYSTEMD
-
-SOURCE_FILES =  sysbox.tgz           \
-		sysbox.service       \
-		sysbox-fs.service     \
-		sysbox-mgr.service    \
-		sysbox-systemd.conf
-
-SOURCES=$(addprefix sources/, $(SOURCE_FILES))
 
 # Go version to utilize in slave containers for the building process.
 # We are temporarily skipping these settings as we are relying on Go's
@@ -28,6 +20,28 @@ SOURCES=$(addprefix sources/, $(SOURCE_FILES))
 GO_BASE_IMAGE=golang
 GO_VERSION:=1.13
 GO_IMAGE=$(GO_BASE_IMAGE):$(GO_VERSION)
+
+# Sysbox source-code locations.
+ifeq ($(PLATFORM),ce)
+	SYSBOX_DIR  := $(CURDIR)/../sources/sysbox
+else ifeq ($(PLATFORM),ee)
+	SYSBOX_DIR  := $(CURDIR)/../sources/sysbox-internal
+else
+	echo "Unsupported Sysbox platform: $(PLATFORM)"
+	exit 1
+endif
+
+# Sysbox component locations.
+SYSBOX_IMAGE_SYSTEMD := ../systemd
+
+SOURCE_FILES =  sysbox.tgz           \
+		sysbox.service       \
+		sysbox-fs.service    \
+		sysbox-mgr.service   \
+		sysbox-systemd.conf  \
+		sysbox-configfs.conf
+
+SOURCES=$(addprefix sources/, $(SOURCE_FILES))
 
 CHOWN:=docker run --rm -v $(CURDIR):/v -w /v alpine chown
 
@@ -43,15 +57,6 @@ DOCKER_RUN=docker run --rm -i                    \
 	-v $(GOPATH)/pkg/mod:/go/pkg/mod         \
 	rpmbuild-$@/$(ARCH)
 
-
-.PHONY: help     \
-	rpm          \
-	centos       \
-	centos-8     \
-	fedora       \
-	fedora-31    \
-	fedora-32    \
-	clean
 
 help:
 	@awk 'BEGIN {FS = ":.*##"; printf "\n\033[1mUsage:\n  \
@@ -89,10 +94,10 @@ fedora-32: $(SOURCES)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild/$@
 
 clean: ## Remove build artifacts
-	[ ! -d rpmbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
-	$(RM) -r rpmbuild
-	[ ! -d sources ] || $(CHOWN) -R $(shell id -u):$(shell id -g) sources
-	$(RM) -r sources
+	@[ ! -d rpmbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) rpmbuild
+	@$(RM) -r rpmbuild
+	@[ ! -d sources ] || $(CHOWN) -R $(shell id -u):$(shell id -g) sources
+	@$(RM) -r sources
 
 sources/sysbox.tgz:
 	mkdir -p $(@D)
@@ -100,7 +105,7 @@ sources/sysbox.tgz:
 		-v $(SYSBOX_DIR):/sysbox \
 		-v $(CURDIR)/$(@D):/v \
 		alpine \
-		tar -C / -czf /v/sysbox.tgz --exclude .git --exclude='images' sysbox
+		tar -C / -czf /v/sysbox.tgz --exclude .git --exclude='sysbox-pkgr' sysbox
 
 sources/sysbox.service: ../systemd/sysbox.service
 	mkdir -p $(@D)

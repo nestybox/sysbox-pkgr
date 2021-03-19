@@ -1,22 +1,39 @@
 #
-# Sysbox Packager Makefile
+# Sysbox DEB Packager Makefile
 #
+
+.PHONY: help               \
+	deb                \
+	debian             \
+	debian-buster      \
+	debian-bullseye    \
+	ubuntu             \
+	ubuntu-bionic      \
+	ubuntu-focal       \
+	clean
 
 SHELL:=/bin/bash
 ARCH:=$(shell uname -m)
 
-# Sysbox source-code locations.
-SYSBOX_DIR  := $(CURDIR)/../..
-SYSBOX_FS   := $(SYSBOX_DIR)/sysbox-fs
-SYSBOX_IPC  := $(SYSBOX_DIR)/sysbox-ipc
-SYSBOX_MGR  := $(SYSBOX_DIR)/sysbox-mgr
-SYSBOX_RUNC := $(SYSBOX_DIR)/sysbox-runc
-SYSBOX_SOURCE_CODE := SYSBOX_FS SYSBOX_IPC SYSBOX_MGR SYSBOX_RUNC
+# Go version to utilize in slave containers for the building process.
+# We are temporarily skipping these settings as we are relying on Go's
+# top-of-tree (till 1.13 comes out).
+GO_BASE_IMAGE=golang
+GO_VERSION:=1.13
+GO_IMAGE=$(GO_BASE_IMAGE):$(GO_VERSION)
 
-# Sysbox build-instructions locations.
-SYSBOX_DEB_FILES     := ""
+# Sysbox source-code locations.
+ifeq ($(PLATFORM),ce)
+	SYSBOX_DIR  := $(CURDIR)/../sources/sysbox
+else ifeq ($(PLATFORM),ee)
+	SYSBOX_DIR  := $(CURDIR)/../sources/sysbox-internal
+else
+	echo "Unsupported Sysbox platform: $(PLATFORM)"
+	exit 1
+endif
+
+# Sysbox component locations.
 SYSBOX_IMAGE_SYSTEMD := ../systemd
-SYSBOX_IMAGE_SOURCES := SYSBOX_IMAGE_COMMON SYSBOX_IMAGE_SYSTEMD
 
 SOURCE_FILES =  sysbox.tgz           \
 		sysbox.service       \
@@ -26,13 +43,6 @@ SOURCE_FILES =  sysbox.tgz           \
 		sysbox-configfs.conf
 
 SOURCES=$(addprefix sources/, $(SOURCE_FILES))
-
-# Go version to utilize in slave containers for the building process.
-# We are temporarily skipping these settings as we are relying on Go's
-# top-of-tree (till 1.13 comes out).
-GO_BASE_IMAGE=golang
-GO_VERSION:=1.13
-GO_IMAGE=$(GO_BASE_IMAGE):$(GO_VERSION)
 
 CHOWN:=docker run --rm -v $(CURDIR):/v -w /v alpine chown
 
@@ -59,15 +69,6 @@ DOCKER_RUN=docker run --privileged --rm -i       \
 	-v /usr/src/$(HEADERS_BASE):/usr/src/$(HEADERS_BASE):ro \
 	debbuild-$@/$(ARCH)
 
-.PHONY: help               \
-	deb                \
-	debian             \
-	debian-buster      \
-	debian-bullseye    \
-	ubuntu             \
-	ubuntu-bionic      \
-	ubuntu-focal       \
-	clean
 
 .DEFAULT := help
 
@@ -118,14 +119,17 @@ ubuntu-focal: $(SOURCES)
 
 clean: ## Remove all DEB packages
 ifeq ($(PLATFORM),ce)
-	[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
-	$(RM) -r debbuild/*/sysbox-ce*
+	@[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
+	@$(RM) -r debbuild/*/sysbox-ce*
 else ifeq ($(PLATFORM),ee)
-	[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
-	$(RM) -r debbuild/*/sysbox-ee*
+	@[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
+	@$(RM) -r debbuild/*/sysbox-ee*
+else
+	@[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
+	@$(RM) -r debbuild/*
 endif
-	[ ! -d sources ] || $(CHOWN) -R $(shell id -u):$(shell id -g) sources
-	$(RM) -r sources
+	@[ ! -d sources ] || $(CHOWN) -R $(shell id -u):$(shell id -g) sources
+	@$(RM) -r sources
 
 sources/sysbox.tgz:
 	mkdir -p $(@D)
