@@ -15,6 +15,8 @@ ARCH=$(shell uname -m)
 		sysbox-ce-rpm   \
 		sysbox-ee-deb   \
 		sysbox-ee-rpm   \
+		sysbox-ce-repo  \
+		sysbox-ee-repo  \
 		clean-all       \
 		clean-ce        \
 		clean-ee        \
@@ -74,11 +76,25 @@ sysbox-ee-rpm: $(EE_SOURCES) clean-ee-rpm
 	$(eval export EDITION=ee)
 	@$(MAKE) -C rpm --no-print-directory $(filter-out sysbox-ee sysbox-rpm $@,$(MAKECMDGOALS))
 
+sysbox-ce-repo: ## Set path to the sysbox-ce repo (remote github repo by default)
+sysbox-ce-repo:
+	$(eval REPO_PATH=$(filter-out sysbox-ce-repo $@,$(MAKECMDGOALS)))
+	@printf "\n*** Setting sysbox-ce repository path to $(REPO_PATH) ***\n\n"
+	@ln -sf $(REPO_PATH) $(CE_SOURCES)
+
+sysbox-ee-repo: ## Set path to the sysbox-ee repo (remote github repo by default)
+sysbox-ee-repo:
+	$(eval REPO_PATH=$(filter-out sysbox-ee-repo $@,$(MAKECMDGOALS)))
+	@printf "\n*** Setting sysbox-ee repository path to $(REPO_PATH) ***\n\n"
+	@ln -sf $(REPO_PATH) $(EE_SOURCES)
+
 sources/sysbox:
-	git clone --recursive git@github.com:nestybox/sysbox.git sources/sysbox
+	@printf "\n*** Cloning sysbox-ce superproject repository to $(CE_SOURCES) ***\n\n"
+	@git clone --recursive git@github.com:nestybox/sysbox.git sources/sysbox
 
 sources/sysbox-internal:
-	git clone --recursive git@github.com:nestybox/sysbox-internal.git sources/sysbox-internal
+	@printf "\n*** Cloning sysbox-ee superproject repository to $(EE_SOURCES) ***\n\n"
+	@git clone --recursive git@github.com:nestybox/sysbox-internal.git sources/sysbox-internal
 
 ##@ Cleaning targets
 
