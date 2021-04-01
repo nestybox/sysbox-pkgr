@@ -137,6 +137,7 @@ test-sysbox-ce-deb: ## Test sysbox-ce DEB package
 test-sysbox-ce-deb: sysbox-ce-deb
 	@cp $(DEB_PACKAGE_PATH)/$(lastword $@,$(MAKECMDGOALS))/sysbox-ce*.deb $(CE_SOURCES)
 	@$(MAKE) -C $(CE_SOURCES) --no-print-directory test-sysbox-installer PACKAGE_FILE_PATH="."
+	@$(MAKE) -C $(CE_SOURCES) --no-print-directory test-sysbox-shiftuid-installer PACKAGE_FILE_PATH="."
 
 test-sysbox-ce-rpm: ## Test sysbox-ce RPM package
 test-sysbox-ce-rpm: sysbox-ce-rpm
@@ -147,6 +148,7 @@ test-sysbox-ee-deb: ## Test sysbox-ee DEB package
 test-sysbox-ee-deb: sysbox-ee-deb
 	@cp $(DEB_PACKAGE_PATH)/$(lastword $@,$(MAKECMDGOALS))/sysbox-ee*.deb $(EE_SOURCES)
 	@$(MAKE) -C $(EE_SOURCES) --no-print-directory test-sysbox-installer PACKAGE_FILE_PATH="."
+	@$(MAKE) -C $(EE_SOURCES) --no-print-directory test-sysbox-shiftuid-installer PACKAGE_FILE_PATH="."
 
 test-sysbox-ee-rpm: ## Test sysbox-ee RPM package
 test-sysbox-ee-rpm: sysbox-ee-rpm
