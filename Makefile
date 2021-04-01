@@ -78,41 +78,41 @@ sysbox-rpm: sysbox-ce-rpm sysbox-ee-rpm
 sysbox-ce-deb: ## Build sysbox-ce DEB package
 sysbox-ce-deb: $(CE_SOURCES) clean-ce-deb
 	$(eval export EDITION=ce)
-	$(MAKE) -C deb --no-print-directory $(filter-out $(SYSBOX_TARGETS)@,$(MAKECMDGOALS))
+	@$(MAKE) -C deb --no-print-directory $(filter-out $(SYSBOX_TARGETS)@,$(MAKECMDGOALS))
 
 sysbox-ce-rpm: ## Build sysbox-ce RPM package
 sysbox-ce-rpm: $(CE_SOURCES) clean-ce-rpm
 	$(eval export EDITION=ce)
-	$(MAKE) -C rpm --no-print-directory $(filter-out $(SYSBOX_TARGETS)@,$(MAKECMDGOALS))
+	@$(MAKE) -C rpm --no-print-directory $(filter-out $(SYSBOX_TARGETS)@,$(MAKECMDGOALS))
 
 sysbox-ee-deb: ## Build sysbox-ee DEB package
 sysbox-ee-deb: $(EE_SOURCES) clean-ee-deb
 	$(eval export EDITION=ee)
-	$(MAKE) -C deb --no-print-directory $(filter-out $(SYSBOX_TARGETS)@,$(MAKECMDGOALS))
+	@$(MAKE) -C deb --no-print-directory $(filter-out $(SYSBOX_TARGETS)@,$(MAKECMDGOALS))
 
 sysbox-ee-rpm: ## Build sysbox-ee RPM package
 sysbox-ee-rpm: $(EE_SOURCES) clean-ee-rpm
 	$(eval export EDITION=ee)
-	$(MAKE) -C rpm --no-print-directory $(filter-out $(SYSBOX_TARGETS)@,$(MAKECMDGOALS))
+	@$(MAKE) -C rpm --no-print-directory $(filter-out $(SYSBOX_TARGETS)@,$(MAKECMDGOALS))
 
 sysbox-ce-repo: ## Set path to the sysbox-ce repo (remote github repo by default)
 sysbox-ce-repo:
 	$(eval REPO_PATH=$(filter-out sysbox-ce-repo $@,$(MAKECMDGOALS)))
-	@printf "\n*** Setting sysbox-ce repository path to $(REPO_PATH) ***\n\n"
+	printf "\n*** Setting sysbox-ce repository path to $(REPO_PATH) ***\n\n"
 	@ln -sf $(REPO_PATH) $(CE_SOURCES)
 
 sysbox-ee-repo: ## Set path to the sysbox-ee repo (remote github repo by default)
 sysbox-ee-repo:
 	$(eval REPO_PATH=$(filter-out sysbox-ee-repo $@,$(MAKECMDGOALS)))
-	@printf "\n*** Setting sysbox-ee repository path to $(REPO_PATH) ***\n\n"
+	printf "\n*** Setting sysbox-ee repository path to $(REPO_PATH) ***\n\n"
 	@ln -sf $(REPO_PATH) $(EE_SOURCES)
 
 sources/sysbox:
-	@printf "\n*** Cloning sysbox-ce superproject repository to $(CE_SOURCES) ***\n\n"
+	printf "\n*** Cloning sysbox-ce superproject repository to $(CE_SOURCES) ***\n\n"
 	@git clone --recursive git@github.com:nestybox/sysbox.git sources/sysbox
 
 sources/sysbox-internal:
-	@printf "\n*** Cloning sysbox-ee superproject repository to $(EE_SOURCES) ***\n\n"
+	printf "\n*** Cloning sysbox-ee superproject repository to $(EE_SOURCES) ***\n\n"
 	@git clone --recursive git@github.com:nestybox/sysbox-internal.git sources/sysbox-internal
 
 
