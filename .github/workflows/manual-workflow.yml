@@ -1,0 +1,54 @@
+#
+# GitHub Actions manual workflow.
+#
+# The main purpose of this workflow is to allow us (developers) to make
+# quick changes to CI jobs without having to push them into the repository.
+# This workflow file serves as a template that we can modify anytime that we
+# need to experiment with new CI changes. The process to follow in those
+# cases is fairly simple:
+#
+# 1. Create a topic-branch where to commit your changes (e.g. dev-branch).
+#
+# 2. Modify this file so that it looks as close as possible to the desired CI
+#    job that will be eventually merged to the repo. Let's refer to this workflow
+#    as a 'testing' workflow to differentiate it from the one in the 'master'
+#    branch.
+#
+# 3. Head over to the 'actions' portal within the repo we're working on, and
+#    click on the 'Manual Workflow". Then find the button "Run workflow" and
+#    click on it. Finally, choose the branch over which our 'testing' workflow
+#    was submitted.
+#
+# 4. Github will now run this latest 'testing' version of the workflow, and
+#    not the one being stored in the master branch.
+#
+# 5. Repeat above cycle as many times as required, and when done, place the
+#    workflow changes in a new file; do not make permanent changes to this
+#    file as this one is just expected to serve as a template to ease our
+#    live during CI definition & testing.
+#
+
+name: Manual Workflow
+
+# Runs on-demand
+on: workflow_dispatch
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sysbox_pkg_test:
+    runs-on: [self-hosted, Linux, X64, "${{ matrix.distro }}"]
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ubuntu-focal]
+    steps:
+      - name: precheckout-cleanup
+        run: |
+          sudo rm -rf *
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.CI_RUNNER_TOKEN }}
