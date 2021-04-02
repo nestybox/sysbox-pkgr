@@ -1,0 +1,42 @@
+#
+# GitHub Actions nightly build and test of the sysbox CE package.
+#
+
+name: sysbox-ce-pkg-ci
+
+# Runs daily at 5am PST (1pm UTC)
+on:
+  schedule:
+    - cron:  "0 13 * * *"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sysbox_ce_pkg_test:
+    runs-on: [self-hosted, Linux, X64, '${{ matrix.distro }}']
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ubuntu-bionic, ubuntu-focal, debian-buster]
+    steps:
+      - name: precheckout-cleanup
+        run: |
+          sudo rm -rf *
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: prebuild-cleanup
+        run: |
+          docker stop -t0 $(docker ps -aq) || true
+          docker image rm $(docker image ls -aq) || true
+      - name: test-sysbox-ce-pkg
+        run: |
+          docker stop -t0 $(docker ps -aq) || true
+          make test-sysbox-ce-deb ${{ matrix.distro }}
+      - name: post-cleanup
+        working-directory: sources/sysbox
+        run: |
+          docker stop -t0 $(docker ps -aq) || true
+          sudo make test-cleanup
+          docker image rm $(docker image ls -aq) || true
