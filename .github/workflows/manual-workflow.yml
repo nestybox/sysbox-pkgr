@@ -50,5 +50,25 @@ jobs:
           sudo rm -rf *
       - name: checkout
         uses: actions/checkout@v2
-        with:
-          token: ${{ secrets.CI_RUNNER_TOKEN }}
+#        with:
+#          token: ${{ secrets.CI_RUNNER_TOKEN }}
+      - name: prebuild-cleanup
+        run: |
+          docker stop -t0 $(docker ps -aq) || true
+          docker image rm $(docker image ls -aq) || true
+      - name: test-sysbox-ee-pkg
+        run: |
+          docker stop -t0 $(docker ps -aq) || true
+          make test-sysbox-ee-deb ${{ matrix.distro }}
+      - name: post-cleanup
+        working-directory: deb/sources/sysbox-internal
+        run: |
+          docker stop -t0 $(docker ps -aq) || true
+          sudo make test-cleanup
+          docker image rm $(docker image ls -aq) || true
+
+
+#      - name: build-ee-pkg
+#        run: |
+#          make clean
+#          make sysbox-ee-deb ${{ matrix.distro }}
