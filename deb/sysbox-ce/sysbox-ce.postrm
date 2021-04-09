@@ -71,6 +71,7 @@ function adjust_docker_config_runtime() {
 # Modify dockerd configuration to eliminate Sysbox runtime.
 #
 function adjust_docker_config() {
+
     local docker_restart_required=false
     local docker_sighup_required=false
 

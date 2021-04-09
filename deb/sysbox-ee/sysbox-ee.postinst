@@ -307,9 +307,7 @@ function adjust_docker_config() {
 
     adjust_docker_config_network
 
-    # Return here if docker is not installed. We can't do it earlier than this
-    # as the user could potentially install docker after sysbox.
-    if ! command -v docker >/dev/null 2>&1; then
+    if ! docker_running; then
         return
     fi
 
@@ -335,6 +333,22 @@ function adjust_docker_config() {
     if [ ${docker_runtime_config_changed} = true ]; then
 	    kill -SIGHUP $(pidof dockerd)
     fi
+}
+
+#
+# Checks if the docker engine is installed on the host
+#
+function docker_installed() {
+	ret=$(which dockerd)
+	return $?
+}
+
+#
+# Checks if the docker engine is running on the host
+#
+function docker_running() {
+	ret=$(pidof dockerd)
+	return $?
 }
 
 #
@@ -375,8 +389,10 @@ function config_sysbox() {
     # in the docker configuration file.
     add_sysbox_user
 
-    # Adjust dockerd configuration.
-    adjust_docker_config
+    # Adjust dockerd configuration (if necessary)
+	 if docker_installed; then
+		 adjust_docker_config
+	 fi
 
     # Check for kernel-headers.
     check_kernel_headers
