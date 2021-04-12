@@ -84,9 +84,7 @@ function adjust_docker_config() {
 
     adjust_docker_config_runtime
 
-    # Skip all docker-related processing if this one is not installed at
-    # the moment.
-    if ! command -v docker >/dev/null 2>&1; then
+    if ! docker_running; then
         return
     fi
 
@@ -114,6 +112,21 @@ function adjust_docker_config() {
     fi
 }
 
+#
+# Checks if the docker engine is installed on the host
+#
+function docker_installed() {
+	ret=$(which dockerd)
+	return $?
+}
+
+#
+# Checks if the docker engine is running on the host
+#
+function docker_running() {
+	ret=$(pidof dockerd)
+	return $?
+}
 
 case "$1" in
     purge)
