@@ -6,7 +6,7 @@ After=sysbox-mgr.service
 [Service]
 Type=simple
 Type=notify
-ExecStart=/usr/local/sbin/sysbox-fs --log /var/log/sysbox-fs.log
+ExecStart=/usr/local/sbin/sysbox-fs
 TimeoutStartSec=10
 TimeoutStopSec=10
 StartLimitInterval=0
