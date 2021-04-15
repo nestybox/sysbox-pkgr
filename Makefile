@@ -103,12 +103,14 @@ sysbox-ce-repo: ## Set path to the sysbox-ce repo (remote github repo by default
 sysbox-ce-repo:
 	$(eval REPO_PATH=$(filter-out sysbox-ce-repo $@,$(MAKECMDGOALS)))
 	@printf "\n*** Setting sysbox-ce repository path to $(REPO_PATH) ***\n\n"
+	@mkdir -p sources
 	@ln -sf $(REPO_PATH) $(CE_SOURCES)
 
 sysbox-ee-repo: ## Set path to the sysbox-ee repo (remote github repo by default)
 sysbox-ee-repo:
 	$(eval REPO_PATH=$(filter-out sysbox-ee-repo $@,$(MAKECMDGOALS)))
 	@printf "\n*** Setting sysbox-ee repository path to $(REPO_PATH) ***\n\n"
+	@mkdir -p sources
 	@ln -sf $(REPO_PATH) $(EE_SOURCES)
 
 sources/sysbox:
