@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright: (C) 2019 Nestybox Inc.  All rights reserved.
+# Copyright: (C) 2019-2021 Nestybox Inc.  All rights reserved.
 #
 # Description: Script converts a user-defined changelog file into a
 # debian-friendly counterpart.
