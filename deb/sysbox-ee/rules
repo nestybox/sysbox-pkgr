@@ -27,6 +27,14 @@ override_dh_auto_install:
 	install -D -m0755 sysbox/sysbox-runc/sysbox-runc \
 		debian/sysbox-ee/usr/bin/sysbox-runc
 
+	# Sysbox services installation.
+	install -D -m 0644 /sources/sysbox.service \
+		debian/sysbox-ee/lib/systemd/system/sysbox.service
+	install -D -m 0644 /sources/sysbox-fs.service \
+		debian/sysbox-ee/lib/systemd/system/sysbox-fs.service
+	install -D -m 0644 /sources/sysbox-mgr.service \
+		debian/sysbox-ee/lib/systemd/system/sysbox-mgr.service
+
 	# Sysbox's sysctl.d config-file to hold the required procfs settings.
 	# Notice we're picking the largest two-digit integer to name this file
 	# to avoid collisions with other package's requirements -- we expect
