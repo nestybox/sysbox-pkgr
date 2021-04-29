@@ -339,7 +339,7 @@ function adjust_docker_config() {
 # Checks if the docker engine is installed on the host
 #
 function docker_installed() {
-	ret=$(which dockerd)
+	ret=$(command -v dockerd >/dev/null 2>&1)
 	return $?
 }
 
@@ -347,7 +347,7 @@ function docker_installed() {
 # Checks if the docker engine is running on the host
 #
 function docker_running() {
-	ret=$(pidof dockerd)
+	ret=$(pidof dockerd > /dev/null 2>&1)
 	return $?
 }
 
