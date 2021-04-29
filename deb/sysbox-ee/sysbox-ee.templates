@@ -2,6 +2,8 @@ Template: sysbox/docker_userns_remap_autoconfig
 Type: boolean
 Default: "true"
 Description: Configure Docker in userns-remap mode?
- Docker is not in userns-remap mode. If you answer "yes" here, the installer
- will take care of this configuration. Otherwise, you will need to do this
- manually. Refer to the Sysbox installation docs for more details.
+ Your OS does not include the shiftfs kernel module. As a result, for Docker
+ to launch rootless containers with Sysbox you must configure Docker in userns-remap
+ mode. If you answer "yes" here, the installer will take care of this configuration.
+ Otherwise, you will need to do this manually. Refer to the Sysbox installation docs
+ for more details.

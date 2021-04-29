@@ -339,7 +339,7 @@ function adjust_docker_config() {
 # Checks if the docker engine is installed on the host
 #
 function docker_installed() {
-	ret=$(which dockerd)
+	ret=$(command -v dockerd >/dev/null 2>&1)
 	return $?
 }
 
@@ -347,7 +347,7 @@ function docker_installed() {
 # Checks if the docker engine is running on the host
 #
 function docker_running() {
-	ret=$(pidof dockerd)
+	ret=$(pidof dockerd > /dev/null 2>&1)
 	return $?
 }
 
@@ -369,6 +369,9 @@ function config_sysbox() {
 
     # Ensure sysbox-fs' default mountpoint is created in the file-system.
     create_sysboxfs_mountpoint
+
+	 # TODO: use "sysctl -p" option to load the sysctl settings from the sysbox
+	 # sysctl config file. This way we don't have to configure each here.
 
     # Allows user-namespaces creation for unprivileged users. This change will
     # persist through system reboots by relying on a sysctl.d config-file to be
