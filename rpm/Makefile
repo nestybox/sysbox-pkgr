@@ -1,5 +1,5 @@
 #
-# Sysbox DEB Packager Makefile
+# Sysbox RPM Packager Makefile
 #
 
 .PHONY: help     \
@@ -38,8 +38,8 @@ SOURCE_FILES =  sysbox.tgz           \
 		sysbox.service       \
 		sysbox-fs.service    \
 		sysbox-mgr.service   \
-		sysbox-systemd.conf  \
-		sysbox-configfs.conf
+		99-sysbox-sysctl.conf \
+		50-sysbox-mod.conf
 
 SOURCES=$(addprefix sources/, $(SOURCE_FILES))
 
@@ -119,6 +119,10 @@ sources/sysbox-mgr.service: ../systemd/sysbox-mgr.service
 	mkdir -p $(@D)
 	cp $< $@
 
-sources/sysbox-systemd.conf: ../systemd/sysbox-systemd.conf
+sources/99-sysbox-sysctl.conf: ../systemd/99-sysbox-sysctl.conf
+	mkdir -p $(@D)
+	cp $< $@
+
+sources/50-sysbox-mod.conf: ../systemd/50-sysbox-mod.conf
 	mkdir -p $(@D)
 	cp $< $@

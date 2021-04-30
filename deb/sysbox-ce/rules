@@ -39,12 +39,12 @@ override_dh_auto_install:
 	# Notice we're picking the largest two-digit integer to name this file
 	# to avoid collisions with other package's requirements -- we expect
 	# our requirements to be more generic, so we want ours to prevail.
-	install -D -m 0644 /sources/sysbox-systemd.conf \
-		debian/sysbox-ce/lib/sysctl.d/99-sysbox.conf
+	install -D -m 0644 /sources/99-sysbox-sysctl.conf \
+		debian/sysbox-ce/lib/sysctl.d/99-sysbox-sysctl.conf
 
-	# Setup configfs module requirement.
-	install -D -m 0644 /sources/sysbox-configfs.conf \
-		debian/sysbox-ce/usr/lib/modules-load.d/50-sysbox-configfs.conf
+	# Setup sysbox module requirements.
+	install -D -m 0644 /sources/50-sysbox-mod.conf \
+		debian/sysbox-ce/usr/lib/modules-load.d/50-sysbox-mod.conf
 
 override_dh_installinit:
 	# Use "sysbox" as our service name, not "sysbox-ce".
@@ -64,4 +64,3 @@ override_dh_installsystemd:
 
 %:
 	dh $@
-
