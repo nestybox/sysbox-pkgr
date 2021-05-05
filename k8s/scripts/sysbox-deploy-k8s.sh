@@ -39,7 +39,7 @@ host_lib_sysctl="/mnt/host/lib/sysctl.d"
 host_usr_bin="/mnt/host/usr/bin"
 host_usr_lib_mod="/mnt/host/usr/lib/modules-load.d"
 host_crio_conf_file="/mnt/host/etc/crio/crio.conf"
-host_crio_conf_file_backup="${host_crio_conf_file}.bak"
+host_crio_conf_file_backup="${host_crio_conf_file}.orig"
 host_os_release="/mnt/host/os-release"
 
 # K8s label for nodes that have Sysbox installed
@@ -184,7 +184,9 @@ function remove_sysbox() {
 function configure_crio() {
 	echo "Adding Sysbox to CRI-O config"
 
-	cp ${host_crio_conf_file} ${host_crio_conf_file_backup}
+	if [ ! -f ${host_crio_conf_file_backup} ]; then
+		cp ${host_crio_conf_file} ${host_crio_conf_file_backup}
+	fi
 
 	# overlayfs with metacopy=on improves startup time of CRI-O rootless containers significantly
 	if ! dasel -n get string -f "${host_crio_conf_file}" -p toml -s 'crio.storage_option' | grep -q "metacopy=on"; then
@@ -222,8 +224,8 @@ function reset_runtime() {
 	# script is running); thus it must not be done on the K8s control-plane
 	# nodes.
 
-	echo "Signaling CRI-O to reload it's config."
-	systemctl kill -s SIGHUP crio
+	echo "Restarting CRI-O (this will temporarily disrupt all pods on the K8s node (for up to 1 minute))."
+	systemctl restart crio
 }
 
 function add_label_to_node() {
@@ -256,7 +258,7 @@ before deploying Sysbox."
 		# We get here is sysbox was running on the host already, or if after we
 		# installed it and restarted CRI-O, this daemonset gets restarted.
 		echo "Sysbox is running on the node."
-		add_label_to_node "${k8s_node_label}=running"
+		kubectl label node "$NODE_NAME" --overwrite "${k8s_node_label}=running" > /dev/null 2>&1
 		skip_install="true"
 	fi
 }
