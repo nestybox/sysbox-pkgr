@@ -47,4 +47,3 @@ RUN curl -s https://api.github.com/repos/tomwright/dasel/releases/latest | \
 COPY bin ${DEST}/bin
 COPY systemd ${DEST}/systemd
 COPY scripts ${DEST}/scripts
-COPY config ${DEST}/config

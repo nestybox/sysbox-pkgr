@@ -22,12 +22,10 @@ sysbox-deploy-k8s-image: copy-artifacts check-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s .
 
 copy-artifacts: rm-artifacts
-	mkdir systemd && mkdir config
-	cp ../systemd/*.service systemd/.
-	cp ../systemd/*.conf config/.
+	cp -r ../systemd systemd
 
 rm-artifacts:
-	rm -rf systemd && rm -rf config
+	rm -rf systemd
 
 # Verifies that sysbox binaries are in the expected location (temporary target
 # until the process of creating the binaries is automated).
