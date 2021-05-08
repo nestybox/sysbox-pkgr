@@ -54,7 +54,7 @@ function die() {
 }
 
 function print_usage() {
-	echo "Usage: $0 [install|cleanup|reset]"
+	echo "Usage: $0 [install|cleanup]"
 }
 
 function get_container_runtime() {
