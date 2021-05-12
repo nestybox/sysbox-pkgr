@@ -7,11 +7,11 @@ metadata:
 spec:
   selector:
       matchLabels:
-        name: sysbox-deploy-k8s
+        sysbox-install: "yes"
   template:
     metadata:
         labels:
-          name: sysbox-deploy-k8s
+          sysbox-install: "yes"
     spec:
       serviceAccountName: sysbox-label-node
       containers:
