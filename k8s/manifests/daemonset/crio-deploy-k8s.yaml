@@ -16,7 +16,7 @@ spec:
       serviceAccountName: crio-label-node
       containers:
       - name: crio-deploy-k8s
-        image: nestybox/crio-deploy-k8s-test
+        image: ghcr.io/nestybox/crio-deploy-k8s-test
         imagePullPolicy: Always
         lifecycle:
           preStop:

@@ -18,7 +18,7 @@ spec:
           crio-runtime: disabled
       containers:
       - name: crio-cleanup-k8s
-        image: nestybox/crio-deploy-k8s-test
+        image: ghcr.io/nestybox/crio-deploy-k8s-test
         imagePullPolicy: Always
         command: [ "bash", "-c", "/opt/crio-deploy/scripts/crio-deploy-k8s.sh cleanup" ]
         env:
