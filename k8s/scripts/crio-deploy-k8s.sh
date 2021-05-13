@@ -47,9 +47,9 @@ host_usr_local_bin="/mnt/host/usr/local/bin"
 host_etc="/mnt/host/etc"
 host_crio_conf_file="${host_etc}/crio/crio.conf"
 host_crio_conf_file_backup="${host_crio_conf_file}.orig"
+kubelet_extra_args_file="${host_etc}/default/kubelet"
 host_run="/mnt/host/run"
 host_run_crio_deploy_k8s="${host_run}/crio-deploy-k8s"
-orig_kubelet_options="${host_run_crio_deploy_k8s}/orig-kubelet-options"
 
 # K8s label for nodes that have CRI-O installed
 k8s_node_label="crio-runtime"
@@ -130,7 +130,8 @@ function remove_crio_removal_service() {
 	systemctl daemon-reload
 }
 
-function replace_cmd_option() {
+
+function replace_cmd_option {
 	cmd_opts=$1
 	opt=$2
 	want_val=$3
@@ -141,7 +142,8 @@ function replace_cmd_option() {
 	found_opt=false
 
 	for arg in "${curr_args[@]}"; do
-		new_arg="$arg"
+
+		new_arg=$arg
 
 		if [[ "$arg" == "$opt="* ]]; then
 			found_opt=true
@@ -163,116 +165,84 @@ function replace_cmd_option() {
 	echo $result
 }
 
-function remove_cmd_option() {
-   cmd_opts=$1
-   opt=$2
+function config_kubelet {
+	readarray -t opts < ${artifacts}/config/crio-kubelet-options
 
-   read -a curr_args <<< ${cmd_opts}
-   declare -a new_args
+	# save the current options (so we can revert them)
+	if [ -f "$kubelet_extra_args_file" ]; then
+		cp "$kubelet_extra_args_file" "${kubelet_extra_args_file}.orig"
+	fi
 
-   for arg in "${curr_args[@]}"; do
-      if [[ "$arg" != "$opt="* ]]; then
-         new_args+=($arg)
-      fi
-   done
+	# If the extra args file does not have the extra args/opts, add them as needed
+	touch $kubelet_extra_args_file
 
-   result=$(printf "%s " "${new_args[@]}")
-   echo $result
-}
+	if ! egrep -q "^KUBELET_EXTRA_ARGS=|^KUBELET_OPTS=" $kubelet_extra_args_file; then
+		new_line=""
 
-function get_cmd_option() {
-	cmd_opts=$1
-	opt=$2
+		for opt in "${opts[@]}"; do
+			opt_name=$(echo $opt | cut -d"=" -f1)
+			opt_val=$(echo $opt | cut -d"=" -f2)
+			if [[ "$opt_name" != "" ]] && [[ "$opt_val" != "" ]]; then
+				new_line=$(replace_cmd_option "$new_line" "$opt_name" "$opt_val")
+			fi
+		done
 
-	read -a curr_args <<< ${cmd_opts}
-	declare -a new_args
-
-	found_opt=false
-
-	for arg in "${curr_args[@]}"; do
-		if [[ "$arg" == "$opt="* ]]; then
-			val=${arg#"$opt="}
-			echo $val
+		if [[ "$new_line" != "" ]]; then
+			echo "KUBELET_EXTRA_ARGS=\"$new_line\"" >> "$kubelet_extra_args_file"
 			return
 		fi
-	done
+	fi
 
-	echo ""
-}
+	# If the file does have the extra args/opts, replace them as needed
+	touch tmp.txt
 
-function apply_kubelet_config() {
-   opts=$1
-   kubelet_extra_args_file=$2
+	while read -r line; do
+		new_line=$line
 
-   set +e
-   kubelet_extra_args=$(grep -s "^KUBELET_EXTRA_ARGS=" ${kubelet_extra_args_file})
-   kubelet_extra_args=${kubelet_extra_args#"KUBELET_EXTRA_ARGS="}
-   set -e
+		# ignore comment lines
+		if [[ "$line" == "#*" ]]; then
+			continue
+		fi
 
-   new_cmd_line="$kubelet_extra_args"
-   for opt in "${opts[@]}"; do
-      opt_name=$(echo $opt | cut -d"=" -f1)
-      opt_val=$(echo $opt | cut -d"=" -f2)
+		# add the options to lines starting with KUBELET_EXTRA_ARGS or KUBELET_OPTS
+		if [[ "$line" == "KUBELET_EXTRA_ARGS="* ]] ||
+			[[ "$line" == "KUBELET_OPTS="* ]]; then
 
-      if [[ "$opt_name" != "" ]] && [[ "$opt_val" != "" ]]; then
-         new_cmd_line=$(replace_cmd_option "$new_cmd_line" "$opt_name" "$opt_val")
-      elif [[ "$opt_name" != "" ]]; then
-         new_cmd_line=$(remove_cmd_option "$new_cmd_line" "$opt_name")
-      fi
-   done
+			if [[ "$line" == "KUBELET_EXTRA_ARGS="* ]]; then
+				line_prefix="KUBELET_EXTRA_ARGS"
+			else
+				line_prefix="KUBELET_OPTS"
+			fi
 
-   if [[ "$new_cmd_line" != "" ]]; then
-      echo "KUBELET_EXTRA_ARGS=$new_cmd_line" > $kubelet_extra_args_file
-   else
-      cat /dev/null > $kubelet_extra_args_file
-   fi
-}
+			if [[ "$line" == "$line_prefix=\""* ]]; then
+				line_opts=$(echo $line | cut -d'"' -f2)
+			else
+				line_opts=${line#"$line_prefix"}
+			fi
 
-function config_kubelet() {
-   readarray -t opts < ${artifacts}/config/crio-kubelet-options
+			for opt in "${opts[@]}"; do
+				opt_name=$(echo $opt | cut -d"=" -f1)
+				opt_val=$(echo $opt | cut -d"=" -f2)
+				if [[ "$opt_name" != "" ]] && [[ "$opt_val" != "" ]]; then
+					line_opts=$(replace_cmd_option "$line_opts" "$opt_name" "$opt_val")
+				fi
+			done
 
-   # save the current options (so we can revert them during cleanup)
-   kubelet_extra_args_file="${host_etc}/default/kubelet"
+			new_line="$line_prefix=\"$line_opts\""
 
-   set +e
-   kubelet_extra_args=$(grep -s "^KUBELET_EXTRA_ARGS=" ${kubelet_extra_args_file})
-   kubelet_extra_args=${kubelet_extra_args#"KUBELET_EXTRA_ARGS="}
-   set -e
+		fi
 
-	mkdir -p "$host_run_crio_deploy_k8s"
-   cat /dev/null > "$orig_kubelet_options"
+		echo $new_line >> tmp.txt
 
-   for opt in "${opts[@]}"; do
-      opt_name=$(echo $opt | cut -d"=" -f1)
-      opt_val=$(echo $opt | cut -d"=" -f2)
+	done < $kubelet_extra_args_file
 
-      # Save the value of the old option
-      old_opt_val=$(get_cmd_option "$kubelet_extra_args" "$opt_name")
-      old_opt="$opt_name=$old_opt_val"
-      echo "$old_opt" >> "$orig_kubelet_options"
-   done
-
-   # modify the current options to the desired value
-   apply_kubelet_config "$opts" "$kubelet_extra_args_file"
+	mv tmp.txt "$kubelet_extra_args_file"
 }
 
 function revert_kubelet_config() {
-
-	declare -a opts
-
-	if [ -f $orig_kubelet_options ]; then
-		readarray -t opts < ${orig_kubelet_options}
-		kubelet_extra_args_file="${host_etc}/default/kubelet"
-		apply_kubelet_config "$opts" "$kubelet_extra_args_file"
-	else
-		echo "Warning: file /run/crio-deploy/orig-kubelet-options expected to be present on the host but"
-		echo "         it's not there. The host's /etc/default/kubelet file won't be reverted; you'll need"
-		echo "         to revert it manually by editing the file and changing  the --container-runtime,"
-		echo "         --container-runtime-endpoint, --image-service-endpoint, and --runtime-cgroups options"
-		echo "         as they were prior to running the crio-deploy-k8s daemonset. Then restart the kubelet"
-		echo "         (e.g., sudo sytemctl restart kubelet)."
+	if [ -f "${kubelet_extra_args_file}.orig" ]; then
+		mv "${kubelet_extra_args_file}.orig" "${kubelet_extra_args_file}"
 	fi
-
 }
 
 function restart_kubelet() {
@@ -388,6 +358,9 @@ function config_crio() {
 	dasel put string -f ${host_crio_conf_file} -p toml "crio.runtime.cgroup_manager" "cgroupfs"
 	dasel put string -f ${host_crio_conf_file} -p toml "crio.runtime.conmon_cgroup" "pod"
 
+	# In GKE, the CNIs are not in the usual "/opt/cni/bin/" dir, but under "/home/kubernetes/bin"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/home/kubernetes/bin"
+
 	# Add user "containers" to the /etc/subuid and /etc/subgid files
 	get_subid_limits
 	config_subid_range "$subuid_file" "$subid_alloc_min_range" "$subuid_min" "$subuid_max"
@@ -482,7 +455,6 @@ function main() {
 				add_label_to_node "${k8s_node_label}=removing"
 				deploy_crio_removal_service
 				remove_crio_removal_service
-				rm ${orig_kubelet_options}
 				rmdir ${host_run_crio_deploy_k8s}
 			fi
 			rm_label_from_node "${k8s_node_label}"
