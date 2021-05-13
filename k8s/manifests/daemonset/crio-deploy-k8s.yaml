@@ -14,6 +14,8 @@ spec:
           crio-install: "yes"
     spec:
       serviceAccountName: crio-label-node
+      nodeSelector:
+        crio-install: "yes"
       containers:
       - name: crio-deploy-k8s
         image: ghcr.io/nestybox/crio-deploy-k8s-test
