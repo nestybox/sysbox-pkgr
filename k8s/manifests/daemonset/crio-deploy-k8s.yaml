@@ -18,7 +18,7 @@ spec:
         crio-install: "yes"
       containers:
       - name: crio-deploy-k8s
-        image: ghcr.io/nestybox/crio-deploy-k8s-test
+        image: registry.nestybox.com/nestybox/crio-deploy-k8s
         imagePullPolicy: Always
         lifecycle:
           preStop:
