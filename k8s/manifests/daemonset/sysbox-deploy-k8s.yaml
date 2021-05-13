@@ -14,6 +14,8 @@ spec:
           sysbox-install: "yes"
     spec:
       serviceAccountName: sysbox-label-node
+      nodeSelector:
+        sysbox-install: "yes"
       containers:
       - name: sysbox-deploy-k8s
         image: registry.nestybox.com/nestybox/sysbox-deploy-k8s
