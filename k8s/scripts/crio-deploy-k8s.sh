@@ -60,7 +60,7 @@ skip_cleanup="false"
 
 # Subid defaults
 subid_alloc_min_start=100000
-subid_alloc_min_range=65536
+subid_alloc_min_range=4194304
 subid_alloc_max_end=4294967295
 subid_user="containers"
 subid_def_file="${host_etc}/login.defs"
