@@ -32,6 +32,12 @@ function die() {
    exit 1
 }
 
+function restore_crictl_config() {
+	if [ -f /etc/crictl.orig.yaml ]; then
+		mv /etc/crictl.orig.yaml /etc/crictl.yaml
+	fi
+}
+
 function uninstall_crio() {
 	# TODO: add support for non-ubuntu distros
 	echo "Uninstalling CRI-O ..."
@@ -63,6 +69,7 @@ function main() {
 
 	stop_crio
 	uninstall_crio
+	restore_crictl_config
 }
 
 main "$@"

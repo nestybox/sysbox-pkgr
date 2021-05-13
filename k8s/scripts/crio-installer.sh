@@ -32,6 +32,18 @@ function die() {
    exit 1
 }
 
+function backup_crictl_config() {
+
+	# We do this to avoid the CRI-O installation from stopping and asking
+	# questions about merging crictl.yaml (we can't bypass this question with "apt-get -y",
+	# thus causing the installation to fail).
+
+	if [ -f /etc/crictl.yaml ]; then
+		mv /etc/crictl.yaml /etc/crictl.orig.yaml
+	fi
+
+}
+
 function install_crio() {
 
 	# TODO: add support for non-ubuntu distros
@@ -73,6 +85,7 @@ function main() {
 		exit 0
 	fi
 
+	backup_crictl_config
 	install_crio
 	restart_crio
 }
