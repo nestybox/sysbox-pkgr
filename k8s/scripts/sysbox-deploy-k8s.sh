@@ -38,9 +38,14 @@ host_lib_systemd="/mnt/host/lib/systemd/system"
 host_lib_sysctl="/mnt/host/lib/sysctl.d"
 host_usr_bin="/mnt/host/usr/bin"
 host_usr_lib_mod="/mnt/host/usr/lib/modules-load.d"
+host_usr_local_bin="/mnt/host/usr/local/bin"
 host_crio_conf_file="/mnt/host/etc/crio/crio.conf"
 host_crio_conf_file_backup="${host_crio_conf_file}.orig"
 host_os_release="/mnt/host/os-release"
+host_run="/mnt/host/run"
+
+# Shiftfs
+shiftfs_min_kernel_ver=5.4
 
 # K8s label for nodes that have Sysbox installed
 k8s_node_label="sysbox-runtime"
@@ -78,6 +83,10 @@ function get_host_distro() {
 	local distro_name=$(grep -w "^ID" "$host_os_release" | cut -d "=" -f2)
 	local version_id=$(grep -w "^VERSION_ID" "$host_os_release" | cut -d "=" -f2 | tr -d '"')
 	echo "${distro_name}_${version_id}"
+}
+
+function get_host_kernel() {
+	cat /proc/version | cut -d" " -f3 | cut -d "." -f1-2
 }
 
 function copy_sysbox_to_host() {
@@ -136,19 +145,6 @@ function apply_conf() {
 	# Note: this requires CAP_SYS_ADMIN on the host
 	echo "Configuring host sysctls"
 	sysctl -p "$host_lib_sysctl/99-sysbox-sysctl.conf"
-
-	echo "Probing kernel modules"
-   if ! lsmod | grep -q configfs; then
-      echo -e "\nConfigfs kernel module is not loaded. Configfs may be required "\
-"by certain applications running inside a Sysbox container.\n"
-	fi
-
-   if ! lsmod | grep -q shiftfs; then
-      echo -e "\nShiftfs kernel module is not loaded. Shiftfs is required "\
-"for host volume mounts into Sysbox containers to have proper ownership "\
-"(user-ID and group-ID).\n"
-	fi
-
 }
 
 function start_sysbox() {
@@ -179,6 +175,84 @@ function remove_sysbox() {
 	rm_systemd_units_from_host
 	rm_conf_from_host
 	rm_sysbox_from_host
+}
+
+function deploy_sysbox_installer_helper() {
+	echo "Deploying Sysbox installer helper on the host ..."
+	cp ${sysbox_artifacts}/scripts/sysbox-installer-helper.sh ${host_usr_local_bin}/sysbox-installer-helper.sh
+	cp ${sysbox_artifacts}/systemd/sysbox-installer-helper.service ${host_lib_systemd}/sysbox-installer-helper.service
+	systemctl daemon-reload
+	echo "Running Sysbox installer helper on the host (may take several seconds) ..."
+	systemctl restart sysbox-installer-helper.service
+}
+
+function remove_sysbox_installer_helper() {
+	echo "Stopping the Sysbox installer helper on the host ..."
+	systemctl stop sysbox-installer-helper.service
+	systemctl disable sysbox-installer-helper.service
+	echo "Removing Sysbox installer helper from the host ..."
+	rm ${host_usr_local_bin}/sysbox-installer-helper.sh
+	rm ${host_lib_systemd}/sysbox-installer-helper.service
+	systemctl daemon-reload
+}
+
+function deploy_sysbox_removal_helper() {
+	echo "Deploying Sysbox removal helper on the host..."
+	cp ${sysbox_artifacts}/scripts/sysbox-removal-helper.sh ${host_usr_local_bin}/sysbox-removal-helper.sh
+	cp ${sysbox_artifacts}/systemd/sysbox-removal-helper.service ${host_lib_systemd}/sysbox-removal-helper.service
+	systemctl daemon-reload
+	systemctl restart sysbox-removal-helper.service
+}
+
+function remove_sysbox_removal_helper() {
+	echo "Removing the Sysbox removal helper ..."
+	systemctl stop sysbox-removal-helper.service
+	systemctl disable sysbox-removal-helper.service
+	rm ${host_usr_local_bin}/sysbox-removal-helper.sh
+	rm ${host_lib_systemd}/sysbox-removal-helper.service
+	systemctl daemon-reload
+}
+
+function	install_sysbox_deps() {
+
+	# The installation of sysbox dependencies on the host is done via the
+	# sysbox-installer-helper agent, which is a systemd service that we drop on
+	# the host and request systemd to start. This way the agent can install
+	# packages on the host as needed. One of those dependencies is shiftfs, which
+	# unlike the other dependencies needs to be built from source on the host
+	# machine (with the corresponding kernel headers, etc). The shiftfs sources
+	# are included in the sysbox-deploy-k8s container image, and here we copy
+	# them to the host machine (in dir /run/shiftfs_dkms). The
+	# sysbox-installer-helper agent will build those sources on the host and
+	# install shiftfs on the host kernel via dkms.
+
+	echo "Installing sysbox dependencies on host"
+
+	local version=$(get_host_kernel)
+	if (( $(echo "$version < 5.4" | bc -l) )); then
+		echo "Kernel has version $version, which is below the min required for shiftfs ($shiftfs_min_kernel_ver); skipping shiftfs installation."
+		return
+	fi
+
+	echo "Copying shiftfs sources to host"
+	if (( $(echo "$version >= 5.4" | bc -l) )) && (( $(echo "$version < 5.8" | bc -l) )); then
+		cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
+	elif (( $(echo "$version >= 5.8" | bc -l) )) && (( $(echo "$version < 5.11" | bc -l) )); then
+		cp -r "/opt/shiftfs-k5.8" "$host_run/shiftfs-dkms"
+	else
+		cp -r "/opt/shiftfs-k5.11" "$host_run/shiftfs-dkms"
+	fi
+
+	deploy_sysbox_installer_helper
+	remove_sysbox_installer_helper
+}
+
+function remove_sysbox_deps() {
+	echo "Removing sysbox dependencies from host"
+
+	deploy_sysbox_removal_helper
+	remove_sysbox_removal_helper
+	rm -rf "$host_run/shiftfs-dkms"
 }
 
 function configure_crio() {
@@ -288,6 +362,7 @@ function main() {
 		install)
 			host_precheck "$action" "$runtime"
 			if [[ "$skip_install" == "false" ]]; then
+				install_sysbox_deps
 				install_sysbox
 				configure_cri_runtime "$runtime"
 				add_label_to_node "${k8s_node_label}=running"
@@ -300,6 +375,7 @@ function main() {
 			add_label_to_node "${k8s_node_label}=cleanup"
 			cleanup_cri_runtime "$runtime"
 			remove_sysbox
+			remove_sysbox_deps
 			rm_label_from_node "${k8s_node_label}"
 			echo "Sysbox removal completed."
 			reset_runtime "$runtime"
