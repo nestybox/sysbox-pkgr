@@ -39,6 +39,10 @@ spec:
           mountPath: /mnt/host/lib/systemd
         - name: host-usr-bin
           mountPath: /mnt/host/usr/bin/
+        - name: host-usr-local-bin
+          mountPath: /mnt/host/usr/local/bin
+        - name: host-run
+          mountPath: /mnt/host/run
       volumes:
         - name: host-etc
           hostPath:
@@ -55,6 +59,12 @@ spec:
         - name: host-usr-bin
           hostPath:
             path: /usr/bin/
+        - name: host-usr-local-bin
+          hostPath:
+            path: /usr/local/bin/
+        - name: host-run
+          hostPath:
+            path: /run
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 1

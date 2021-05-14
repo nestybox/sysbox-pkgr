@@ -31,7 +31,7 @@ FROM centos/systemd
 
 ARG DEST=/opt/sysbox
 
-RUN yum install -y curl wget
+RUN yum install -y curl wget git bc which
 
 RUN curl -Lso /bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl && \
     chmod +x /bin/kubectl
@@ -42,6 +42,11 @@ RUN curl -s https://api.github.com/repos/tomwright/dasel/releases/latest | \
     grep linux_amd64 | \
     cut -d '"' -f 4 | \
     wget -qi - && mv dasel_linux_amd64 dasel && chmod +x dasel && mv ./dasel /usr/local/bin/dasel
+
+# shiftfs-dkms sources
+RUN git clone --branch k5.4 https://github.com/toby63/shiftfs-dkms.git /opt/shiftfs-k5.4 \
+    && git clone --branch k5.8 https://github.com/toby63/shiftfs-dkms.git /opt/shiftfs-k5.8 \
+    && git clone --branch k5.11 https://github.com/toby63/shiftfs-dkms.git /opt/shiftfs-k5.11
 
 # Load sysbox artifacts
 COPY bin ${DEST}/bin
