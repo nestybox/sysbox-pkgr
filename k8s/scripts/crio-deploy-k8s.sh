@@ -266,22 +266,22 @@ function get_subid_limits() {
 	fi
 
 	set +e
-	res=$(grep "^SUB_UID_MIN" $subid_def_file)
+	res=$(grep "^SUB_UID_MIN" $subid_def_file > /dev/null 2>&1)
 	if [ $? -eq 0 ]; then
 		subuid_min=$(echo $res | cut -d " " -f2)
 	fi
 
-	res=$(grep "^SUB_UID_MAX" $subid_def_file)
+	res=$(grep "^SUB_UID_MAX" $subid_def_file > /dev/null 2>&1)
 	if [ $? -eq 0 ]; then
 		subuid_max=$(echo $res | cut -d " " -f2)
 	fi
 
-	res=$(grep "^SUB_GID_MIN" $subid_def_file)
+	res=$(grep "^SUB_GID_MIN" $subid_def_file > /dev/null 2>&1)
 	if [ $? -eq 0 ]; then
 		subgid_min=$(echo $res | cut -d " " -f2)
 	fi
 
-	res=$(grep "^SUB_GID_MAX" $subid_def_file)
+	res=$(grep "^SUB_GID_MAX" $subid_def_file > /dev/null 2>&1)
 	if [ $? -eq 0 ]; then
 		subgid_max=$(echo $res | cut -d " " -f2)
 	fi
@@ -313,11 +313,13 @@ function config_subid_range() {
 	done
 
 	# Sort subid entries by start range
-	readarray -t sorted_subids < <(echo "${subid_entries[@]}" | tr " " "\n" | tr ":" " " | sort -n -k 2)
+	declare -a sorted_subids
+	if [ ${#subid_entries[@]} -gt 0 ]; then
+		readarray -t sorted_subids < <(echo "${subid_entries[@]}" | tr " " "\n" | tr ":" " " | sort -n -k 2)
+	fi
 
 	# allocate a range of subid_alloc_range size
 	hole_start=$subid_min
-	allocated=false
 
 	for entry in "${sorted_subids[@]}"; do
 		start=$(echo $entry | cut -d " " -f2)
@@ -333,16 +335,13 @@ function config_subid_range() {
 		hole_start=$((start+size))
 	done
 
-	if ! $allocated; then
-		hole_end=$subid_max
-
-		if [ $((hole_end - hole_start)) -lt $subid_size ]; then
-			echo "failed to allocate $subid_size sub ids in range $subid_min:$subid_max"
-			return
-		else
-			echo "$subid_user:$hole_start:$subid_size" >> $subid_file
-			return
-		fi
+	hole_end=$subid_max
+	if [ $((hole_end - hole_start)) -lt $subid_size ]; then
+		echo "failed to allocate $subid_size sub ids in range $subid_min:$subid_max"
+		return
+	else
+		echo "$subid_user:$hole_start:$subid_size" >> $subid_file
+		return
 	fi
 }
 
