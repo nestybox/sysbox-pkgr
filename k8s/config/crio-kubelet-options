@@ -2,3 +2,4 @@
 --container-runtime-endpoint=unix:///run/crio/crio.sock
 --image-service-endpoint=unix:///run/crio/crio.sock
 --runtime-cgroups=/system.slice/crio.service
+--cgroup-driver=cgroupfs
