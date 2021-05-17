@@ -43,10 +43,22 @@ RUN curl -s https://api.github.com/repos/tomwright/dasel/releases/latest | \
     cut -d '"' -f 4 | \
     wget -qi - && mv dasel_linux_amd64 dasel && chmod +x dasel && mv ./dasel /usr/local/bin/dasel
 
+
+#
 # Load artifacts
+#
+
 COPY systemd/crio-installer.service ${DEST}/systemd/crio-installer.service
 COPY systemd/crio-removal.service ${DEST}/systemd/crio-removal.service
+
 COPY scripts/crio-deploy-k8s.sh ${DEST}/scripts/crio-deploy-k8s.sh
 COPY scripts/crio-installer.sh ${DEST}/scripts/crio-installer.sh
 COPY scripts/crio-removal.sh ${DEST}/scripts/crio-removal.sh
+
+COPY systemd/kubelet-config-helper.service ${DEST}/systemd/kubelet-config-helper.service
+COPY scripts/kubelet-config-helper.sh ${DEST}/scripts/kubelet-config-helper.sh
+
+COPY systemd/kubelet-unconfig-helper.service ${DEST}/systemd/kubelet-unconfig-helper.service
+COPY scripts/kubelet-unconfig-helper.sh ${DEST}/scripts/kubelet-unconfig-helper.sh
+
 COPY config/crio-kubelet-options ${DEST}/config/crio-kubelet-options

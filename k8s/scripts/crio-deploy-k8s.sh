@@ -47,7 +47,6 @@ host_usr_local_bin="/mnt/host/usr/local/bin"
 host_etc="/mnt/host/etc"
 host_crio_conf_file="${host_etc}/crio/crio.conf"
 host_crio_conf_file_backup="${host_crio_conf_file}.orig"
-kubelet_extra_args_file="${host_etc}/default/kubelet"
 host_run="/mnt/host/run"
 host_run_crio_deploy_k8s="${host_run}/crio-deploy-k8s"
 
@@ -130,126 +129,52 @@ function remove_crio_removal_service() {
 	systemctl daemon-reload
 }
 
-
-function replace_cmd_option {
-	cmd_opts=$1
-	opt=$2
-	want_val=$3
-
-	read -a curr_args <<< ${cmd_opts}
-	declare -a new_args
-
-	found_opt=false
-
-	for arg in "${curr_args[@]}"; do
-
-		new_arg=$arg
-
-		if [[ "$arg" == "$opt="* ]]; then
-			found_opt=true
-			val=${arg#"$opt="}
-			if [[ "$val" != "$want_val" ]]; then
-				new_arg="$opt=$want_val"
-			fi
-		fi
-
-		new_args+=($new_arg)
-	done
-
-	result=$(printf "%s " "${new_args[@]}")
-
-	if ! $found_opt; then
-		result="$result $opt=$want_val"
-	fi
-
-	echo $result
-}
-
-function config_kubelet {
-	readarray -t opts < ${artifacts}/config/crio-kubelet-options
-
-	# save the current options (so we can revert them)
-	if [ -f "$kubelet_extra_args_file" ]; then
-		cp "$kubelet_extra_args_file" "${kubelet_extra_args_file}.orig"
-	fi
-
-	# If the extra args file does not have the extra args/opts, add them as needed
-	touch $kubelet_extra_args_file
-
-	if ! egrep -q "^KUBELET_EXTRA_ARGS=|^KUBELET_OPTS=" $kubelet_extra_args_file; then
-		new_line=""
-
-		for opt in "${opts[@]}"; do
-			opt_name=$(echo $opt | cut -d"=" -f1)
-			opt_val=$(echo $opt | cut -d"=" -f2)
-			if [[ "$opt_name" != "" ]] && [[ "$opt_val" != "" ]]; then
-				new_line=$(replace_cmd_option "$new_line" "$opt_name" "$opt_val")
-			fi
-		done
-
-		if [[ "$new_line" != "" ]]; then
-			echo "KUBELET_EXTRA_ARGS=\"$new_line\"" >> "$kubelet_extra_args_file"
-			return
-		fi
-	fi
-
-	# If the file does have the extra args/opts, replace them as needed
-	touch tmp.txt
-
-	while read -r line; do
-		new_line=$line
-
-		# ignore comment lines
-		if [[ "$line" == "#*" ]]; then
-			continue
-		fi
-
-		# add the options to lines starting with KUBELET_EXTRA_ARGS or KUBELET_OPTS
-		if [[ "$line" == "KUBELET_EXTRA_ARGS="* ]] ||
-			[[ "$line" == "KUBELET_OPTS="* ]]; then
-
-			if [[ "$line" == "KUBELET_EXTRA_ARGS="* ]]; then
-				line_prefix="KUBELET_EXTRA_ARGS"
-			else
-				line_prefix="KUBELET_OPTS"
-			fi
-
-			if [[ "$line" == "$line_prefix=\""* ]]; then
-				line_opts=$(echo $line | cut -d'"' -f2)
-			else
-				line_opts=${line#"$line_prefix"}
-			fi
-
-			for opt in "${opts[@]}"; do
-				opt_name=$(echo $opt | cut -d"=" -f1)
-				opt_val=$(echo $opt | cut -d"=" -f2)
-				if [[ "$opt_name" != "" ]] && [[ "$opt_val" != "" ]]; then
-					line_opts=$(replace_cmd_option "$line_opts" "$opt_name" "$opt_val")
-				fi
-			done
-
-			new_line="$line_prefix=\"$line_opts\""
-
-		fi
-
-		echo $new_line >> tmp.txt
-
-	done < $kubelet_extra_args_file
-
-	mv tmp.txt "$kubelet_extra_args_file"
-}
-
-function revert_kubelet_config() {
-	if [ -f "${kubelet_extra_args_file}.orig" ]; then
-		mv "${kubelet_extra_args_file}.orig" "${kubelet_extra_args_file}"
-	fi
-}
-
 function restart_kubelet() {
 	# NOTE: this will cause this daemonset script to die and be restarted once
 	# the kubelet comes up.
 	echo "Restarting Kubelet ..."
 	systemctl restart kubelet
+}
+
+function deploy_kubelet_config_service() {
+	echo "Deploying Kubelet config agent on the host ..."
+	mkdir -p ${host_run_crio_deploy_k8s}
+	cp ${artifacts}/scripts/kubelet-config-helper.sh ${host_usr_local_bin}/kubelet-config-helper.sh
+	cp ${artifacts}/systemd/kubelet-config-helper.service ${host_lib_systemd}/kubelet-config-helper.service
+	cp ${artifacts}/config/crio-kubelet-options ${host_run_crio_deploy_k8s}/crio-kubelet-options
+	systemctl daemon-reload
+	echo "Running Kubelet config agent on the host ..."
+	systemctl restart kubelet-config-helper.service
+}
+
+function remove_kubelet_config_service() {
+	echo "Stopping the Kubelet config agent on the host ..."
+	systemctl stop kubelet-config-helper.service
+	systemctl disable kubelet-config-helper.service
+	echo "Removing Kubelet config agent from the host ..."
+	rm ${host_usr_local_bin}/kubelet-config-helper.sh
+	rm ${host_lib_systemd}/kubelet-config-helper.service
+	systemctl daemon-reload
+}
+
+function deploy_kubelet_unconfig_service() {
+	echo "Deploying Kubelet unconfig agent on the host ..."
+	cp ${artifacts}/scripts/kubelet-unconfig-helper.sh ${host_usr_local_bin}/kubelet-unconfig-helper.sh
+	cp ${artifacts}/systemd/kubelet-unconfig-helper.service ${host_lib_systemd}/kubelet-unconfig-helper.service
+	systemctl daemon-reload
+	echo "Running Kubelet unconfig agent on the host ..."
+	systemctl restart kubelet-unconfig-helper.service
+}
+
+function remove_kubelet_unconfig_service() {
+	echo "Stopping the Kubelet unconfig agent on the host ..."
+	systemctl stop kubelet-unconfig-helper.service
+	systemctl disable kubelet-unconfig-helper.service
+	echo "Removing Kubelet unconfig agent from the host ..."
+	rm ${host_usr_local_bin}/kubelet-unconfig-helper.sh
+	rm ${host_lib_systemd}/kubelet-unconfig-helper.service
+	systemctl daemon-reload
+	rm -rf ${host_run_crio_deploy_k8s}
 }
 
 function get_subid_limits() {
@@ -438,13 +363,15 @@ function main() {
 				remove_crio_installer_service
 				config_crio
 				restart_crio
-				config_kubelet
+				deploy_kubelet_config_service
+				remove_kubelet_config_service
 				restart_kubelet
 			fi
 			add_label_to_node "${k8s_node_label}=running"
 			;;
 		precleanup)
-			revert_kubelet_config
+			deploy_kubelet_unconfig_service
+			remove_kubelet_unconfig_service
 			add_label_to_node "${k8s_node_label}=disabled"
 			restart_kubelet
 			;;
@@ -454,7 +381,6 @@ function main() {
 				add_label_to_node "${k8s_node_label}=removing"
 				deploy_crio_removal_service
 				remove_crio_removal_service
-				rmdir ${host_run_crio_deploy_k8s}
 			fi
 			rm_label_from_node "${k8s_node_label}"
 			;;
