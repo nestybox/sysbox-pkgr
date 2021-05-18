@@ -1,0 +1,7 @@
+[Unit]
+Description=Sysbox removal helper service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "/usr/local/bin/sysbox-removal-helper.sh"
+RemainAfterExit=true

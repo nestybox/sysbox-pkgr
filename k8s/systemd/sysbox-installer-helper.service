@@ -1,0 +1,7 @@
+[Unit]
+Description=Sysbox installer helper service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "/usr/local/bin/sysbox-installer-helper.sh"
+RemainAfterExit=true

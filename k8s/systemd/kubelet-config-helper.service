@@ -1,0 +1,7 @@
+[Unit]
+Description=Kubelet config service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "/usr/local/bin/kubelet-config-helper.sh"
+RemainAfterExit=true

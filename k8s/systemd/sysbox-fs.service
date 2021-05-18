@@ -1,0 +1,23 @@
+[Unit]
+Description=sysbox-fs (part of the Sysbox container runtime)
+PartOf=sysbox.service
+After=sysbox-mgr.service
+
+[Service]
+Type=simple
+Type=notify
+ExecStart=/usr/bin/sysbox-fs
+TimeoutStartSec=10
+TimeoutStopSec=10
+StartLimitInterval=0
+NotifyAccess=main
+OOMScoreAdjust=-500
+
+# The number of files opened by sysbox-fs is a function of the number of
+# containers and the workloads within them. Thus we set the limit to
+# infinite so to prevent "too many open files" errors.
+LimitNOFILE=infinity
+LimitNPROC=infinity
+
+[Install]
+WantedBy=sysbox.service
