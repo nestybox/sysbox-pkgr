@@ -1,0 +1,7 @@
+[Unit]
+Description=CRI-O removal service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "/usr/local/bin/crio-removal.sh"
+RemainAfterExit=true

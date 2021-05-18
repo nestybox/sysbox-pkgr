@@ -1,0 +1,7 @@
+[Unit]
+Description=CRI-O installer service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "/usr/local/bin/crio-installer.sh"
+RemainAfterExit=true

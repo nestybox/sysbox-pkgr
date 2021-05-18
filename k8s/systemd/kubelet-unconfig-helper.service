@@ -1,0 +1,7 @@
+[Unit]
+Description=Kubelet unconfig service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c "/usr/local/bin/kubelet-unconfig-helper.sh"
+RemainAfterExit=true

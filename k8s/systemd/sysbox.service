@@ -1,0 +1,20 @@
+# Sysbox unit to act as a wrapper of sysbox's inner components/daemons:
+# sysbox-mgr and sysbox-fs.
+
+[Unit]
+Description=Sysbox container runtime
+Documentation=https://github.com/nestybox/sysbox
+BindsTo=sysbox-mgr.service sysbox-fs.service
+After=sysbox-mgr.service sysbox-fs.service
+
+# Must start before Docker/containerd to ensure "docker --restart" works
+# properly with Sysbox.
+Before=docker.service containerd.service
+
+[Service]
+Type=exec
+ExecStart=/bin/sh -c "/usr/bin/sysbox-runc --version && /usr/bin/sysbox-mgr --version && /usr/bin/sysbox-fs --version && /bin/sleep infinity"
+
+[Install]
+# Components of this application should be started at boot time
+WantedBy=multi-user.target
