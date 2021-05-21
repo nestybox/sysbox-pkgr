@@ -307,6 +307,16 @@ function rm_label_from_node() {
 	kubectl label node "$NODE_NAME" "${label}-"
 }
 
+function node_has_label() {
+	local label=$1
+
+	if kubectl get node "$NODE_NAME" --show-labels | grep -q "$label"; then
+		return 0
+	else
+		return 1
+	fi
+}
+
 function host_install_precheck() {
 
 	# TODO: ensure this is not a K8s master node; must be a worker node as
@@ -354,10 +364,11 @@ function main() {
 				deploy_kubelet_config_service
 			fi
 
-			# TODO: only do this if k8s_node_label = installing; otherwise echo "CRI-O is already installed; no action."
-			remove_kubelet_config_service
-			add_label_to_node "${k8s_node_label}=running"
-			echo "The k8s runtime on this node is now CRI-O."
+			if node_has_label "${k8s_node_label}=installing"; then
+				remove_kubelet_config_service
+				add_label_to_node "${k8s_node_label}=running"
+				echo "The k8s runtime on this node is now CRI-O."
+			fi
 			;;
 
 		cleanup)
@@ -369,12 +380,13 @@ function main() {
 				deploy_kubelet_unconfig_service
 			fi
 
-			# TODO: only do this if k8s_node_label = removing; otherwise echo "CRI-O is not installed; no action."
-			remove_kubelet_unconfig_service
-			deploy_crio_removal_service
-			remove_crio_removal_service
-			rm_label_from_node "${k8s_node_label}"
-			echo "The k8s runtime on this node is now $runtime."
+			if node_has_label "${k8s_node_label}=removing"; then
+				remove_kubelet_unconfig_service
+				deploy_crio_removal_service
+				remove_crio_removal_service
+				rm_label_from_node "${k8s_node_label}"
+				echo "The k8s runtime on this node is now $runtime."
+			fi
 			;;
 
 		*)

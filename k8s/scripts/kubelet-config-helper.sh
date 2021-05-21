@@ -25,7 +25,7 @@ set -o pipefail
 set -o nounset
 
 run_crio_deploy_k8s="/run/crio-deploy-k8s"
-curr_runtime=""
+runtime=""
 
 function die() {
    msg="$*"
@@ -235,44 +235,47 @@ function config_kubelet() {
 	systemctl daemon-reload
 }
 
-function start_kubelet() {
-
-	echo "Starting Kubelet ..."
-	systemctl start kubelet
+function restart_kubelet() {
+	echo "Restarting Kubelet ..."
+	systemctl restart kubelet
 }
 
 function stop_kubelet() {
-
 	echo "Stopping Kubelet ..."
 	systemctl stop kubelet
 }
 
-function get_curr_runtime() {
+function get_runtime() {
    local kubelet_bin=$(command -v kubelet)
-	curr_runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+
+	set +e
+	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	set -e
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
 }
 
-# Wipe out all the pods previously created by the original (non-crio) runtime.
-function clean_curr_runtime_state() {
-
-	if [[ ${curr_runtime} == "" ]]; then
-		return
-	fi
+# Wipe out all the pods managed by the given container runtime (dockershi, containerd, etc.)
+function clean_runtime_state() {
+	local runtime=$1
 
 	# Collect all the existing podIds as seen by crictl.
-	podList=$(crictl --runtime-endpoint ${curr_runtime} ps | awk 'NR>1 {print $NF}')
+	podList=$(crictl --runtime-endpoint ${runtime} ps | awk 'NR>1 {print $NF}')
 
    # Cleanup the pods; turn off errexit in these steps as we don't want to
 	# interrupt the process if any of the instructions fail for a particular
 	# pod.
 	set +e
 	for pod in ${podList}; do
-		ret=$(crictl --runtime-endpoint "${curr_runtime}" stopp ${pod})
+		ret=$(crictl --runtime-endpoint "${runtime}" stopp ${pod})
 		if [ $? -ne 0 ]; then
 			echo "Failed to stop pod ${pod}: $ret"
 		fi
 
-		ret=$(crictl --runtime-endpoint "${curr_runtime}" rmp --force ${pod})
+		ret=$(crictl --runtime-endpoint "${runtime}" rmp ${pod})
 		if [ $? -ne 0 ]; then
 			echo "Failed to remove pod ${pod}: $ret"
 		fi
@@ -287,11 +290,34 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
-	get_curr_runtime
-	config_kubelet
-	stop_kubelet
-	clean_curr_runtime_state
-	start_kubelet
+	get_runtime
+
+	if [[ ${runtime} =~ "crio" ]]; then
+		echo "Kubelet is already using CRI-O; no action will be taken."
+		return
+	fi
+
+	# The ideal sequence is to stop the kubelet, cleanup all pods with the
+	# existing runtime, reconfig the kubelet, and restart it. But if the runtime
+	# is dockershim this does not work well because after stopping the kubelet
+	# the dockershim also stops. Thus for dockershim we use a slightly different
+	# sequence which is less ideal because it cleans up pods while kubelet still
+	# runs, meaning that the cleanup pods can be replaced by kubelet, still using
+	# the old runtime. However, the cleanup is immediately followed by a kubelet
+	# restart, so chances are kubelet will reset before it's had a chance to
+	# restore pods using the old runtime.
+
+	if [[ ${runtime} =~ "dockershim" ]]; then
+		clean_runtime_state $runtime
+		config_kubelet
+		restart_kubelet
+	else
+		stop_kubelet
+		clean_runtime_state $runtime
+		config_kubelet
+		restart_kubelet
+	fi
+
 }
 
 main "$@"

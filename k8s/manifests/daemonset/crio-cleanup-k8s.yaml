@@ -15,7 +15,7 @@ spec:
     spec:
       serviceAccountName: crio-label-node
       nodeSelector:
-          crio-runtime: disabled
+          crio-install: "yes"
       containers:
       - name: crio-cleanup-k8s
         image: registry.nestybox.com/nestybox/crio-deploy-k8s
