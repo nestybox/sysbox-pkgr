@@ -24,8 +24,8 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-host_run_crio_deploy_k8s="/run/crio-deploy-k8s"
-host_noncrio_runtime_endpoint=""
+run_crio_deploy_k8s="/run/crio-deploy-k8s"
+curr_runtime=""
 
 function die() {
    msg="$*"
@@ -130,7 +130,7 @@ function replace_kubelet_env_var() {
 	local env_file=$1
 	local env_var=$2
 
-	readarray -t opts < ${host_run_crio_deploy_k8s}/crio-kubelet-options
+	readarray -t opts < ${run_crio_deploy_k8s}/crio-kubelet-options
 
 	# add newline at end of $env_file if not present
 	sed -i '$a\' "$env_file"
@@ -178,11 +178,11 @@ function replace_kubelet_env_var() {
 
 function backup_orig_config() {
 	local env_file=$1
-	local config_file="${host_run_crio_deploy_k8s}/config"
+	local config_file="${run_crio_deploy_k8s}/config"
 
-	mkdir -p "$host_run_crio_deploy_k8s"
+	mkdir -p "$run_crio_deploy_k8s"
 	echo "kubelet_env_file=${env_file}" > "$config_file"
-	cp "$env_file" "${host_run_crio_deploy_k8s}/kubelet.orig"
+	cp "$env_file" "${run_crio_deploy_k8s}/kubelet.orig"
 }
 
 # Configures the kubelet to use CRI-O, by modifying the systemd unit files that
@@ -247,29 +247,37 @@ function stop_kubelet() {
 	systemctl stop kubelet
 }
 
-function get_noncrio_runtime_endpoint() {
-
-    local kubelet_bin=$(command -v kubelet)
-
-	host_noncrio_runtime_endpoint=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+function get_curr_runtime() {
+   local kubelet_bin=$(command -v kubelet)
+	curr_runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
 }
 
 # Wipe out all the pods previously created by the original (non-crio) runtime.
-function clean_noncrio_runtime_state() {
+function clean_curr_runtime_state() {
 
-	if [[ ${host_noncrio_runtime_endpoint} == "" ]]; then
+	if [[ ${curr_runtime} == "" ]]; then
 		return
 	fi
 
 	# Collect all the existing podIds as seen by crictl.
-	podList=$(crictl --runtime-endpoint ${host_noncrio_runtime_endpoint} ps | awk 'NR>1 {print $NF}')
+	podList=$(crictl --runtime-endpoint ${curr_runtime} ps | awk 'NR>1 {print $NF}')
+
+   # Cleanup the pods; turn off errexit in these steps as we don't want to
+	# interrupt the process if any of the instructions fail for a particular
+	# pod.
+	set +e
 	for pod in ${podList}; do
-		# Avoid doing any sanity checking in these steps as we don't want to
-		# interrupt the process if any of the instructions fail for a particular
-		# pod.
-		crictl --runtime-endpoint "${host_noncrio_runtime_endpoint}" stopp ${pod}
-		crictl --runtime-endpoint "${host_noncrio_runtime_endpoint}" rmp ${pod}
+		ret=$(crictl --runtime-endpoint "${curr_runtime}" stopp ${pod})
+		if [ $? -ne 0 ]; then
+			echo "Failed to stop pod ${pod}: $ret"
+		fi
+
+		ret=$(crictl --runtime-endpoint "${curr_runtime}" rmp --force ${pod})
+		if [ $? -ne 0 ]; then
+			echo "Failed to remove pod ${pod}: $ret"
+		fi
 	done
+	set -e
 }
 
 function main() {
@@ -279,10 +287,10 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
-	get_noncrio_runtime_endpoint
+	get_curr_runtime
 	config_kubelet
 	stop_kubelet
-	clean_noncrio_runtime_state
+	clean_curr_runtime_state
 	start_kubelet
 }
 
