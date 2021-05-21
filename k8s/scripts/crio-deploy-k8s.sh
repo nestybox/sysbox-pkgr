@@ -25,15 +25,21 @@
 # the host and starts this service. The crio installer service performs the
 # installation of CRI-O at host level (e.g., downloads the packages, installs
 # them, configures kubelet, etc.) When completed the crio installer service
-# is removed.
+# is removed. In addition, a kubelet config systemd service is also dropped
+# on the host. This service configures the kubelet to use CRI-O and restarts
+# it (causing all pods on the node to be restarted, including this daemonset).
+# Upon restart, the kubelet config systemd service is removed.
 #
-# For CRI-O removal, the scripts drops a crio removal systemd service on
-# the host and starts this service. The crio removal service removes CRI-O
-# at host level (e.g., removes the packages, configures kubelet, etc.).
+# For CRI-O removal, the scripts drops a kubelet unconfig service on the host to
+# revert the kubelet's config to it prior runtime (i.e., the runtime before
+# CRI-O was installed). This service configures the kubelet and restarts it
+# (causing all pods on the node be restarted, including this daemonset).  Upon
+# restart, the kubelet unconfig service is removed. In additon, a crio removal
+# systemd service is also dropped on the host. The crio removal service removes
+# CRI-O at host level (e.g., removes the packages, configures kubelet, etc.).
 # When completed the crio removal service is removed.
 #
 # This script requires elevated privileges on the host.
-#
 
 set -o errexit
 set -o pipefail
@@ -127,13 +133,6 @@ function remove_crio_removal_service() {
 	rm ${host_usr_local_bin}/crio-removal.sh
 	rm ${host_lib_systemd}/crio-removal.service
 	systemctl daemon-reload
-}
-
-function restart_kubelet() {
-	# NOTE: this will cause this daemonset script to die and be restarted once
-	# the kubelet comes up.
-	echo "Restarting Kubelet ..."
-	systemctl restart kubelet
 }
 
 function deploy_kubelet_config_service() {
@@ -309,29 +308,11 @@ function rm_label_from_node() {
 }
 
 function host_install_precheck() {
-	local runtime=$1
 
 	# TODO: ensure this is not a K8s master node; must be a worker node as
 	# otherwise the Kubelet restart will kill K8s.
 
-	if [[ $runtime == "crio" ]]; then
-		# We get here if CRI-O was running on the host already, or if after we
-		# installed CRI-O and this daemonset gets restarted.
-		echo "CRI-O is running on the node."
-		skip_install="true"
-	fi
-}
-
-function host_cleanup_precheck() {
-	local runtime=$1
-
-	if [[ $runtime == "crio" ]]; then
-		# During cleanup, CRI-O should no longer be the kubelet's runtime (because
-		# during precleanup we switched the kubelet away from CRI-O). If the kubelet
-		# is still using CRI-O, skip the CRI-O cleanup steps.
-		echo "CRI-O is running on the node."
-		skip_cleanup="true"
-	fi
+	return
 }
 
 function main() {
@@ -356,34 +337,46 @@ function main() {
 	fi
 
 	case "$action" in
+
 		install)
-			host_install_precheck "$runtime"
-			if [[ "$skip_install" == "false" ]]; then
+			if [[ "$runtime" != "crio" ]]; then
+				host_install_precheck
+				add_label_to_node "${k8s_node_label}=installing"
 				deploy_crio_installer_service
 				remove_crio_installer_service
+
+				# TODO: consider moving these into the crio_installer_service
 				config_crio
 				restart_crio
+
+				# Note: this will restart kubelet with CRI-O, thereby killing all
+				# pods (including this daemonset)
 				deploy_kubelet_config_service
-				remove_kubelet_config_service
-				restart_kubelet
 			fi
+
+			# TODO: only do this if k8s_node_label = installing; otherwise echo "CRI-O is already installed; no action."
+			remove_kubelet_config_service
 			add_label_to_node "${k8s_node_label}=running"
+			echo "The k8s runtime on this node is now CRI-O."
 			;;
-		precleanup)
-			deploy_kubelet_unconfig_service
-			remove_kubelet_unconfig_service
-			add_label_to_node "${k8s_node_label}=disabled"
-			restart_kubelet
-			;;
+
 		cleanup)
-			host_cleanup_precheck "$runtime"
-			if [[ "$skip_cleanup" == "false" ]]; then
+			if [[ "$runtime" == "crio" ]]; then
 				add_label_to_node "${k8s_node_label}=removing"
-				deploy_crio_removal_service
-				remove_crio_removal_service
+
+				# Note: this will restart kubelet with the prior runtime (not
+				# CRI-O), thereby killing all pods (including this daemonset)
+				deploy_kubelet_unconfig_service
 			fi
+
+			# TODO: only do this if k8s_node_label = removing; otherwise echo "CRI-O is not installed; no action."
+			remove_kubelet_unconfig_service
+			deploy_crio_removal_service
+			remove_crio_removal_service
 			rm_label_from_node "${k8s_node_label}"
+			echo "The k8s runtime on this node is now $runtime."
 			;;
+
 		*)
 			echo invalid arguments
 			print_usage
