@@ -25,6 +25,7 @@ set -o pipefail
 set -o nounset
 
 host_run_crio_deploy_k8s="/run/crio-deploy-k8s"
+host_crio_runtime_endpoint=""
 
 function die() {
    msg="$*"
@@ -53,6 +54,43 @@ function revert_kubelet_config() {
 	rm "$config_file"
 }
 
+function start_kubelet() {
+
+	echo "Starting Kubelet ..."
+	systemctl start kubelet
+}
+
+function stop_kubelet() {
+
+	echo "Stopping Kubelet ..."
+	systemctl stop kubelet
+}
+
+function get_crio_runtime_endpoint() {
+
+    local kubeletBin=$(command -v kubelet)
+
+	host_noncrio_runtime_endpoint=$(systemctl status kubelet | egrep ${kubeletBin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+}
+
+# Wipe out all the pods previously created by the crio runtime.
+function clean_crio_runtime_state() {
+
+	if [[ "${host_crio_runtime_endpoint}" == "" ]]; then
+		return
+	fi
+
+	# Collect all the existing podIds as seen by crictl.
+	podList=$(crictl --runtime-endpoint ${host_crio_runtime_endpoint} ps | awk 'NR>1 {print $NF}')
+	for pod in ${podList}; do
+		# Avoid doing any sanity checking in these steps as we don't want to
+		# interrupt the process if any of the instructions fail for a particular
+		# pod.
+		crictl --runtime-endpoint "${host_crio_runtime_endpoint}" stopp ${pod}
+		crictl --runtime-endpoint "${host_crio_runtime_endpoint}" rmp ${pod}
+	done
+}
+
 function main() {
 
 	euid=$(id -u)
@@ -60,7 +98,11 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
+	get_crio_runtime_endpoint
 	revert_kubelet_config
+	stop_kubelet
+	clean_crio_runtime_state
+	start_kubelet
 }
 
 main "$@"

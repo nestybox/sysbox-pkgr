@@ -25,6 +25,7 @@ set -o pipefail
 set -o nounset
 
 host_run_crio_deploy_k8s="/run/crio-deploy-k8s"
+host_noncrio_runtime_endpoint=""
 
 function die() {
    msg="$*"
@@ -108,8 +109,6 @@ EOF
 function add_kubelet_env_var() {
 	local env_file=$1
 	local env_var=$2
-
-	readarray -t opts < ${host_run_crio_deploy_k8s}/crio-kubelet-options
 
 	# If the extra args file does not have the extra args/opts, add them as needed
 	if [ ! -f "$env_file" ]; then
@@ -236,6 +235,43 @@ function config_kubelet() {
 	systemctl daemon-reload
 }
 
+function start_kubelet() {
+
+	echo "Starting Kubelet ..."
+	systemctl start kubelet
+}
+
+function stop_kubelet() {
+
+	echo "Stopping Kubelet ..."
+	systemctl stop kubelet
+}
+
+function get_noncrio_runtime_endpoint() {
+
+    local kubelet_bin=$(command -v kubelet)
+
+	host_noncrio_runtime_endpoint=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+}
+
+# Wipe out all the pods previously created by the original (non-crio) runtime.
+function clean_noncrio_runtime_state() {
+
+	if [[ ${host_noncrio_runtime_endpoint} == "" ]]; then
+		return
+	fi
+
+	# Collect all the existing podIds as seen by crictl.
+	podList=$(crictl --runtime-endpoint ${host_noncrio_runtime_endpoint} ps | awk 'NR>1 {print $NF}')
+	for pod in ${podList}; do
+		# Avoid doing any sanity checking in these steps as we don't want to
+		# interrupt the process if any of the instructions fail for a particular
+		# pod.
+		crictl --runtime-endpoint "${host_noncrio_runtime_endpoint}" stopp ${pod}
+		crictl --runtime-endpoint "${host_noncrio_runtime_endpoint}" rmp ${pod}
+	done
+}
+
 function main() {
 
 	euid=$(id -u)
@@ -243,7 +279,11 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
+	get_noncrio_runtime_endpoint
 	config_kubelet
+	stop_kubelet
+	clean_noncrio_runtime_state
+	start_kubelet
 }
 
 main "$@"
