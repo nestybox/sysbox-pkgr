@@ -25,7 +25,7 @@ set -o pipefail
 set -o nounset
 
 run_crio_deploy_k8s="/run/crio-deploy-k8s"
-curr_runtime=""
+runtime=""
 
 function die() {
    msg="$*"
@@ -54,44 +54,46 @@ function revert_kubelet_config() {
 	rm "$config_file"
 }
 
-function start_kubelet() {
-
-	echo "Starting Kubelet ..."
-	systemctl start kubelet
+function restart_kubelet() {
+	echo "Restarting Kubelet ..."
+	systemctl restart kubelet
 }
 
 function stop_kubelet() {
-
 	echo "Stopping Kubelet ..."
 	systemctl stop kubelet
 }
 
-function get_curr_runtime() {
+function get_runtime() {
    local kubeletBin=$(command -v kubelet)
-	curr_runtime=$(systemctl status kubelet | egrep ${kubeletBin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+
+	set +e
+	runtime=$(systemctl status kubelet | egrep ${kubeletBin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	set -e
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
 }
 
 # Wipe out all the pods previously created by the current runtime (i.e., CRI-O)
-function clean_curr_runtime_state() {
-
-	if [[ ${curr_runtime} == "" ]]; then
-		return
-	fi
+function clean_runtime_state() {
 
 	# Collect all the existing podIds as seen by crictl.
-	podList=$(crictl --runtime-endpoint ${curr_runtime} ps | awk 'NR>1 {print $NF}')
+	podList=$(crictl --runtime-endpoint ${runtime} ps | awk 'NR>1 {print $NF}')
 
    # Cleanup the pods; turn off errexit in these steps as we don't want to
 	# interrupt the process if any of the instructions fail for a particular
 	# pod.
 	set +e
 	for pod in ${podList}; do
-		ret=$(crictl --runtime-endpoint "${curr_runtime}" stopp ${pod})
+		ret=$(crictl --runtime-endpoint "${runtime}" stopp ${pod})
 		if [ $? -ne 0 ]; then
 			echo "Failed to stop pod ${pod}: $ret"
 		fi
 
-		ret=$(crictl --runtime-endpoint "${curr_runtime}" rmp --force ${pod})
+		ret=$(crictl --runtime-endpoint "${runtime}" rmp ${pod})
 		if [ $? -ne 0 ]; then
 			echo "Failed to remove pod ${pod}: $ret"
 		fi
@@ -106,11 +108,17 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
-	get_curr_runtime
-	revert_kubelet_config
+	get_runtime
+
+	if [[ ${runtime} != "unix:///run/crio/crio.sock" ]]; then
+		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
+		return
+	fi
+
 	stop_kubelet
-	clean_curr_runtime_state
-	start_kubelet
+	clean_runtime_state
+	revert_kubelet_config
+	restart_kubelet
 }
 
 main "$@"
