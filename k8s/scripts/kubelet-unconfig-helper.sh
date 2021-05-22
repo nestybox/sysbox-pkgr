@@ -39,6 +39,7 @@ function die() {
 function get_kubelet_bin() {
 	local tmp=$(systemctl show kubelet | grep "ExecStart=" | cut -d ";" -f1)
 	kubelet_bin=${tmp#"ExecStart={ path="}
+	kubelet_bin=$(echo $kubelet_bin | xargs)
 }
 
 function revert_kubelet_config() {
@@ -114,6 +115,7 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
+	get_kubelet_bin
 	get_runtime
 
 	if [[ ${runtime} != "unix:///run/crio/crio.sock" ]]; then
@@ -121,7 +123,6 @@ function main() {
 		return
 	fi
 
-	get_kubelet_bin
 	stop_kubelet
 	clean_runtime_state
 	revert_kubelet_config
