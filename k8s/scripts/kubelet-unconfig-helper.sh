@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 #
 # Copyright 2019-2021 Nestybox, Inc.
@@ -27,10 +27,18 @@ set -o nounset
 run_crio_deploy_k8s="/run/crio-deploy-k8s"
 runtime=""
 
+kubelet_bin="/usr/bin/kubelet"
+crictl_bin="/usr/local/bin/crio-deploy-k8s-crictl"
+
 function die() {
    msg="$*"
    echo "ERROR: $msg" >&2
    exit 1
+}
+
+function get_kubelet_bin() {
+	local tmp=$(systemctl show kubelet | grep "ExecStart=" | cut -d ";" -f1)
+	kubelet_bin=${tmp#"ExecStart={ path="}
 }
 
 function revert_kubelet_config() {
@@ -65,10 +73,8 @@ function stop_kubelet() {
 }
 
 function get_runtime() {
-   local kubeletBin=$(command -v kubelet)
-
 	set +e
-	runtime=$(systemctl status kubelet | egrep ${kubeletBin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
 	set -e
 
 	# If runtime is unknown, assume it's Docker
@@ -81,19 +87,19 @@ function get_runtime() {
 function clean_runtime_state() {
 
 	# Collect all the existing podIds as seen by crictl.
-	podList=$(crictl --runtime-endpoint ${runtime} ps | awk 'NR>1 {print $NF}')
+	podList=$($crictl_bin --runtime-endpoint ${runtime} ps | awk 'NR>1 {print $NF}')
 
    # Cleanup the pods; turn off errexit in these steps as we don't want to
 	# interrupt the process if any of the instructions fail for a particular
 	# pod.
 	set +e
 	for pod in ${podList}; do
-		ret=$(crictl --runtime-endpoint "${runtime}" stopp ${pod})
+		ret=$($crictl_bin --runtime-endpoint "${runtime}" stopp ${pod})
 		if [ $? -ne 0 ]; then
 			echo "Failed to stop pod ${pod}: $ret"
 		fi
 
-		ret=$(crictl --runtime-endpoint "${runtime}" rmp ${pod})
+		ret=$($crictl_bin --runtime-endpoint "${runtime}" rmp ${pod})
 		if [ $? -ne 0 ]; then
 			echo "Failed to remove pod ${pod}: $ret"
 		fi
@@ -115,6 +121,7 @@ function main() {
 		return
 	fi
 
+	get_kubelet_bin
 	stop_kubelet
 	clean_runtime_state
 	revert_kubelet_config

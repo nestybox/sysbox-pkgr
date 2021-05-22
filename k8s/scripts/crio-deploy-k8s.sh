@@ -103,16 +103,16 @@ function deploy_crio_installer_service() {
 	echo "Deploying CRI-O installer agent on the host ..."
 	cp ${artifacts}/scripts/crio-installer.sh ${host_usr_local_bin}/crio-installer.sh
 	cp ${artifacts}/systemd/crio-installer.service ${host_lib_systemd}/crio-installer.service
+
 	systemctl daemon-reload
 	echo "Running CRI-O installer agent on the host (may take several seconds) ..."
 	systemctl restart crio-installer.service
 }
 
 function remove_crio_installer_service() {
-	echo "Stopping the CRI-O installer agent on the host ..."
+	echo "Removing CRI-O installer agent from the host ..."
 	systemctl stop crio-installer.service
 	systemctl disable crio-installer.service
-	echo "Removing CRI-O installer agent from the host ..."
 	rm ${host_usr_local_bin}/crio-installer.sh
 	rm ${host_lib_systemd}/crio-installer.service
 	systemctl daemon-reload
@@ -141,8 +141,10 @@ function deploy_kubelet_config_service() {
 	cp ${artifacts}/scripts/kubelet-config-helper.sh ${host_usr_local_bin}/kubelet-config-helper.sh
 	cp ${artifacts}/systemd/kubelet-config-helper.service ${host_lib_systemd}/kubelet-config-helper.service
 	cp ${artifacts}/config/crio-kubelet-options ${host_run_crio_deploy_k8s}/crio-kubelet-options
-	systemctl daemon-reload
+	cp /usr/local/bin/crictl ${host_usr_local_bin}/crio-deploy-k8s-crictl
+
 	echo "Running Kubelet config agent on the host ..."
+	systemctl daemon-reload
 	systemctl restart kubelet-config-helper.service
 }
 
@@ -153,6 +155,7 @@ function remove_kubelet_config_service() {
 	echo "Removing Kubelet config agent from the host ..."
 	rm ${host_usr_local_bin}/kubelet-config-helper.sh
 	rm ${host_lib_systemd}/kubelet-config-helper.service
+	rm ${host_usr_local_bin}/crio-deploy-k8s-crictl
 	systemctl daemon-reload
 }
 
@@ -160,8 +163,10 @@ function deploy_kubelet_unconfig_service() {
 	echo "Deploying Kubelet unconfig agent on the host ..."
 	cp ${artifacts}/scripts/kubelet-unconfig-helper.sh ${host_usr_local_bin}/kubelet-unconfig-helper.sh
 	cp ${artifacts}/systemd/kubelet-unconfig-helper.service ${host_lib_systemd}/kubelet-unconfig-helper.service
-	systemctl daemon-reload
+	cp /usr/local/bin/crictl ${host_usr_local_bin}/crio-deploy-k8s-crictl
+
 	echo "Running Kubelet unconfig agent on the host ..."
+	systemctl daemon-reload
 	systemctl restart kubelet-unconfig-helper.service
 }
 
@@ -169,11 +174,13 @@ function remove_kubelet_unconfig_service() {
 	echo "Stopping the Kubelet unconfig agent on the host ..."
 	systemctl stop kubelet-unconfig-helper.service
 	systemctl disable kubelet-unconfig-helper.service
+
 	echo "Removing Kubelet unconfig agent from the host ..."
 	rm ${host_usr_local_bin}/kubelet-unconfig-helper.sh
 	rm ${host_lib_systemd}/kubelet-unconfig-helper.service
-	systemctl daemon-reload
+	rm ${host_usr_local_bin}/crio-deploy-k8s-crictl
 	rm -rf ${host_run_crio_deploy_k8s}
+	systemctl daemon-reload
 }
 
 function get_subid_limits() {
