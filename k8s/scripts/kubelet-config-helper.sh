@@ -39,6 +39,7 @@ function die() {
 function get_kubelet_bin() {
 	local tmp=$(systemctl show kubelet | grep "ExecStart=" | cut -d ";" -f1)
 	kubelet_bin=${tmp#"ExecStart={ path="}
+	kubelet_bin=$(echo $kubelet_bin | xargs)
 }
 
 function replace_cmd_option {
@@ -295,14 +296,13 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
+	get_kubelet_bin
 	get_runtime
 
 	if [[ ${runtime} =~ "crio" ]]; then
 		echo "Kubelet is already using CRI-O; no action will be taken."
 		return
 	fi
-
-	get_kubelet_bin
 
 	# The ideal sequence is to stop the kubelet, cleanup all pods with the
 	# existing runtime, reconfig the kubelet, and restart it. But if the runtime
