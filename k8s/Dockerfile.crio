@@ -30,6 +30,7 @@
 FROM centos/systemd
 
 ARG DEST=/opt/crio-deploy
+ARG CRICTL_VERSION="v1.20.0"
 
 RUN yum install -y curl wget
 
@@ -43,6 +44,11 @@ RUN curl -s https://api.github.com/repos/tomwright/dasel/releases/latest | \
     cut -d '"' -f 4 | \
     wget -qi - && mv dasel_linux_amd64 dasel && chmod +x dasel && mv ./dasel /usr/local/bin/dasel
 
+# crictl will be copied to the host, and used by the crio installation agents
+RUN wget https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-amd64.tar.gz \
+    && tar zxvf crictl-${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin \
+    && chmod +x /usr/local/bin/crictl \
+    && rm -f crictl-${CRICTL_VERSION}-linux-amd64.tar.gz
 
 #
 # Load artifacts
