@@ -32,10 +32,6 @@ function die() {
    exit 1
 }
 
-function remove_packages() {
-	apt-get remove --purge -y rsync
-}
-
 function remove_shiftfs() {
 
 	if ! shiftfs_installed; then
@@ -63,7 +59,6 @@ function main() {
 	fi
 
 	remove_shiftfs
-	remove_packages
 }
 
 main "$@"

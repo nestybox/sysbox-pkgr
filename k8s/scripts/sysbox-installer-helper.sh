@@ -32,8 +32,8 @@ function die() {
    exit 1
 }
 
-function install_packages() {
-	apt-get install -y rsync
+function install_package_deps() {
+	apt-get install -y rsync fuse iptables
 }
 
 function install_shiftfs() {
@@ -88,7 +88,7 @@ function main() {
 
 	apt-get update
 
-	install_packages
+	install_package_deps
 	install_shiftfs
 	probe_kernel_mods
 }
