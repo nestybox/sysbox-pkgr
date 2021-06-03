@@ -3,18 +3,15 @@
 #
 
 .PHONY: sysbox-deploy-k8s-image \
-	copy-artifacts \
-	rm-artifacts \
-	check-sysbox-bin \
-	clean
+	check-sysbox-artifacts
 
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_DISTRO = ubuntu-focal ubuntu-bionic
 
 all: sysbox-deploy-k8s-image crio-deploy-k8s-image
 
-sysbox-deploy-k8s-image: check-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s .
+sysbox-deploy-k8s-image: check-sysbox-artifacts
+	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s -f Dockerfile.sysbox-ce .
 
 crio-deploy-k8s-image:
 	docker build -t ghcr.io/nestybox/crio-deploy-k8s -f Dockerfile.crio .
