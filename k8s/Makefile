@@ -13,10 +13,16 @@ all: sysbox-deploy-k8s-image crio-deploy-k8s-image
 sysbox-deploy-k8s-image: check-sysbox-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s -f Dockerfile.sysbox-ce .
 
+sysbox-ee-deploy-k8s-image: check-sysbox-ee-artifacts
+	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s -f Dockerfile.sysbox-ee .
+
 crio-deploy-k8s-image:
 	docker build -t ghcr.io/nestybox/crio-deploy-k8s -f Dockerfile.crio .
 
 # Verifies that sysbox binaries are in the expected location (temporary target
 # until the process of creating the binaries is automated).
-check-artifacts:
-	@$(foreach distro,$(SYSBOX_DISTRO),$(foreach file,$(SYSBOX_BINS),[ -f "bin/$(distro)/$(file)" ] || "missing sysbox binary: bin/$(distro)/$(file)";))
+check-sysbox-artifacts:
+	@$(foreach distro,$(SYSBOX_DISTRO),$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ce/$(distro)/$(file)" ] || "missing sysbox-ce binary: bin/sysbox-ce/$(distro)/$(file)";))
+
+check-sysbox-ee-artifacts:
+	@$(foreach distro,$(SYSBOX_DISTRO),$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ee/$(distro)/$(file)" ] || "missing sysbox-ee binary: bin/sysbox-ee/$(distro)/$(file)";))

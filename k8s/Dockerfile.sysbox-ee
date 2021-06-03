@@ -52,7 +52,7 @@ RUN git clone --branch k5.4 https://github.com/toby63/shiftfs-dkms.git /opt/shif
 # Load sysbox artifacts
 #
 
-COPY bin/sysbox-ce ${DEST}/bin
+COPY bin/sysbox-ee ${DEST}/bin
 
 COPY systemd/50-sysbox-mod.conf ${DEST}/systemd/50-sysbox-mod.conf
 COPY systemd/99-sysbox-sysctl.conf ${DEST}/systemd/99-sysbox-sysctl.conf
@@ -62,6 +62,6 @@ COPY systemd/sysbox-fs.service ${DEST}/systemd/sysbox-fs.service
 COPY systemd/sysbox-mgr.service ${DEST}/systemd/sysbox-mgr.service
 COPY systemd/sysbox.service ${DEST}/systemd/sysbox.service
 
-COPY scripts/sysbox-deploy-k8s.sh ${DEST}/scripts/sysbox-deploy-k8s.sh
+COPY scripts/sysbox-ee-deploy-k8s.sh ${DEST}/scripts/sysbox-ee-deploy-k8s.sh
 COPY scripts/sysbox-installer-helper.sh ${DEST}/scripts/sysbox-installer-helper.sh
 COPY scripts/sysbox-removal-helper.sh ${DEST}/scripts/sysbox-removal-helper.sh
