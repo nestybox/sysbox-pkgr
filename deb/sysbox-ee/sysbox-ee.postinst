@@ -215,14 +215,19 @@ function adjust_docker_config_runtime() {
         docker_runtime_config_changed="true"
 
     # If the runtime config is complete (i.e. both 'runtimes' and 'sysbox-runc'
-    # entries exist), but this state has not been digested by docker yet, ensure
-    # that docker processes it before this installation concludes.
-    elif [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "true" ] &&
-         [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = true ] &&
-         command -v docker >/dev/null 2>&1 &&
-         ! docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
+    # entries exist) but has the old sysbox-runc binary location, update the location.
+    elif grep -q "/usr/local/sbin/sysbox-runc" ${dockerCfgFile}; then
+       sed -i "s@/usr/local/sbin/sysbox-runc@/usr/bin/sysbox-runc@g" ${dockerCfgFile}
+       docker_runtime_config_changed="true"
+    fi
 
-        docker_runtime_config_changed="true"
+    # If the state has not been digested by docker yet, ensure that docker
+    # processes it before this installation concludes.
+    if [ ${docker_runtime_config_changed} = false ] &&
+          command -v docker >/dev/null 2>&1 &&
+          ! docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
+
+       docker_runtime_config_changed="true"
     fi
 }
 
