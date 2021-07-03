@@ -6,7 +6,7 @@ After=sysbox-mgr.service
 [Service]
 Type=simple
 Type=notify
-ExecStart=/usr/bin/sysbox-fs
+ExecStart=/usr/bin/sysbox-fs --seccomp-fd-release=cont-exit
 TimeoutStartSec=10
 TimeoutStopSec=10
 StartLimitInterval=0
