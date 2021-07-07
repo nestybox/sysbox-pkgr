@@ -18,8 +18,9 @@ jobs:
     runs-on: [self-hosted, Linux, X64, '${{ matrix.distro }}']
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
-        distro: [ubuntu-bionic, ubuntu-focal, debian-buster]
+        distro: [ubuntu-bionic, ubuntu-focal, debian-buster, debian-bullseye]
     steps:
       - name: precheckout-cleanup
         run: |
