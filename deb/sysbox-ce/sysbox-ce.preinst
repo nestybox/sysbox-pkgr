@@ -21,7 +21,6 @@ set -e
 #   |   Debian Bullseye (11)    |        5.5+         |
 #   |___________________________|_____________________|
 
-
 declare -A sysbox_support_matrix
 sysbox_support_matrix=(
     ["Ubuntu 18.04"]="5.2"
@@ -29,6 +28,9 @@ sysbox_support_matrix=(
     ["Debian 10"]="5.5"
     ["Debian 11"]="5.5"
 )
+
+# Minimum (oldest) kernel required for Sysbox installation to proceed.
+sysbox_min_required_kernel="5.2.0"
 
 # Compare two versions in SemVer format.
 #
@@ -43,8 +45,7 @@ sysbox_support_matrix=(
 #
 function version_compare() {
 
-    if [[ $1 == $2 ]]
-    then
+    if [[ $1 == $2 ]]; then
         return 0
     fi
 
@@ -52,24 +53,19 @@ function version_compare() {
     local i ver1=($1) ver2=($2)
 
     # Fill empty fields in ver1 with zeros.
-    for ((i=${#ver1[@]}; i<${#ver2[@]}; i++))
-    do
+    for ((i = ${#ver1[@]}; i < ${#ver2[@]}; i++)); do
         ver1[i]=0
     done
 
-    for ((i=0; i<${#ver1[@]}; i++))
-    do
-        if [[ -z ${ver2[i]} ]]
-        then
+    for ((i = 0; i < ${#ver1[@]}; i++)); do
+        if [[ -z ${ver2[i]} ]]; then
             # Fill empty fields in ver2 with zeros.
             ver2[i]=0
         fi
-        if ((10#${ver1[i]} > 10#${ver2[i]}))
-        then
+        if ((10#${ver1[i]} > 10#${ver2[i]})); then
             return 1
         fi
-        if ((10#${ver1[i]} < 10#${ver2[i]}))
-        then
+        if ((10#${ver1[i]} < 10#${ver2[i]})); then
             return 2
         fi
     done
@@ -96,50 +92,61 @@ function verify_compatibility() {
     local found_supported_distro=false
     local found_supported_kernel=false
 
-    # Iterate through the support_matrix and verify that minimum requirements
-    # are met.
+    # Regardless of the distro on which we are installing, make sure that Sysbox
+    # can be installed only if a recent-enough kernel is in place. This is not
+    # sufficient to ensure Sysbox's proper operation, but this is the entry-level
+    # criteria that must be met for installer to proceed.
+    version_compare ${cur_kernel} ${sysbox_min_required_kernel} && :
+    if [[ $? -eq 2 ]]; then
+        echo -e "\nUnsupported linux kernel: \"${cur_kernel}\"\n"
+        exit 1
+    fi
+
+    # Iterate through the support_matrix and verify that per-distros minimum
+    # requirements are satisfied.
     for distro in "${!sysbox_support_matrix[@]}"; do
 
         # Verify distro compatibility.
-        if [[ ${distro} = ${cur_distro} ]]; then
+        if [[ "${distro}" = "${cur_distro}" ]]; then
             found_supported_distro=true
 
             # Verify kernel compatibility.
             version_compare ${cur_kernel} ${sysbox_support_matrix[$distro]} && :
             if [[ $? -le 1 ]]; then
-                found_supported_kernel=true
+                found_distro_supported_kernel=true
             fi
 
             break
         fi
     done
 
+    # Let installation proceed in case of a non-officially supported distro.
+    # Yet, bail if an unsupported kernel is found for a supported distro.
     if [[ ${found_supported_distro} = false ]]; then
-        echo "Unsupported linux distribution: ${cur_distro}"
-        exit 1
-    fi
+        echo -e "\nUnsupported linux distribution / release: \"${cur_distro}\". Please be" \
+            "aware that Sysbox may not operate as expected.\n"
 
-    if [[ ${found_supported_kernel} = false ]]; then
-        echo "Unsupported linux kernel: ${cur_kernel}"
+    elif [[ ${found_distro_supported_kernel} = false ]]; then
+        echo -e "\nUnsupported linux kernel \"${cur_kernel}\" for distro \"${cur_distro}\".\n"
         exit 1
     fi
 }
 
 case "$1" in
-    install)
-        # Verify that sysbox's system requirements are met.
-        verify_compatibility
+install)
+    # Verify that sysbox's system requirements are met.
+    verify_compatibility
 
-        exit 0
-        ;;
+    exit 0
+    ;;
 
-    upgrade|abort-upgrade)
-        ;;
+upgrade | abort-upgrade) ;;
 
+\
     *)
-        echo "postinst called with unknown argument \`$1'" >&2
-        exit 0
-        ;;
+    echo "postinst called with unknown argument \`$1'" >&2
+    exit 0
+    ;;
 esac
 
 #DEBHELPER#
