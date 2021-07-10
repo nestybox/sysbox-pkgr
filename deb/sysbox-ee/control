@@ -2,7 +2,7 @@ Source: sysbox-ee
 Section: admin
 Priority: optional
 Maintainer: Nestybox <contact@nestybox.com>
-Build-Depends: debhelper (>= 12~),
+Build-Depends: debhelper (>= 10~),
                bash,
 Standards-Version: 4.1.4
 Homepage: nestybox.com
