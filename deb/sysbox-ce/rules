@@ -10,6 +10,9 @@ override_dh_auto_build:
 
 override_dh_auto_test:
 
+# Override dwz to avoid issues in debian-buster with debhelper=12 compat.
+override_dh_dwz:
+
 # ONESHELL attribute to ensure that all instruccions in this target are executed
 # within a single shell process.
 .ONESHELL:
