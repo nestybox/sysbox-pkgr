@@ -136,7 +136,7 @@ function remove_crio_removal_service() {
 }
 
 function deploy_kubelet_config_service() {
-	echo "Deploying Kubelet config agent on the host ..."
+	echo "Deploying Kubelet config agent on the host ... (will restart Kubelet and temporary bring down all pods on this node for ~1 min)"
 	mkdir -p ${host_run_crio_deploy_k8s}
 	cp ${artifacts}/scripts/kubelet-config-helper.sh ${host_usr_local_bin}/kubelet-config-helper.sh
 	cp ${artifacts}/systemd/kubelet-config-helper.service ${host_lib_systemd}/kubelet-config-helper.service

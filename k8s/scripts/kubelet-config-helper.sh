@@ -287,6 +287,23 @@ function clean_runtime_state() {
 		fi
 	done
 	set -e
+
+	if [[ "$runtime" =~ "containerd" ]]; then
+		echo "Stopping containerd on the host ..."
+		systemctl stop containerd.service
+
+		# Create a soft link from the containerd socket to the crio socket
+		# (some pods are designed to talk to containerd (e.g., gke-metadata-server)).
+		echo "Soft-linking containerd socket to CRI-O socket on the host ..."
+		rm -f /var/run/containerd/containerd.sock
+		ln -s /var/run/crio/crio.sock /var/run/containerd/containerd.sock
+	fi
+
+	# Store info about the prior runtime on the host so the
+	# kubelet-unconfig-helper service can revert it if/when the crio-cleanup-k8s
+	# daemonset runs.
+	mkdir -p "$run_crio_deploy_k8s"
+	echo $runtime > ${run_crio_deploy_k8s}/prior_runtime
 }
 
 function main() {
