@@ -106,6 +106,18 @@ function clean_runtime_state() {
 		fi
 	done
 	set -e
+
+	# Revert prior runtime config
+	local prior_runtime=$(cat ${run_crio_deploy_k8s}/prior_runtime)
+
+	if [[ "$prior_runtime" =~ "containerd" ]]; then
+
+		# This is a softlink created by kubelet-config-helper; remove it.
+		rm -f /var/run/containerd/containerd.sock
+
+		echo "Re-starting containerd on the host ..."
+		systemctl restart containerd
+	fi
 }
 
 function main() {
