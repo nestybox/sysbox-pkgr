@@ -30,6 +30,7 @@
 FROM centos/systemd
 
 ARG DEST=/opt/sysbox
+ARG CRICTL_VERSION="v1.20.0"
 
 RUN yum install -y curl wget git bc which
 
@@ -43,25 +44,50 @@ RUN curl -s https://api.github.com/repos/tomwright/dasel/releases/latest | \
     cut -d '"' -f 4 | \
     wget -qi - && mv dasel_linux_amd64 dasel && chmod +x dasel && mv ./dasel /usr/local/bin/dasel
 
+# crictl will be copied to the host, and used by the crio installation agents
+RUN wget https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-amd64.tar.gz \
+    && tar zxvf crictl-${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin \
+    && chmod +x /usr/local/bin/crictl \
+    && rm -f crictl-${CRICTL_VERSION}-linux-amd64.tar.gz
+
 # shiftfs-dkms sources
 RUN git clone --branch k5.4 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.4 \
     && git clone --branch k5.8 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.8 \
     && git clone --branch k5.11 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.11
 
 #
-# Load sysbox artifacts
+# Load Sysbox installation artifacts
 #
 
-COPY bin/sysbox-ee ${DEST}/bin
+COPY bin/sysbox-ee /opt/sysbox/bin
 
-COPY systemd/50-sysbox-mod.conf ${DEST}/systemd/50-sysbox-mod.conf
-COPY systemd/99-sysbox-sysctl.conf ${DEST}/systemd/99-sysbox-sysctl.conf
-COPY systemd/sysbox-installer-helper.service ${DEST}/systemd/sysbox-installer-helper.service
-COPY systemd/sysbox-removal-helper.service ${DEST}/systemd/sysbox-removal-helper.service
-COPY systemd/sysbox-fs.service ${DEST}/systemd/sysbox-fs.service
-COPY systemd/sysbox-mgr.service ${DEST}/systemd/sysbox-mgr.service
-COPY systemd/sysbox.service ${DEST}/systemd/sysbox.service
+COPY systemd/50-sysbox-mod.conf /opt/sysbox/systemd/50-sysbox-mod.conf
+COPY systemd/99-sysbox-sysctl.conf /opt/sysbox/systemd/99-sysbox-sysctl.conf
+COPY systemd/sysbox-installer-helper.service /opt/sysbox/systemd/sysbox-installer-helper.service
+COPY systemd/sysbox-removal-helper.service /opt/sysbox/systemd/sysbox-removal-helper.service
+COPY systemd/sysbox-fs.service /opt/sysbox/systemd/sysbox-fs.service
+COPY systemd/sysbox-mgr.service /opt/sysbox/systemd/sysbox-mgr.service
+COPY systemd/sysbox.service /opt/sysbox/systemd/sysbox.service
 
-COPY scripts/sysbox-ee-deploy-k8s.sh ${DEST}/scripts/sysbox-ee-deploy-k8s.sh
-COPY scripts/sysbox-installer-helper.sh ${DEST}/scripts/sysbox-installer-helper.sh
-COPY scripts/sysbox-removal-helper.sh ${DEST}/scripts/sysbox-removal-helper.sh
+COPY scripts/sysbox-ee-deploy-k8s.sh /opt/sysbox/scripts/sysbox-ee-deploy-k8s.sh
+COPY scripts/sysbox-installer-helper.sh /opt/sysbox/scripts/sysbox-installer-helper.sh
+COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.sh
+
+#
+# Load CRI-O installation artifacts
+#
+
+COPY systemd/crio-installer.service /opt/crio-deploy/systemd/crio-installer.service
+COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
+
+COPY scripts/crio-deploy-k8s.sh /opt/crio-deploy/scripts/crio-deploy-k8s.sh
+COPY scripts/crio-installer.sh /opt/crio-deploy/scripts/crio-installer.sh
+COPY scripts/crio-removal.sh /opt/crio-deploy/scripts/crio-removal.sh
+
+COPY systemd/kubelet-config-helper.service /opt/crio-deploy/systemd/kubelet-config-helper.service
+COPY scripts/kubelet-config-helper.sh /opt/crio-deploy/scripts/kubelet-config-helper.sh
+
+COPY systemd/kubelet-unconfig-helper.service /opt/crio-deploy/systemd/kubelet-unconfig-helper.service
+COPY scripts/kubelet-unconfig-helper.sh /opt/crio-deploy/scripts/kubelet-unconfig-helper.sh
+
+COPY config/crio-kubelet-options /opt/crio-deploy/config/crio-kubelet-options
