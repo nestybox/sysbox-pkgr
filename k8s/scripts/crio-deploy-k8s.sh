@@ -324,14 +324,6 @@ function node_has_label() {
 	fi
 }
 
-function host_install_precheck() {
-
-	# TODO: ensure this is not a K8s master node; must be a worker node as
-	# otherwise the Kubelet restart will kill K8s.
-
-	return
-}
-
 function main() {
 
 	euid=$(id -u)
@@ -357,12 +349,12 @@ function main() {
 
 		install)
 			if [[ "$runtime" != "crio" ]]; then
-				host_install_precheck
 				add_label_to_node "${k8s_node_label}=installing"
 				deploy_crio_installer_service
 				remove_crio_installer_service
 
-				# TODO: consider moving these into the crio_installer_service
+				# TODO: consider moving these into the crio_installer_service; this
+				# would save a CRI-O restart.
 				config_crio
 				restart_crio
 
