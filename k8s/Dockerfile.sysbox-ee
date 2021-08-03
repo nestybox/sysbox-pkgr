@@ -80,7 +80,6 @@ COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.
 COPY systemd/crio-installer.service /opt/crio-deploy/systemd/crio-installer.service
 COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
 
-COPY scripts/crio-deploy-k8s.sh /opt/crio-deploy/scripts/crio-deploy-k8s.sh
 COPY scripts/crio-installer.sh /opt/crio-deploy/scripts/crio-installer.sh
 COPY scripts/crio-removal.sh /opt/crio-deploy/scripts/crio-removal.sh
 
