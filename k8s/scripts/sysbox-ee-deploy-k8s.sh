@@ -45,7 +45,7 @@ host_os_release="/mnt/host/os-release"
 host_crio_conf_file="${host_etc}/crio/crio.conf"
 host_crio_conf_file_backup="${host_crio_conf_file}.orig"
 host_run="/mnt/host/run"
-host_run_crio_deploy_k8s="${host_run}/crio-deploy-k8s"
+host_run_sysbox_deploy_k8s="${host_run}/sysbox-deploy-k8s"
 
 # Subid defaults (Sysbox-EE supports up to 4K sys containers, each with 64k uids(gids))
 subid_alloc_min_start=100000
@@ -105,11 +105,11 @@ function remove_crio_removal_service() {
 
 function deploy_kubelet_config_service() {
 	echo "Deploying Kubelet config agent on the host ..."
-	mkdir -p ${host_run_crio_deploy_k8s}
+	mkdir -p ${host_run_sysbox_deploy_k8s}
 	cp ${crio_artifacts}/scripts/kubelet-config-helper.sh ${host_usr_local_bin}/kubelet-config-helper.sh
 	cp ${crio_artifacts}/systemd/kubelet-config-helper.service ${host_lib_systemd}/kubelet-config-helper.service
-	cp ${crio_artifacts}/config/crio-kubelet-options ${host_run_crio_deploy_k8s}/crio-kubelet-options
-	cp /usr/local/bin/crictl ${host_usr_local_bin}/crio-deploy-k8s-crictl
+	cp ${crio_artifacts}/config/crio-kubelet-options ${host_run_sysbox_deploy_k8s}/crio-kubelet-options
+	cp /usr/local/bin/crictl ${host_usr_local_bin}/sysbox-deploy-k8s-crictl
 
 	echo "Running Kubelet config agent on the host (will restart Kubelet and temporary bring down all pods on this node for ~1 min) ..."
 	systemctl daemon-reload
@@ -124,7 +124,7 @@ function remove_kubelet_config_service() {
 	echo "Removing Kubelet config agent from the host ..."
 	rm ${host_usr_local_bin}/kubelet-config-helper.sh
 	rm ${host_lib_systemd}/kubelet-config-helper.service
-	rm ${host_usr_local_bin}/crio-deploy-k8s-crictl
+	rm ${host_usr_local_bin}/sysbox-deploy-k8s-crictl
 	systemctl daemon-reload
 }
 
@@ -132,7 +132,7 @@ function deploy_kubelet_unconfig_service() {
 	echo "Deploying Kubelet unconfig agent on the host ..."
 	cp ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh ${host_usr_local_bin}/kubelet-unconfig-helper.sh
 	cp ${crio_artifacts}/systemd/kubelet-unconfig-helper.service ${host_lib_systemd}/kubelet-unconfig-helper.service
-	cp /usr/local/bin/crictl ${host_usr_local_bin}/crio-deploy-k8s-crictl
+	cp /usr/local/bin/crictl ${host_usr_local_bin}/sysbox-deploy-k8s-crictl
 
 	echo "Running Kubelet unconfig agent on the host (will restart Kubelet and temporary bring down all pods on this node for ~1 min) ..."
 	systemctl daemon-reload
@@ -147,7 +147,7 @@ function remove_kubelet_unconfig_service() {
 	echo "Removing Kubelet unconfig agent from the host ..."
 	rm ${host_usr_local_bin}/kubelet-unconfig-helper.sh
 	rm ${host_lib_systemd}/kubelet-unconfig-helper.service
-	rm ${host_usr_local_bin}/crio-deploy-k8s-crictl
+	rm ${host_usr_local_bin}/sysbox-deploy-k8s-crictl
 	systemctl daemon-reload
 }
 
@@ -566,7 +566,7 @@ function main() {
 
 	case "$action" in
 		install)
-			mkdir -p ${host_run_crio_deploy_k8s}
+			mkdir -p ${host_run_sysbox_deploy_k8s}
 			install_precheck
 
 			# Install CRI-O
@@ -576,7 +576,7 @@ function main() {
 				remove_crio_installer_service
 				config_crio
 				crio_restart_pending=true
-				echo "yes" > ${host_run_crio_deploy_k8s}/crio_installed
+				echo "yes" > ${host_run_sysbox_deploy_k8s}/crio_installed
 			fi
 
 			# Install Sysbox
@@ -586,7 +586,7 @@ function main() {
 				install_sysbox
 				config_crio_for_sysbox
 				crio_restart_pending=true
-				echo "yes" > ${host_run_crio_deploy_k8s}/sysbox_installed
+				echo "yes" > ${host_run_sysbox_deploy_k8s}/sysbox_installed
 			fi
 
 			if [[ "$crio_restart_pending" == "true" ]]; then
@@ -600,14 +600,14 @@ function main() {
 			# The K8s control plane will then re-create the pods, but this time
 			# with CRI-O. The operation can take up to 1 minute.
 			if [[ "$k8s_runtime" != "crio" ]]; then
-				echo "yes" > ${host_run_crio_deploy_k8s}/kubelet_reconfigured
+				echo "yes" > ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
 				deploy_kubelet_config_service
 			fi
 
 			# Kubelet config service cleanup
-			if [ -f ${host_run_crio_deploy_k8s}/kubelet_reconfigured ]; then
+			if [ -f ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
 				remove_kubelet_config_service
-				rm ${host_run_crio_deploy_k8s}/kubelet_reconfigured
+				rm ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
 				echo "Kubelet reconfig completed."
 			fi
 
@@ -619,46 +619,46 @@ function main() {
 			;;
 
 		cleanup)
-			mkdir -p ${host_run_crio_deploy_k8s}
+			mkdir -p ${host_run_sysbox_deploy_k8s}
 
 			# Switch the K8s runtime away from CRI-O (but only if this daemonset installed CRI-O previously)
-			if [ -f ${host_run_crio_deploy_k8s}/crio_installed ] && [[ "$k8s_runtime" == "crio" ]]; then
+			if [ -f ${host_run_sysbox_deploy_k8s}/crio_installed ] && [[ "$k8s_runtime" == "crio" ]]; then
 				add_label_to_node "crio-runtime=removing"
 
 				# Note: this will restart kubelet with the prior runtime (not
 				# CRI-O), thereby killing all pods (including this daemonset)
-				echo "yes" > ${host_run_crio_deploy_k8s}/kubelet_reconfigured
+				echo "yes" > ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
 				deploy_kubelet_unconfig_service
 			fi
 
-			if [ -f ${host_run_crio_deploy_k8s}/kubelet_reconfigured ]; then
+			if [ -f ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
 				remove_kubelet_unconfig_service
-				rm ${host_run_crio_deploy_k8s}/kubelet_reconfigured
+				rm ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
 				echo "Kubelet reconfig completed."
 			fi
 
 			# Uninstall Sysbox
-			if [ -f ${host_run_crio_deploy_k8s}/sysbox_installed ]; then
+			if [ -f ${host_run_sysbox_deploy_k8s}/sysbox_installed ]; then
 				add_label_to_node "sysbox-runtime=removing"
 				unconfig_crio_for_sysbox
 				remove_sysbox
 				remove_sysbox_deps
 				crio_restart_pending=true
-				rm ${host_run_crio_deploy_k8s}/sysbox_installed
+				rm ${host_run_sysbox_deploy_k8s}/sysbox_installed
 				rm_label_from_node "sysbox-runtime"
 				echo "Sysbox-EE removal completed."
 			fi
 
 			# Uninstall CRI-O
-			if [ -f ${host_run_crio_deploy_k8s}/crio_installed ]; then
+			if [ -f ${host_run_sysbox_deploy_k8s}/crio_installed ]; then
 				deploy_crio_removal_service
 				remove_crio_removal_service
 				crio_restart_pending=false
-				rm ${host_run_crio_deploy_k8s}/crio_installed
+				rm ${host_run_sysbox_deploy_k8s}/crio_installed
 				rm_label_from_node "crio-runtime"
 			fi
 
-			rm -rf ${host_run_crio_deploy_k8s}
+			rm -rf ${host_run_sysbox_deploy_k8s}
 
 			if [[ "$crio_restart_pending" == "true" ]]; then
 				restart_crio

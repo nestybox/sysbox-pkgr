@@ -24,11 +24,11 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-run_crio_deploy_k8s="/run/crio-deploy-k8s"
+run_sysbox_deploy_k8s="/run/sysbox-deploy-k8s"
 runtime=""
 
 kubelet_bin="/usr/bin/kubelet"
-crictl_bin="/usr/local/bin/crio-deploy-k8s-crictl"
+crictl_bin="/usr/local/bin/sysbox-deploy-k8s-crictl"
 
 function die() {
    msg="$*"
@@ -43,7 +43,7 @@ function get_kubelet_bin() {
 }
 
 function revert_kubelet_config() {
-	local config_file="${run_crio_deploy_k8s}/config"
+	local config_file="${run_sysbox_deploy_k8s}/config"
 
 	if [ ! -f "$config_file" ]; then
 		echo "Failed to revert kubelet config; file $config_file not found."
@@ -58,8 +58,8 @@ function revert_kubelet_config() {
 	# The config file will have this: kubelet_env_file=/path/to/file
 	# Here, we copy the orig config file to the target "/path/to/file".
 	local target=$(grep "kubelet_env_file" "$config_file" | cut -d "=" -f2)
-	cp "${run_crio_deploy_k8s}/kubelet.orig" "$target"
-	rm "${run_crio_deploy_k8s}/kubelet.orig"
+	cp "${run_sysbox_deploy_k8s}/kubelet.orig" "$target"
+	rm "${run_sysbox_deploy_k8s}/kubelet.orig"
 	rm "$config_file"
 }
 
@@ -108,7 +108,7 @@ function clean_runtime_state() {
 	set -e
 
 	# Revert prior runtime config
-	local prior_runtime=$(cat ${run_crio_deploy_k8s}/prior_runtime)
+	local prior_runtime=$(cat ${run_sysbox_deploy_k8s}/prior_runtime)
 
 	if [[ "$prior_runtime" =~ "containerd" ]]; then
 

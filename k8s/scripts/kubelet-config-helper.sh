@@ -24,11 +24,11 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-run_crio_deploy_k8s="/run/crio-deploy-k8s"
+run_sysbox_deploy_k8s="/run/sysbox-deploy-k8s"
 runtime=""
 
 kubelet_bin="/usr/bin/kubelet"
-crictl_bin="/usr/local/bin/crio-deploy-k8s-crictl"
+crictl_bin="/usr/local/bin/sysbox-deploy-k8s-crictl"
 
 function die() {
    msg="$*"
@@ -138,7 +138,7 @@ function replace_kubelet_env_var() {
 	local env_file=$1
 	local env_var=$2
 
-	readarray -t opts < ${run_crio_deploy_k8s}/crio-kubelet-options
+	readarray -t opts < ${run_sysbox_deploy_k8s}/crio-kubelet-options
 
 	# add newline at end of $env_file if not present
 	sed -i '$a\' "$env_file"
@@ -186,11 +186,11 @@ function replace_kubelet_env_var() {
 
 function backup_orig_config() {
 	local env_file=$1
-	local config_file="${run_crio_deploy_k8s}/config"
+	local config_file="${run_sysbox_deploy_k8s}/config"
 
-	mkdir -p "$run_crio_deploy_k8s"
+	mkdir -p "$run_sysbox_deploy_k8s"
 	echo "kubelet_env_file=${env_file}" > "$config_file"
-	cp "$env_file" "${run_crio_deploy_k8s}/kubelet.orig"
+	cp "$env_file" "${run_sysbox_deploy_k8s}/kubelet.orig"
 }
 
 # Configures the kubelet to use CRI-O, by modifying the systemd unit files that
@@ -302,8 +302,8 @@ function clean_runtime_state() {
 	# Store info about the prior runtime on the host so the
 	# kubelet-unconfig-helper service can revert it if/when the crio-cleanup-k8s
 	# daemonset runs.
-	mkdir -p "$run_crio_deploy_k8s"
-	echo $runtime > ${run_crio_deploy_k8s}/prior_runtime
+	mkdir -p "$run_sysbox_deploy_k8s"
+	echo $runtime > ${run_sysbox_deploy_k8s}/prior_runtime
 }
 
 function main() {
