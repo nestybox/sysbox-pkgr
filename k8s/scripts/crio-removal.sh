@@ -42,6 +42,8 @@ function uninstall_crio() {
 	# TODO: add support for non-ubuntu distros
 	echo "Uninstalling CRI-O ..."
 	apt-get purge cri-o -y
+	sed -i '/containers:/d' /etc/subuid
+	sed -i '/containers:/d' /etc/subgid
 	echo "CRI-O uninstallation done."
 }
 
