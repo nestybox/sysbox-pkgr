@@ -48,6 +48,7 @@ host_run="/mnt/host/run"
 host_run_sysbox_deploy_k8s="${host_run}/sysbox-deploy-k8s"
 
 # Subid defaults (Sysbox-EE supports up to 4K sys containers, each with 64k uids(gids))
+# We use CRI-O's default user "containers" for the sub-id range (rather than user "sysbox").
 subid_alloc_min_start=100000
 subid_alloc_min_range=268435456
 subid_alloc_max_end=4294967295
@@ -206,6 +207,10 @@ function rm_sysbox_from_host() {
 	rm -f "$host_usr_bin/sysbox-mgr"
 	rm -f "$host_usr_bin/sysbox-fs"
 	rm -f "$host_usr_bin/sysbox-runc"
+
+	# Remove sysbox from the /etc/subuid and /etc/subgid files
+	sed -i '/sysbox:/d' "${host_etc}/subuid"
+	sed -i '/sysbox:/d' "${host_etc}/subgid"
 }
 
 function copy_conf_to_host() {
@@ -459,11 +464,6 @@ function config_crio_for_sysbox() {
 
 	dasel put string -f "${host_crio_conf_file}" -p toml "crio.runtime.runtimes.sysbox-runc.allowed_annotations.[0]" \
 			"io.kubernetes.cri-o.userns-mode"
-
-	# Increase the subid range of user "containers" in /etc/subuid and /etc/subgid
-	get_subid_limits
-	config_subid_range "$subuid_file" "$subid_alloc_min_range" "$subuid_min" "$subuid_max"
-	config_subid_range "$subgid_file" "$subid_alloc_min_range" "$subgid_min" "$subgid_max"
 }
 
 function unconfig_crio_for_sysbox() {
