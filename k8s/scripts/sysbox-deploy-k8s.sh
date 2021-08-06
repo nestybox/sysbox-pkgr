@@ -332,11 +332,14 @@ function	install_sysbox_deps() {
 	fi
 
 	echo "Copying shiftfs sources to host"
-	if (( $(echo "$version >= 5.4" | bc -l) )) && (( $(echo "$version < 5.8" | bc -l) )); then
+	if semver_ge $version 5.4 && semver_lt $version 5.8 ; then
+		echo "Kernel version $version is >= 5.4 and < 5.8"
 		cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
-	elif (( $(echo "$version >= 5.8" | bc -l) )) && (( $(echo "$version < 5.11" | bc -l) )); then
+	elif semver_ge $version 5.8 && semver_lt $version 5.11; then
+		echo "Kernel version $version is >= 5.8 and < 5.11"
 		cp -r "/opt/shiftfs-k5.8" "$host_run/shiftfs-dkms"
 	else
+		echo "Kernel version $version is >= 5.11"
 		cp -r "/opt/shiftfs-k5.11" "$host_run/shiftfs-dkms"
 	fi
 
@@ -536,6 +539,80 @@ function install_precheck() {
 		do_sysbox_install="false"
 	fi
 }
+
+# Compare semantic versions; takes two semantic version numbers of the form
+# x.y.z (or x.y), and returns 0 if the first is a smaller version than the
+# second, and 1 otherwise.
+#
+# Kindly borrowed from: https://gist.github.com/maxrimue/ca69ee78081645e1ef62
+function semver_lt() {
+	v1=$1
+	v2=$2
+
+	# First, we replace the dots by blank spaces, like this:
+	v1=${v1//./ }
+	v2=${v2//./ }
+
+	# If you have a "v" in front of your versions, you can get rid of it like this:
+	v1=${v1//v/}
+	v2=${v2//v/}
+
+	# Now we have "0 12 0" and "1 15 5"
+	# So, we just need to extract each number like this:
+	patch1=$(echo $v1 | awk '{print $3}')
+	minor1=$(echo $v1 | awk '{print $2}')
+	major1=$(echo $v1 | awk '{print $1}')
+
+	patch2=$(echo $v2 | awk '{print $3}')
+	minor2=$(echo $v2 | awk '{print $2}')
+	major2=$(echo $v2 | awk '{print $1}')
+
+	# And now, we can simply compare the variables, like:
+	if [ $major1 -lt $major2 ]; then
+		return 0
+	elif [ $major1 -gt $major2 ]; then
+		return 1
+	elif [ $minor1 -lt $minor2 ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+function semver_ge() {
+	v1=$1
+	v2=$2
+
+	# First, we replace the dots by blank spaces, like this:
+	v1=${v1//./ }
+	v2=${v2//./ }
+
+	# If you have a "v" in front of your versions, you can get rid of it like this:
+	v1=${v1//v/}
+	v2=${v2//v/}
+
+	# Now we have "0 12 0" and "1 15 5"
+	# So, we just need to extract each number like this:
+	patch1=$(echo $v1 | awk '{print $3}')
+	minor1=$(echo $v1 | awk '{print $2}')
+	major1=$(echo $v1 | awk '{print $1}')
+
+	patch2=$(echo $v2 | awk '{print $3}')
+	minor2=$(echo $v2 | awk '{print $2}')
+	major2=$(echo $v2 | awk '{print $1}')
+
+	# And now, we can simply compare the variables, like:
+	if [ $major1 -gt $major2 ]; then
+		return 0
+	elif [ $major1 -lt $major2 ]; then
+		return 1
+	elif [ $minor1 -ge $minor2 ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
 
 #
 # Main Function
