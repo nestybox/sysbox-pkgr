@@ -45,6 +45,8 @@ function get_kubelet_bin() {
 function revert_kubelet_config() {
 	local config_file="${run_sysbox_deploy_k8s}/config"
 
+	echo "Reverting kubelet config (from $config_file)"
+
 	if [ ! -f "$config_file" ]; then
 		echo "Failed to revert kubelet config; file $config_file not found."
 		return
@@ -73,6 +75,30 @@ function stop_kubelet() {
 	systemctl stop kubelet
 }
 
+function revert_kubelet_config_snap() {
+	local prior_runtime=$(cat ${run_sysbox_deploy_k8s}/prior_runtime)
+
+	echo "Reverting kubelet snap config"
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${prior_runtime} == "" ]] || [[ ${prior_runtime} =~ "docker" ]]; then
+		echo "Reverting runtime to Docker"
+		snap unset $kubelet_snap container-runtime-endpoint
+		snap set $kubelet_snap container-runtime=docker
+	else
+		echo "Reverting runtime to $prior_runtime"
+		snap set $kubelet_snap container-runtime-endpoint=${prior_runtime}
+	fi
+}
+
+function restart_kubelet_snap() {
+	snap restart $kubelet_snap
+}
+
+function stop_kubelet_snap() {
+	snap stop $kubelet_snap
+}
+
 function get_runtime() {
 	set +e
 	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
@@ -81,6 +107,19 @@ function get_runtime() {
 	# If runtime is unknown, assume it's Docker
 	if [[ ${runtime} == "" ]]; then
 		runtime="unix:///var/run/dockershim.sock"
+	fi
+}
+
+function get_runtime_kubelet_snap() {
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
+
+	local ctr_runtime_type=$(snap get $kubelet_snap container-runtime)
+	if [[ "$ctr_runtime_type" == "remote" ]]; then
+		runtime=$(snap get $kubelet_snap container-runtime-endpoint)
 	fi
 }
 
@@ -107,7 +146,7 @@ function clean_runtime_state() {
 	done
 	set -e
 
-	# Revert prior runtime config
+	# Restart prior runtime
 	local prior_runtime=$(cat ${run_sysbox_deploy_k8s}/prior_runtime)
 
 	if [[ "$prior_runtime" =~ "containerd" ]]; then
@@ -118,6 +157,47 @@ function clean_runtime_state() {
 		echo "Re-starting containerd on the host ..."
 		systemctl restart containerd
 	fi
+
+	if [[ "$prior_runtime" =~ "dockershim" ]]; then
+		# This is a softlink created by kubelet-config-helper; remove it.
+		rm -f /var/run/dockershim.sock
+
+		echo "Re-starting docker on the host ..."
+		systemctl restart docker
+	fi
+}
+
+function do_unconfig() {
+	get_kubelet_bin
+	get_runtime
+
+	if [[ ! ${runtime} =~ "crio" ]]; then
+		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
+		return
+	fi
+
+	stop_kubelet
+	clean_runtime_state
+	revert_kubelet_config
+	restart_kubelet
+}
+
+function do_unconfig_kubelet_snap() {
+	echo "Detected kubelet snap package on host."
+
+	kubelet_snap=$(snap list | grep kubelet | awk '{print $1}')
+
+	get_runtime_kubelet_snap
+
+	if [[ ! ${runtime} =~ "crio" ]]; then
+		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
+		return
+	fi
+
+	stop_kubelet_snap
+	clean_runtime_state
+	revert_kubelet_config_snap
+	restart_kubelet_snap
 }
 
 function main() {
@@ -127,18 +207,13 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
-	get_kubelet_bin
-	get_runtime
-
-	if [[ ${runtime} != "unix:///run/crio/crio.sock" ]]; then
-		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
-		return
+	# Check if the kubelet is deployed via a snap service (as in Ubuntu-based AWS
+	# EKS nodes); otherwise assume it's deployed via a systemd service.
+	if snap list 2>&1 | grep -q kubelet; then
+		do_unconfig_kubelet_snap
+	else
+		do_unconfig
 	fi
-
-	stop_kubelet
-	clean_runtime_state
-	revert_kubelet_config
-	restart_kubelet
 }
 
 main "$@"

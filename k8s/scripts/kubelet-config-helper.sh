@@ -253,6 +253,19 @@ function stop_kubelet() {
 	systemctl stop kubelet
 }
 
+function config_kubelet_snap() {
+	snap set $kubelet_snap container-runtime=remote
+	snap set $kubelet_snap container-runtime-endpoint=unix:///var/run/crio/crio.sock
+}
+
+function restart_kubelet_snap() {
+	snap restart $kubelet_snap
+}
+
+function stop_kubelet_snap() {
+	snap stop $kubelet_snap
+}
+
 function get_runtime() {
 	set +e
 	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
@@ -264,7 +277,20 @@ function get_runtime() {
 	fi
 }
 
-# Wipe out all the pods managed by the given container runtime (dockershi, containerd, etc.)
+function get_runtime_kubelet_snap() {
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
+
+	local ctr_runtime_type=$(snap get $kubelet_snap container-runtime)
+	if [[ "$ctr_runtime_type" == "remote" ]]; then
+		runtime=$(snap get $kubelet_snap container-runtime-endpoint)
+	fi
+}
+
+# Wipe out all the pods managed by the given container runtime (dockershim, containerd, etc.)
 function clean_runtime_state() {
 	local runtime=$1
 
@@ -299,6 +325,14 @@ function clean_runtime_state() {
 		ln -s /var/run/crio/crio.sock /var/run/containerd/containerd.sock
 	fi
 
+	if [[ "$runtime" =~ "dockershim" ]]; then
+		# Create a soft link from the dockershim socket to the crio socket
+		# (some pods are designed to talk to dockershim (e.g., aws-node)).
+		echo "Soft-linking dockershim socket to CRI-O socket on the host ..."
+		rm -f /var/run/dockershim.sock
+		ln -s /var/run/crio/crio.sock /var/run/dockershim.sock
+	fi
+
 	# Store info about the prior runtime on the host so the
 	# kubelet-unconfig-helper service can revert it if/when the crio-cleanup-k8s
 	# daemonset runs.
@@ -306,12 +340,7 @@ function clean_runtime_state() {
 	echo $runtime > ${run_sysbox_deploy_k8s}/prior_runtime
 }
 
-function main() {
-
-	euid=$(id -u)
-	if [[ $euid -ne 0 ]]; then
-	   die "This script must be run as root"
-	fi
+function do_config() {
 
 	get_kubelet_bin
 	get_runtime
@@ -326,10 +355,10 @@ function main() {
 	# is dockershim this does not work well because after stopping the kubelet
 	# the dockershim also stops. Thus for dockershim we use a slightly different
 	# sequence which is less ideal because it cleans up pods while kubelet still
-	# runs, meaning that the cleanup pods can be replaced by kubelet, still using
+	# runs, meaning there is a chance the pods could be replaced by kubelet using
 	# the old runtime. However, the cleanup is immediately followed by a kubelet
-	# restart, so chances are kubelet will reset before it's had a chance to
-	# restore pods using the old runtime.
+	# restart, so chances are the kubelet will reset (and pick up the new
+	# runtime) before it's had a chance to restore pods using the old runtime.
 
 	if [[ ${runtime} =~ "dockershim" ]]; then
 		clean_runtime_state $runtime
@@ -341,7 +370,46 @@ function main() {
 		config_kubelet
 		restart_kubelet
 	fi
+}
 
+function do_config_kubelet_snap() {
+	echo "Detected kubelet snap package on host."
+
+	kubelet_snap=$(snap list | grep kubelet | awk '{print $1}')
+
+	get_runtime_kubelet_snap
+
+	if [[ ${runtime} =~ "crio" ]]; then
+		echo "Kubelet is already using CRI-O; no action will be taken."
+		return
+	fi
+
+	if [[ ${runtime} =~ "dockershim" ]]; then
+		clean_runtime_state $runtime
+		config_kubelet_snap
+		restart_kubelet_snap
+	else
+		stop_kubelet_snap
+		clean_runtime_state $runtime
+		config_kubelet_snap
+		restart_kubelet_snap
+	fi
+}
+
+function main() {
+
+	euid=$(id -u)
+	if [[ $euid -ne 0 ]]; then
+	   die "This script must be run as root"
+	fi
+
+	# Check if the kubelet is deployed via a snap service (as in Ubuntu-based AWS
+	# EKS nodes); otherwise assume it's deployed via a systemd service.
+	if snap list 2>&1 | grep -q kubelet; then
+		do_config_kubelet_snap
+	else
+		do_config
+	fi
 }
 
 main "$@"
