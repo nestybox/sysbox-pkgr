@@ -171,6 +171,17 @@ function config_crio() {
 	get_subid_limits
 	config_subid_range "$subuid_file" "$subid_alloc_min_range" "$subuid_min" "$subuid_max"
 	config_subid_range "$subgid_file" "$subid_alloc_min_range" "$subgid_min" "$subgid_max"
+
+	# If the prior runtime was Dockershim, configure the CRI-O default
+	# capabilities assigned to pods to match those of Docker (otherwise some pods
+	# that rely on these capabilities may fail (e.g., aws-node in EKS)).
+	if [[ $k8s_runtime =~ "docker" ]]; then
+		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "AUDIT_WRITE"
+		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "NET_RAW"
+		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SETFCAP"
+		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SYS_CHROOT"
+		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "MKNOD"
+	fi
 }
 
 function restart_crio() {
@@ -622,7 +633,7 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
-	local k8s_runtime=$(get_container_runtime)
+	k8s_runtime=$(get_container_runtime)
 
 	if [[ $k8s_runtime == "" ]]; then
 		die "Failed to detect K8s node runtime."
