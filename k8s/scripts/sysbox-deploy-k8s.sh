@@ -258,7 +258,7 @@ function apply_conf() {
 function start_sysbox() {
 	echo "Starting Sysbox"
 	systemctl restart sysbox
-   systemctl is-active --quiet sysbox
+	systemctl is-active --quiet sysbox
 }
 
 function stop_sysbox() {
@@ -321,7 +321,7 @@ function remove_sysbox_removal_helper() {
 	systemctl daemon-reload
 }
 
-function	install_sysbox_deps() {
+function install_sysbox_deps() {
 
 	# The installation of sysbox dependencies on the host is done via the
 	# sysbox-installer-helper agent, which is a systemd service that we drop on
