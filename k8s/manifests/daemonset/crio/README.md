@@ -11,7 +11,7 @@ SYSBOX ON THE HOST.**
 
 ***
 
-The crio-deploy-k8s daemenoset in this directory was previously needed to
+The crio-deploy-k8s daemonset in this directory was previously needed to
 install CRI-O on a Kubernetes node, in preparation to installing Sysbox on the
 node using the separate sysbox-deploy-k8s daemonset. This is no longer the case,
 as the latest version of the sysbox-deploy-k8s daemonset installs both CRI-O and
