@@ -189,8 +189,11 @@ function backup_orig_config() {
 	local config_file="${run_sysbox_deploy_k8s}/config"
 
 	mkdir -p "$run_sysbox_deploy_k8s"
-	echo "kubelet_env_file=${env_file}" > "$config_file"
-	cp "$env_file" "${run_sysbox_deploy_k8s}/kubelet.orig"
+
+	if [ -f $env_file ]; then
+		echo "kubelet_env_file=${env_file}" > "$config_file"
+		cp "$env_file" "${run_sysbox_deploy_k8s}/kubelet.orig"
+	fi
 }
 
 # Configures the kubelet to use CRI-O, by modifying the systemd unit files that
@@ -297,10 +300,11 @@ function clean_runtime_state() {
 	# Collect all the existing podIds as seen by crictl.
 	podList=$($crictl_bin --runtime-endpoint ${runtime} ps | awk 'NR>1 {print $NF}')
 
-   # Cleanup the pods; turn off errexit in these steps as we don't want to
+	# Cleanup the pods; turn off errexit in these steps as we don't want to
 	# interrupt the process if any of the instructions fail for a particular
 	# pod.
 	set +e
+
 	for pod in ${podList}; do
 		ret=$($crictl_bin --runtime-endpoint "${runtime}" stopp ${pod})
 		if [ $? -ne 0 ]; then
