@@ -30,6 +30,9 @@ runtime=""
 kubelet_bin="/usr/bin/kubelet"
 crictl_bin="/usr/local/bin/sysbox-deploy-k8s-crictl"
 
+# Container's default restart-policy mode (i.e. no restart).
+kubelet_ctr_restart_mode="no"
+
 function die() {
    msg="$*"
    echo "ERROR: $msg" >&2
@@ -99,6 +102,32 @@ function stop_kubelet_snap() {
 	snap stop $kubelet_snap
 }
 
+function revert_kubelet_config_rke() {
+	#local prior_runtime=$(cat ${run_sysbox_deploy_k8s}/prior_runtime)
+
+	local kubelet_entrypoint=$(docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet)
+
+	if [ -z ${kubelet_entrypoint} ] ||
+		! docker exec kubelet bash -c "test -f ${kubelet_entrypoint}.orig"; then
+		echo "Failed to revert kubelet config; original entrypoint not found: ${kubelet_entrypoint}.orig"
+		return
+	fi
+
+	echo "Reverting kubelet rke config"
+
+	# Revert to original entrypoint.
+	docker exec kubelet bash -c "mv ${kubelet_entrypoint}.orig ${kubelet_entrypoint}"
+	#docker exec kubelet bash -c "rm -rf ${kubelet_entrypoint}.orig"
+}
+
+function restart_kubelet_rke() {
+	docker restart kubelet
+}
+
+function stop_kubelet_rke() {
+	docker stop kubelet
+}
+
 function get_runtime() {
 	set +e
 	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
@@ -123,13 +152,24 @@ function get_runtime_kubelet_snap() {
 	fi
 }
 
+function get_runtime_rke() {
+	set +e
+	runtime=$(ps -ef | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	set -e
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
+}
+
 # Wipe out all the pods previously created by the current runtime (i.e., CRI-O)
 function clean_runtime_state() {
 
 	# Collect all the existing podIds as seen by crictl.
 	podList=$($crictl_bin --runtime-endpoint ${runtime} ps | awk 'NR>1 {print $NF}')
 
-   # Cleanup the pods; turn off errexit in these steps as we don't want to
+	# Cleanup the pods; turn off errexit in these steps as we don't want to
 	# interrupt the process if any of the instructions fail for a particular
 	# pod.
 	set +e
@@ -167,7 +207,7 @@ function clean_runtime_state() {
 	fi
 }
 
-function do_unconfig() {
+function do_unconfig_kubelet() {
 	get_kubelet_bin
 	get_runtime
 
@@ -200,8 +240,62 @@ function do_unconfig_kubelet_snap() {
 	restart_kubelet_snap
 }
 
-function main() {
+function set_ctr_restart_policy() {
+	local cntr=$1
+	local mode=$2
 
+	if [[ $mode != "on" ]] &&
+		[[ $mode != "always" ]] &&
+		[[ $mode != "on-failure" ]] &&
+		[[ $mode != "unless-stopped" ]]; then
+		echo "Unsupported policy-restart mode: $mode"
+		return
+	fi
+
+	echo "Modifying $cntr container's restart-policy to mode: $mode."
+	docker update --restart=$mode $cntr
+}
+
+function set_kubelet_ctr_restart_policy() {
+	local mode=$1
+
+	kubelet_ctr_restart_mode=$(docker inspect --format='{{.HostConfig.RestartPolicy.Name}}' kubelet)
+
+	set_ctr_restart_policy "kubelet" $mode
+}
+
+function revert_kubelet_ctr_restart_policy() {
+	set_ctr_restart_policy "kubelet" $kubelet_ctr_restart_mode
+}
+
+function do_unconfig_kubelet_rke() {
+	#get_kubelet_bin
+	get_runtime_rke
+
+	if [[ ! ${runtime} =~ "crio" ]]; then
+		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
+		return
+	fi
+
+	set_kubelet_ctr_restart_policy "no"
+	revert_kubelet_config_rke
+	stop_kubelet_rke
+	clean_runtime_state
+	restart_kubelet_rke
+	revert_kubelet_ctr_restart_policy
+}
+
+function kubelet_snap_deployment() {
+	snap list 2>&1 | grep -q kubelet
+}
+
+function kubelet_rke_deployment() {
+	docker inspect --format='{{.Config.Labels}}' kubelet | \
+		egrep -q "rke.container.name:kubelet"
+}
+
+function main() {
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 	   die "This script must be run as root"
@@ -209,10 +303,12 @@ function main() {
 
 	# Check if the kubelet is deployed via a snap service (as in Ubuntu-based AWS
 	# EKS nodes); otherwise assume it's deployed via a systemd service.
-	if snap list 2>&1 | grep -q kubelet; then
+	if kubelet_snap_deployment; then
 		do_unconfig_kubelet_snap
+	elif kubelet_rke_deployment; then
+		do_unconfig_kubelet_rke
 	else
-		do_unconfig
+		do_unconfig_kubelet
 	fi
 }
 

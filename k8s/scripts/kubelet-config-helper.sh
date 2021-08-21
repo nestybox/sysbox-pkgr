@@ -269,6 +269,57 @@ function stop_kubelet_snap() {
 	snap stop $kubelet_snap
 }
 
+# Updates the entrypoint script corresponding to the kubelet container present
+# in rke setups.
+function config_kubelet_rke_update() {
+	local env_file=$1
+
+	local kubelet_entrypoint=$(docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet)
+
+	# Backup original entrypoint file -- to be utilized by kubelet-unconfig-helper
+	# script to revert configuration.
+	docker exec kubelet bash -c "cp ${kubelet_entrypoint} ${kubelet_entrypoint}.orig"
+
+	# Extract the kubelet attributes to execute with.
+	local kubelet_attribs=$(cat $env_file | cut -d'"' -f 2)
+
+	# Adjust kubelet's container entrypoint to incorporate the new exec attributes.
+	docker exec kubelet bash -c "sed -i 's@exec .*@exec kubelet ${kubelet_attribs}@' ${kubelet_entrypoint}"
+
+	echo "Kubelet config updated within container's entrypoint: ${kubelet_entrypoint}"
+}
+
+# Configures the kubelet to use cri-o in rke setups.
+function config_kubelet_rke() {
+
+	# Temp variables to hold kubelet's config file and its config attributes.
+	# Note that technically these are not needed but we're using them here to
+	# ease the utilization below of pre-existing funtions.
+	local kubelet_env_file="/etc/default/kubelet-rke"
+	local kubelet_env_var="KUBELET_EXTRA_ARGS"
+
+	# Extract kubelet's current execution attributes and store them in the fs.
+	local cur_kubelet_attr=$(ps -e -o command | egrep ^kubelet | cut -d" " -f2-)
+
+	echo "${kubelet_env_var}=\"${cur_kubelet_attr}\"" >> "${kubelet_env_file}"
+
+	# Add crio-specific config attributes to the temporary kubelet config file.
+	#add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
+	replace_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
+
+	# Modify the actual kubelet's config file (container entrypoint) to reflect
+	# the new attributes obtained above.
+	config_kubelet_rke_update "$kubelet_env_file"
+}
+
+function restart_kubelet_rke() {
+	docker restart kubelet
+}
+
+function stop_kubelet_rke() {
+	docker stop kubelet
+}
+
 function get_runtime() {
 	set +e
 	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
@@ -290,6 +341,17 @@ function get_runtime_kubelet_snap() {
 	local ctr_runtime_type=$(snap get $kubelet_snap container-runtime)
 	if [[ "$ctr_runtime_type" == "remote" ]]; then
 		runtime=$(snap get $kubelet_snap container-runtime-endpoint)
+	fi
+}
+
+function get_runtime_rke() {
+	set +e
+	runtime=$(ps -ef | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	set -e
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
 	fi
 }
 
@@ -344,7 +406,7 @@ function clean_runtime_state() {
 	echo $runtime > ${run_sysbox_deploy_k8s}/prior_runtime
 }
 
-function do_config() {
+function do_config_kubelet() {
 
 	get_kubelet_bin
 	get_runtime
@@ -400,8 +462,37 @@ function do_config_kubelet_snap() {
 	fi
 }
 
-function main() {
+function do_config_kubelet_rke() {
+	echo "Detected kubelet rke deployment on host."
 
+	get_runtime_rke
+
+	if [[ ${runtime} =~ "crio" ]]; then
+		echo "Kubelet is already using CRI-O; no action will be taken."
+		return
+	fi
+
+	# No runtime other than dockershim, and obviously crio, are expected in an
+	# rke deployment.
+	if [[ ${runtime} =~ "dockershim" ]]; then
+		stop_kubelet_rke
+		clean_runtime_state $runtime
+		config_kubelet_rke
+		restart_kubelet_rke
+	fi
+}
+
+function kubelet_snap_deployment() {
+	snap list 2>&1 | grep -q kubelet
+}
+
+function kubelet_rke_deployment() {
+	docker inspect --format='{{.Config.Labels}}' kubelet | \
+		egrep -q "rke.container.name:kubelet"
+}
+
+function main() {
+set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 	   die "This script must be run as root"
@@ -409,10 +500,12 @@ function main() {
 
 	# Check if the kubelet is deployed via a snap service (as in Ubuntu-based AWS
 	# EKS nodes); otherwise assume it's deployed via a systemd service.
-	if snap list 2>&1 | grep -q kubelet; then
+	if kubelet_snap_deployment; then
 		do_config_kubelet_snap
+	elif kubelet_rke_deployment; then
+		do_config_kubelet_rke
 	else
-		do_config
+		do_config_kubelet
 	fi
 }
 
