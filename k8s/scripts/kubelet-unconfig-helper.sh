@@ -103,8 +103,8 @@ function stop_kubelet_snap() {
 }
 
 function revert_kubelet_config_rke() {
-	#local prior_runtime=$(cat ${run_sysbox_deploy_k8s}/prior_runtime)
 
+	# Obtain kubelet's container entrypoint.
 	local kubelet_entrypoint=$(docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet)
 
 	if [ -z ${kubelet_entrypoint} ] ||
@@ -117,7 +117,6 @@ function revert_kubelet_config_rke() {
 
 	# Revert to original entrypoint.
 	docker exec kubelet bash -c "mv ${kubelet_entrypoint}.orig ${kubelet_entrypoint}"
-	#docker exec kubelet bash -c "rm -rf ${kubelet_entrypoint}.orig"
 }
 
 function restart_kubelet_rke() {
@@ -240,10 +239,12 @@ function do_unconfig_kubelet_snap() {
 	restart_kubelet_snap
 }
 
+# Sets the restart-policy mode for any given docker container.
 function set_ctr_restart_policy() {
 	local cntr=$1
 	local mode=$2
 
+	# Docker's supported restart-policy modes.
 	if [[ $mode != "on" ]] &&
 		[[ $mode != "always" ]] &&
 		[[ $mode != "on-failure" ]] &&
@@ -252,10 +253,15 @@ function set_ctr_restart_policy() {
 		return
 	fi
 
-	echo "Modifying $cntr container's restart-policy to mode: $mode."
-	docker update --restart=$mode $cntr
+	if ! docker update --restart=$mode $cntr; then
+		echo "Unable to modify container $cntr restart mode to $mode."
+		return
+	fi
+
+	echo "Successfully modified $cntr container's restart-policy to mode: $mode."
 }
 
+# Sets the restart-policy mode for the kubelet docker container.
 function set_kubelet_ctr_restart_policy() {
 	local mode=$1
 
@@ -264,18 +270,29 @@ function set_kubelet_ctr_restart_policy() {
 	set_ctr_restart_policy "kubelet" $mode
 }
 
+# Reverts the restart-policy mode previously stored in a global-variable.
 function revert_kubelet_ctr_restart_policy() {
 	set_ctr_restart_policy "kubelet" $kubelet_ctr_restart_mode
 }
 
 function do_unconfig_kubelet_rke() {
-	#get_kubelet_bin
 	get_runtime_rke
 
 	if [[ ! ${runtime} =~ "crio" ]]; then
 		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
 		return
 	fi
+
+	# In RKE's case we must add a few steps to the typical logic utilized in other
+	# setups. In this case, as kubelet executes as the 'init' process of a docker
+	# container, we must do the following:
+	#
+	# * Modify kubelet's container restart-policy to prevent this one from being
+	#   re-spawned by docker once that we temporarily shut it down.
+	# * Revert the kubelet's container entrypoint to honor its original
+	#   initialization attributes.
+	# * Once the usual kubelet's "stop + clean + restart" cycle is completed, we
+	#   must revert the changes made to the kubelet's container restart-policy.
 
 	set_kubelet_ctr_restart_policy "no"
 	revert_kubelet_config_rke
@@ -301,8 +318,13 @@ function main() {
 	   die "This script must be run as root"
 	fi
 
-	# Check if the kubelet is deployed via a snap service (as in Ubuntu-based AWS
-	# EKS nodes); otherwise assume it's deployed via a systemd service.
+	#
+	# The following kubelet deployment scenarios are currently supported:
+	#
+	# * Snap: Kubelet deployed via a snap service (as in Ubuntu-based AWS EKS nodes).
+	# * RKE: Kubelet deployed as part of a docker container (Rancher's RKE approach).
+	# * Systemd: Kubelet deployed via a systemd service (most common approach).
+	#
 	if kubelet_snap_deployment; then
 		do_unconfig_kubelet_snap
 	elif kubelet_rke_deployment; then

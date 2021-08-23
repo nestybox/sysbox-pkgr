@@ -293,23 +293,21 @@ function config_kubelet_rke_update() {
 function config_kubelet_rke() {
 
 	# Temp variables to hold kubelet's config file and its config attributes.
-	# Note that technically these are not needed but we're using them here to
-	# ease the utilization below of pre-existing funtions.
-	local kubelet_env_file="/etc/default/kubelet-rke"
-	local kubelet_env_var="KUBELET_EXTRA_ARGS"
+	local kubelet_tmp_file="/etc/default/kubelet-rke"
+	local kubelet_tmp_var="KUBELET_EXTRA_ARGS"
 
-	# Extract kubelet's current execution attributes and store them in the fs.
+	# Extract kubelet's current execution attributes and store them in a temp file.
 	local cur_kubelet_attr=$(ps -e -o command | egrep ^kubelet | cut -d" " -f2-)
-
-	echo "${kubelet_env_var}=\"${cur_kubelet_attr}\"" >> "${kubelet_env_file}"
+	echo "${kubelet_tmp_var}=\"${cur_kubelet_attr}\"" > "${kubelet_tmp_file}"
 
 	# Add crio-specific config attributes to the temporary kubelet config file.
-	#add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
-	replace_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
+	replace_kubelet_env_var "$kubelet_tmp_file" "$kubelet_tmp_var"
 
 	# Modify the actual kubelet's config file (container entrypoint) to reflect
 	# the new attributes obtained above.
-	config_kubelet_rke_update "$kubelet_env_file"
+	config_kubelet_rke_update "$kubelet_tmp_file"
+
+	rm -rf "$kubelet_tmp_file"
 }
 
 function restart_kubelet_rke() {
@@ -355,8 +353,7 @@ function get_runtime_rke() {
 	fi
 }
 
-# Wipe out all the pods managed by the given container runtime (dockershim, containerd, etc.)
-function clean_runtime_state() {
+function clean_runtime_state_containerd() {
 	local runtime=$1
 
 	# Collect all the existing podIds as seen by crictl.
@@ -380,23 +377,70 @@ function clean_runtime_state() {
 	done
 	set -e
 
+	echo "Stopping containerd on the host ..."
+	systemctl stop containerd.service
+
+	# Create a soft link from the containerd socket to the crio socket
+	# (some pods are designed to talk to containerd (e.g., gke-metadata-server)).
+	echo "Soft-linking containerd socket to CRI-O socket on the host ..."
+	rm -f /var/run/containerd/containerd.sock
+	ln -s /var/run/crio/crio.sock /var/run/containerd/containerd.sock
+}
+
+function clean_runtime_state_dockershim() {
+	local runtime=$1
+	shift
+	local podUids=("$@")
+
+	# Collect all the existing containers as seen by docker.
+	local cntrList=$(docker ps | awk 'NR>1 {print $1}')
+
+	# Cleanup the pods; turn off errexit in these steps as we don't want to
+	# interrupt the process if any of the instructions fail for a particular
+	# pod / container.
+	set +e
+
+	for podUid in ${podUids}; do
+		for cntr in ${cntrList}; do
+			ret=$(docker inspect --format='{{index .Config.Labels "io.kubernetes.pod.uid"}}' $cntr | grep -q $podUid)
+			if [ $? -ne 0 ]; then
+				continue
+			fi
+
+			ret=$(docker stop $cntr)
+			if [ $? -ne 0 ]; then
+				echo "Failed to stop cntr ${cntr} from pod ${podUid}: $ret"
+			fi
+
+			ret=$(docker rm $cntr)
+			if [ $? -ne 0 ]; then
+				echo "Failed to remove cntr ${cntr} from pod ${podUid}: $ret"
+			fi
+		done
+	done
+
+	set -e
+
+	# Create a soft link from the dockershim socket to the crio socket
+	# (some pods are designed to talk to dockershim (e.g., aws-node)).
+	echo "Soft-linking dockershim socket to CRI-O socket on the host ..."
+	rm -f /var/run/dockershim.sock
+	ln -s /var/run/crio/crio.sock /var/run/dockershim.sock
+}
+
+# Wipe out all the pods managed by the given container runtime (dockershim, containerd, etc.)
+function clean_runtime_state() {
+	local runtime=$1
+	shift
+	local podUids=("$@")
+
 	if [[ "$runtime" =~ "containerd" ]]; then
-		echo "Stopping containerd on the host ..."
-		systemctl stop containerd.service
-
-		# Create a soft link from the containerd socket to the crio socket
-		# (some pods are designed to talk to containerd (e.g., gke-metadata-server)).
-		echo "Soft-linking containerd socket to CRI-O socket on the host ..."
-		rm -f /var/run/containerd/containerd.sock
-		ln -s /var/run/crio/crio.sock /var/run/containerd/containerd.sock
-	fi
-
-	if [[ "$runtime" =~ "dockershim" ]]; then
-		# Create a soft link from the dockershim socket to the crio socket
-		# (some pods are designed to talk to dockershim (e.g., aws-node)).
-		echo "Soft-linking dockershim socket to CRI-O socket on the host ..."
-		rm -f /var/run/dockershim.sock
-		ln -s /var/run/crio/crio.sock /var/run/dockershim.sock
+		clean_runtime_state_containerd "$runtime"
+	elif [[ "$runtime" =~ "dockershim" ]]; then
+		clean_runtime_state_dockershim "$runtime" "$podUids"
+	else
+		echo "Container runtime not supported: ${runtime}"
+		return
 	fi
 
 	# Store info about the prior runtime on the host so the
@@ -404,6 +448,10 @@ function clean_runtime_state() {
 	# daemonset runs.
 	mkdir -p "$run_sysbox_deploy_k8s"
 	echo $runtime > ${run_sysbox_deploy_k8s}/prior_runtime
+}
+
+function get_pods_uids() {
+	$crictl_bin --runtime-endpoint ${runtime} pods -v | egrep ^UID | cut -d" " -f2
 }
 
 function do_config_kubelet() {
@@ -418,21 +466,26 @@ function do_config_kubelet() {
 
 	# The ideal sequence is to stop the kubelet, cleanup all pods with the
 	# existing runtime, reconfig the kubelet, and restart it. But if the runtime
-	# is dockershim this does not work well because after stopping the kubelet
-	# the dockershim also stops. Thus for dockershim we use a slightly different
-	# sequence which is less ideal because it cleans up pods while kubelet still
-	# runs, meaning there is a chance the pods could be replaced by kubelet using
-	# the old runtime. However, the cleanup is immediately followed by a kubelet
-	# restart, so chances are the kubelet will reset (and pick up the new
-	# runtime) before it's had a chance to restore pods using the old runtime.
+	# is dockershim this logic does not work well by itself, because after stopping
+	# the kubelet the dockershim also stops. Thus, for dockershim we must complement
+	# this logic with an extra step: we obtain all the existing pods before
+	# stopping kubelet (A), and later on, once that kubelet is stopped (B), we
+	# eliminate these pods through the docker-cli interface (C). Technically,
+	# there's room for a race-condition scenario in which new pods could be deployed
+	# right between (A) and (B), but being the time-window so small, we can safely
+	# ignore this case in most setups; in the worst case scenario we would simply
+	# ended up with a duplicated/stale ("non-ready") pod instantiation, but this
+	# wouldn't affect the proper operation of the primary ("ready") one.
 
 	if [[ ${runtime} =~ "dockershim" ]]; then
-		clean_runtime_state $runtime
+		local podUids=$(get_pods_uids)
+		stop_kubelet
+		clean_runtime_state "$runtime" "$podUids"
 		config_kubelet
 		restart_kubelet
 	else
 		stop_kubelet
-		clean_runtime_state $runtime
+		clean_runtime_state "$runtime"
 		config_kubelet
 		restart_kubelet
 	fi
@@ -451,12 +504,14 @@ function do_config_kubelet_snap() {
 	fi
 
 	if [[ ${runtime} =~ "dockershim" ]]; then
-		clean_runtime_state $runtime
+		local podUids=$(get_pods_uids)
+		stop_kubelet_snap
+		clean_runtime_state "$runtime" "$podUids"
 		config_kubelet_snap
 		restart_kubelet_snap
 	else
 		stop_kubelet_snap
-		clean_runtime_state $runtime
+		clean_runtime_state "$runtime"
 		config_kubelet_snap
 		restart_kubelet_snap
 	fi
@@ -474,12 +529,18 @@ function do_config_kubelet_rke() {
 
 	# No runtime other than dockershim, and obviously crio, are expected in an
 	# rke deployment.
-	if [[ ${runtime} =~ "dockershim" ]]; then
-		stop_kubelet_rke
-		clean_runtime_state $runtime
-		config_kubelet_rke
-		restart_kubelet_rke
+	if [[ ! ${runtime} =~ "dockershim" ]]; then
+		echo "Unsupported runtime for RKE scenario: $runtime"
+		return
 	fi
+
+	# Modify kubelet's container entrypoint to meet cri-o requirements.
+	config_kubelet_rke
+
+	local podUids=$(get_pods_uids)
+	stop_kubelet_rke
+	clean_runtime_state "$runtime" "$podUids"
+	restart_kubelet_rke
 }
 
 function kubelet_snap_deployment() {
@@ -498,8 +559,13 @@ set -x
 	   die "This script must be run as root"
 	fi
 
-	# Check if the kubelet is deployed via a snap service (as in Ubuntu-based AWS
-	# EKS nodes); otherwise assume it's deployed via a systemd service.
+	#
+	# The following kubelet deployment scenarios are currently supported:
+	#
+	# * Snap: Kubelet deployed via a snap service (as in Ubuntu-based AWS EKS nodes).
+	# * RKE: Kubelet deployed as part of a docker container (RAncher's RKE approach).
+	# * Systemd: Kubelet deployed via a systemd service (most common approach).
+	#
 	if kubelet_snap_deployment; then
 		do_config_kubelet_snap
 	elif kubelet_rke_deployment; then
