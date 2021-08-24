@@ -30,6 +30,9 @@ runtime=""
 kubelet_bin="/usr/bin/kubelet"
 crictl_bin="/usr/local/bin/sysbox-deploy-k8s-crictl"
 
+# Container's default restart-policy mode (i.e. no restart).
+kubelet_ctr_restart_mode="no"
+
 function die() {
    msg="$*"
    echo "ERROR: $msg" >&2
@@ -269,6 +272,42 @@ function stop_kubelet_snap() {
 	snap stop $kubelet_snap
 }
 
+# Sets the restart-policy mode for any given docker container.
+function set_ctr_restart_policy() {
+	local cntr=$1
+	local mode=$2
+
+	# Docker's supported restart-policy modes.
+	if [[ $mode != "no" ]] &&
+		[[ $mode != "always" ]] &&
+		[[ $mode != "on-failure" ]] &&
+		[[ $mode != "unless-stopped" ]]; then
+		echo "Unsupported restart-policy mode: $mode"
+		return
+	fi
+
+	if ! docker update --restart=$mode $cntr; then
+		echo "Unable to modify container $cntr restart mode to $mode."
+		return
+	fi
+
+	echo "Successfully modified $cntr container's restart-policy to mode: $mode."
+}
+
+# Sets the restart-policy mode for the kubelet docker container.
+function set_kubelet_ctr_restart_policy() {
+	local mode=$1
+
+	kubelet_ctr_restart_mode=$(docker inspect --format='{{.HostConfig.RestartPolicy.Name}}' kubelet)
+
+	set_ctr_restart_policy "kubelet" $mode
+}
+
+# Reverts the restart-policy mode previously stored in a global-variable.
+function revert_kubelet_ctr_restart_policy() {
+	set_ctr_restart_policy "kubelet" $kubelet_ctr_restart_mode
+}
+
 # Updates the entrypoint script corresponding to the kubelet container present
 # in rke setups.
 function config_kubelet_rke_update() {
@@ -297,7 +336,7 @@ function config_kubelet_rke() {
 	local kubelet_tmp_var="KUBELET_EXTRA_ARGS"
 
 	# Extract kubelet's current execution attributes and store them in a temp file.
-	local cur_kubelet_attr=$(ps -e -o command | egrep ^kubelet | cut -d" " -f2-)
+	local cur_kubelet_attr=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | cut -d\" \" -f2-")
 	echo "${kubelet_tmp_var}=\"${cur_kubelet_attr}\"" > "${kubelet_tmp_file}"
 
 	# Add crio-specific config attributes to the temporary kubelet config file.
@@ -344,7 +383,7 @@ function get_runtime_kubelet_snap() {
 
 function get_runtime_rke() {
 	set +e
-	runtime=$(ps -ef | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
 	set -e
 
 	# If runtime is unknown, assume it's Docker
@@ -474,7 +513,7 @@ function do_config_kubelet() {
 	# there's room for a race-condition scenario in which new pods could be deployed
 	# right between (A) and (B), but being the time-window so small, we can safely
 	# ignore this case in most setups; in the worst case scenario we would simply
-	# ended up with a duplicated/stale ("non-ready") pod instantiation, but this
+	# end up with a duplicated/stale ("non-ready") pod instantiation, but this
 	# wouldn't affect the proper operation of the primary ("ready") one.
 
 	if [[ ${runtime} =~ "dockershim" ]]; then
@@ -518,7 +557,7 @@ function do_config_kubelet_snap() {
 }
 
 function do_config_kubelet_rke() {
-	echo "Detected kubelet rke deployment on host."
+	echo "Detected kubelet RKE deployment on host."
 
 	get_runtime_rke
 
@@ -534,13 +573,23 @@ function do_config_kubelet_rke() {
 		return
 	fi
 
-	# Modify kubelet's container entrypoint to meet cri-o requirements.
-	config_kubelet_rke
+	# In RKE's case we must add a few steps to the typical logic utilized in other
+	# dockershim setups. In this case, as kubelet executes as the 'init' process
+	# of a docker container, we must do the following:
+	#
+	# * Modify kubelet's container restart-policy to prevent this one from being
+	#   re-spawned by docker once that we temporarily shut it down.
+	# * Configurate the kubelet's container entrypoint to meet cri-o requirements.
+	# * Once the usual kubelet's "stop + clean + restart" cycle is completed, we
+	#   must revert the changes made to the kubelet's container restart-policy.
 
+	set_kubelet_ctr_restart_policy "no"
+	config_kubelet_rke
 	local podUids=$(get_pods_uids)
 	stop_kubelet_rke
 	clean_runtime_state "$runtime" "$podUids"
 	restart_kubelet_rke
+	revert_kubelet_ctr_restart_policy
 }
 
 function kubelet_snap_deployment() {
@@ -548,6 +597,14 @@ function kubelet_snap_deployment() {
 }
 
 function kubelet_rke_deployment() {
+
+	# Docker presence is a must-have in rke setups. As we are enforcing this
+	# requirement at the very beginning of the execution path, no other rke
+	# related routine will check for docker's presence.
+	if ! command -v docker >/dev/null 2>&1; then
+		return 1
+	fi
+
 	docker inspect --format='{{.Config.Labels}}' kubelet | \
 		egrep -q "rke.container.name:kubelet"
 }
@@ -563,7 +620,7 @@ set -x
 	# The following kubelet deployment scenarios are currently supported:
 	#
 	# * Snap: Kubelet deployed via a snap service (as in Ubuntu-based AWS EKS nodes).
-	# * RKE: Kubelet deployed as part of a docker container (RAncher's RKE approach).
+	# * RKE: Kubelet deployed as part of a docker container (Rancher's RKE approach).
 	# * Systemd: Kubelet deployed via a systemd service (most common approach).
 	#
 	if kubelet_snap_deployment; then
