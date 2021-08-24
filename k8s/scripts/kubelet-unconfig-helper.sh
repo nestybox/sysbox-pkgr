@@ -113,7 +113,7 @@ function revert_kubelet_config_rke() {
 		return
 	fi
 
-	echo "Reverting kubelet rke config"
+	echo "Reverting kubelet's RKE config"
 
 	# Revert to original entrypoint.
 	docker exec kubelet bash -c "mv ${kubelet_entrypoint}.orig ${kubelet_entrypoint}"
@@ -153,7 +153,7 @@ function get_runtime_kubelet_snap() {
 
 function get_runtime_rke() {
 	set +e
-	runtime=$(ps -ef | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
 	set -e
 
 	# If runtime is unknown, assume it's Docker
@@ -245,11 +245,11 @@ function set_ctr_restart_policy() {
 	local mode=$2
 
 	# Docker's supported restart-policy modes.
-	if [[ $mode != "on" ]] &&
+	if [[ $mode != "no" ]] &&
 		[[ $mode != "always" ]] &&
 		[[ $mode != "on-failure" ]] &&
 		[[ $mode != "unless-stopped" ]]; then
-		echo "Unsupported policy-restart mode: $mode"
+		echo "Unsupported restart-policy mode: $mode"
 		return
 	fi
 
@@ -307,6 +307,14 @@ function kubelet_snap_deployment() {
 }
 
 function kubelet_rke_deployment() {
+
+	# Docker presence is a must-have in rke setups. As we are enforcing this
+	# requirement at the very beginning of the execution path, no other rke
+	# related routine will check for docker's presence.
+	if ! command -v docker >/dev/null 2>&1; then
+		return 1
+	fi
+
 	docker inspect --format='{{.Config.Labels}}' kubelet | \
 		egrep -q "rke.container.name:kubelet"
 }
