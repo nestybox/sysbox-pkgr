@@ -307,7 +307,6 @@ function kubelet_snap_deployment() {
 }
 
 function kubelet_rke_deployment() {
-
 	# Docker presence is a must-have in rke setups. As we are enforcing this
 	# requirement at the very beginning of the execution path, no other rke
 	# related routine will check for docker's presence.
@@ -320,7 +319,7 @@ function kubelet_rke_deployment() {
 }
 
 function main() {
-	set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 	   die "This script must be run as root"

@@ -441,12 +441,12 @@ function clean_runtime_state_dockershim() {
 
 	for podUid in ${podUids}; do
 		for cntr in ${cntrList}; do
-			ret=$(docker inspect --format='{{index .Config.Labels "io.kubernetes.pod.uid"}}' $cntr | grep -q $podUid)
+			ret=$(docker inspect --format='{{index .Config.Labels "io.kubernetes.pod.uid"}}' $cntr 2>/dev/null | grep -q $podUid)
 			if [ $? -ne 0 ]; then
 				continue
 			fi
 
-			ret=$(docker stop $cntr)
+			ret=$(docker stop -t0 $cntr)
 			if [ $? -ne 0 ]; then
 				echo "Failed to stop cntr ${cntr} from pod ${podUid}: $ret"
 			fi
@@ -573,6 +573,16 @@ function do_config_kubelet_rke() {
 		return
 	fi
 
+	# RKE bind-mounts /sys into its kubelet container to be able to write directly
+	# into the hosts /sys/fs/cgroup path. With that goal in mind, RKE's kubelet
+	# container entrypoint does a RW remount of /sys/fs/cgroup mountpoint. However,
+	# this doesn't help host-based processes that require RW access to the cgroups
+	# path (such as cri-o), that's why here we explicitly remount /sys/fs/cgroup as
+	# RW within the init mount-ns.
+	if mount | grep -q "/sys/fs/cgroup .*ro,"; then
+		mount -o rw,remount /sys/fs/cgroup
+	fi
+
 	# In RKE's case we must add a few steps to the typical logic utilized in other
 	# dockershim setups. In this case, as kubelet executes as the 'init' process
 	# of a docker container, we must do the following:
@@ -597,7 +607,6 @@ function kubelet_snap_deployment() {
 }
 
 function kubelet_rke_deployment() {
-
 	# Docker presence is a must-have in rke setups. As we are enforcing this
 	# requirement at the very beginning of the execution path, no other rke
 	# related routine will check for docker's presence.
@@ -609,12 +618,22 @@ function kubelet_rke_deployment() {
 		egrep -q "rke.container.name:kubelet"
 }
 
+# Enforce the common requirements needed for Sysbox + CRI-O's proper operation.
+function set_common_requirements() {
+	# Verify that /sys is mounted as read-write; otherwise remount it.
+	if mount | grep -q "/sys .*ro,"; then
+		mount -o rw,remount /sys
+	fi
+}
+
 function main() {
-set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 	   die "This script must be run as root"
 	fi
+
+	set_common_requirements
 
 	#
 	# The following kubelet deployment scenarios are currently supported:
