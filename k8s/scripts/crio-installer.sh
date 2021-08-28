@@ -85,7 +85,7 @@ function install_crio_flatcar() {
 	rm cri-o.amd64.v1.20.3.tar.gz
 	pushd cri-o
 
-	# Launch crio extraction process.
+	# Launch crio extraction procedure.
 	sh /opt/bin/crio-installer-flatcar.sh
 
 	echo "CRI-O installation done."
