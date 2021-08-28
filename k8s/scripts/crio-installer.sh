@@ -27,9 +27,9 @@ set -o nounset
 CRIO_VERSION=1.20
 
 function die() {
-   msg="$*"
-   echo "ERROR: $msg" >&2
-   exit 1
+	msg="$*"
+	echo "ERROR: $msg" >&2
+	exit 1
 }
 
 function backup_crictl_config() {
@@ -54,14 +54,39 @@ function install_crio() {
 	local OS=xUbuntu_${OS_VERSION_ID}
 	local VERSION=${CRIO_VERSION}
 
-	echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/ /" > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
-	echo "deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/$VERSION/$OS/ /" > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable:cri-o:$VERSION.list
+	echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/ /" >/etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+	echo "deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/$VERSION/$OS/ /" >/etc/apt/sources.list.d/devel:kubic:libcontainers:stable:cri-o:$VERSION.list
 
 	curl -L https://download.opensuse.org/repositories/devel:kubic:libcontainers:stable:cri-o:$VERSION/$OS/Release.key | apt-key add -
 	curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/Release.key | apt-key add -
 
 	apt-get update
 	apt-get install -y cri-o cri-o-runc
+
+	echo "CRI-O installation done."
+}
+
+function install_crio_flatcar() {
+
+	echo "Installing CRI-O ..."
+
+	#local OS_VERSION_ID=$(grep VERSION_ID /etc/os-release | cut -d "=" -f2 | tr -d '"')
+	#local OS=xUbuntu_${OS_VERSION_ID}
+	#local VERSION=${CRIO_VERSION}
+
+	pushd /opt
+
+	if ! curl -S https://storage.googleapis.com/k8s-conform-cri-o/artifacts/cri-o.amd64.v1.20.3.tar.gz >cri-o.amd64.v1.20.3.tar.gz; then
+		echo "Unable to download CRI-O binaries during Sysbox installation."
+		return
+	fi
+
+	tar -xvf cri-o.amd64.v1.20.3.tar.gz
+	rm cri-o.amd64.v1.20.3.tar.gz
+	pushd cri-o
+
+	# Launch crio extraction process.
+	sh /opt/bin/crio-installer-flatcar.sh
 
 	echo "CRI-O installation done."
 }
@@ -73,11 +98,15 @@ function restart_crio() {
 	echo "CRI-O restart done."
 }
 
+function flatcar_distro() {
+	grep -q "^ID=flatcar" /etc/os-release
+}
+
 function main() {
 
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
-	   die "This script must be run as root"
+		die "This script must be run as root"
 	fi
 
 	if systemctl is-active crio; then
@@ -86,8 +115,18 @@ function main() {
 	fi
 
 	backup_crictl_config
-	install_crio
+
+	if flatcar_distro; then
+		install_crio_flatcar
+	else
+		install_crio
+	fi
+
 	restart_crio
+
+	# backup_crictl_config
+	# install_crio
+	# restart_crio
 }
 
 main "$@"

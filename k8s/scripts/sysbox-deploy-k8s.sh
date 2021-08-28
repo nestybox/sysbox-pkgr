@@ -47,6 +47,11 @@ host_crio_conf_file_backup="${host_crio_conf_file}.orig"
 host_run="/mnt/host/run"
 host_run_sysbox_deploy_k8s="${host_run}/sysbox-deploy-k8s"
 
+#
+host_flatcar_prefix="/opt/crio"
+host_flatcar_bin="/mnt/host/opt/bin"
+host_flatcar_systemd="/mnt/host/etc/systemd/system"
+
 # Subid defaults (Sysbox supports up to 16 sys containers, each with 64k uids(gids)).
 # We use CRI-O's default user "containers" for the sub-id range (rather than user "sysbox").
 subid_alloc_min_start=100000
@@ -68,10 +73,22 @@ do_crio_install="true"
 # CRI-O Installation Functions
 #
 
+function flatcar_distro() {
+	grep -q "^ID=flatcar" /etc/os-release
+}
+
 function deploy_crio_installer_service() {
 	echo "Deploying CRI-O installer agent on the host ..."
-	cp ${crio_artifacts}/scripts/crio-installer.sh ${host_usr_local_bin}/crio-installer.sh
-	cp ${crio_artifacts}/systemd/crio-installer.service ${host_lib_systemd}/crio-installer.service
+
+	if flatcar_distro; then
+		mkdir -p ${host_flatcar_bin}
+		cp ${crio_artifacts}/scripts/crio-installer.sh ${host_flatcar_bin}/crio-installer.sh
+		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_flatcar_bin}/crio-extractor.sh
+		cp ${crio_artifacts}/systemd/crio-installer-flatcar.service ${host_flatcar_systemd}/crio-installer.service
+	else
+		cp ${crio_artifacts}/scripts/crio-installer.sh ${host_usr_local_bin}/crio-installer.sh
+		cp ${crio_artifacts}/systemd/crio-installer.service ${host_lib_systemd}/crio-installer.service
+	fi
 
 	systemctl daemon-reload
 	echo "Running CRI-O installer agent on the host (may take several seconds) ..."
@@ -262,7 +279,7 @@ function start_sysbox() {
 }
 
 function stop_sysbox() {
-   if systemctl is-active --quiet sysbox; then
+	if systemctl is-active --quiet sysbox; then
 		echo "Stopping Sysbox"
 		systemctl stop sysbox
 	fi
@@ -337,13 +354,13 @@ function install_sysbox_deps() {
 	echo "Installing Sysbox dependencies on host"
 
 	local version=$(get_host_kernel)
-	if (( $(echo "$version < 5.4" | bc -l) )); then
+	if (($(echo "$version < 5.4" | bc -l))); then
 		echo "Kernel has version $version, which is below the min required for shiftfs ($shiftfs_min_kernel_ver); skipping shiftfs installation."
 		return
 	fi
 
 	echo "Copying shiftfs sources to host"
-	if semver_ge $version 5.4 && semver_lt $version 5.8 ; then
+	if semver_ge $version 5.4 && semver_lt $version 5.8; then
 		echo "Kernel version $version is >= 5.4 and < 5.8"
 		cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
 	elif semver_ge $version 5.8 && semver_lt $version 5.11; then
@@ -380,22 +397,22 @@ function get_subid_limits() {
 	fi
 
 	set +e
-	res=$(grep "^SUB_UID_MIN" $subid_def_file > /dev/null 2>&1)
+	res=$(grep "^SUB_UID_MIN" $subid_def_file >/dev/null 2>&1)
 	if [ $? -eq 0 ]; then
 		subuid_min=$(echo $res | cut -d " " -f2)
 	fi
 
-	res=$(grep "^SUB_UID_MAX" $subid_def_file > /dev/null 2>&1)
+	res=$(grep "^SUB_UID_MAX" $subid_def_file >/dev/null 2>&1)
 	if [ $? -eq 0 ]; then
 		subuid_max=$(echo $res | cut -d " " -f2)
 	fi
 
-	res=$(grep "^SUB_GID_MIN" $subid_def_file > /dev/null 2>&1)
+	res=$(grep "^SUB_GID_MIN" $subid_def_file >/dev/null 2>&1)
 	if [ $? -eq 0 ]; then
 		subgid_min=$(echo $res | cut -d " " -f2)
 	fi
 
-	res=$(grep "^SUB_GID_MAX" $subid_def_file > /dev/null 2>&1)
+	res=$(grep "^SUB_GID_MAX" $subid_def_file >/dev/null 2>&1)
 	if [ $? -eq 0 ]; then
 		subgid_max=$(echo $res | cut -d " " -f2)
 	fi
@@ -412,7 +429,7 @@ function config_subid_range() {
 		touch $subid_file
 	fi
 
-	readarray -t subid_entries < "$subid_file"
+	readarray -t subid_entries <"$subid_file"
 
 	# if a large enough subid config already exists for user $subid_user, there
 	# is nothing to do.
@@ -442,11 +459,11 @@ function config_subid_range() {
 		hole_end=$start
 
 		if [ $hole_end -ge $hole_start ] && [ $((hole_end - hole_start)) -ge $subid_size ]; then
-			echo "$subid_user:$hole_start:$subid_size" >> $subid_file
+			echo "$subid_user:$hole_start:$subid_size" >>$subid_file
 			return
 		fi
 
-		hole_start=$((start+size))
+		hole_start=$((start + size))
 	done
 
 	hole_end=$subid_max
@@ -454,7 +471,7 @@ function config_subid_range() {
 		echo "failed to allocate $subid_size sub ids in range $subid_min:$subid_max"
 		return
 	else
-		echo "$subid_user:$hole_start:$subid_size" >> $subid_file
+		echo "$subid_user:$hole_start:$subid_size" >>$subid_file
 		return
 	fi
 }
@@ -474,17 +491,17 @@ function config_crio_for_sysbox() {
 
 	# Add Sysbox to CRI-O's runtime list
 	dasel put object -f "${host_crio_conf_file}" -p toml -t string -t string "crio.runtime.runtimes.sysbox-runc" \
-			"runtime_path=/usr/bin/sysbox-runc" "runtime_type=oci"
+		"runtime_path=/usr/bin/sysbox-runc" "runtime_type=oci"
 
 	dasel put string -f "${host_crio_conf_file}" -p toml "crio.runtime.runtimes.sysbox-runc.allowed_annotations.[0]" \
-			"io.kubernetes.cri-o.userns-mode"
+		"io.kubernetes.cri-o.userns-mode"
 }
 
 function unconfig_crio_for_sysbox() {
 	echo "Removing Sysbox from CRI-O config"
 
 	# Note: dasel does not yet have a proper delete command, so we need the "sed" below.
-	dasel put document -f "${host_crio_conf_file}" -p toml  '.crio.runtime.runtimes.sysbox-runc' ''
+	dasel put document -f "${host_crio_conf_file}" -p toml '.crio.runtime.runtimes.sysbox-runc' ''
 	sed -i "s/\[crio.runtime.runtimes.sysbox-runc\]//g" "${host_crio_conf_file}"
 }
 
@@ -493,9 +510,9 @@ function unconfig_crio_for_sysbox() {
 #
 
 function die() {
-   msg="$*"
-   echo "ERROR: $msg" >&2
-   exit 1
+	msg="$*"
+	echo "ERROR: $msg" >&2
+	exit 1
 }
 
 function print_usage() {
@@ -506,7 +523,7 @@ function get_container_runtime() {
 	local runtime=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}')
 
 	if [ "$?" -ne 0 ]; then
-      die "invalid node name"
+		die "invalid node name"
 	fi
 	if echo "$runtime" | grep -qE 'containerd.*-k3s'; then
 		if systemctl is-active --quiet k3s-agent; then
@@ -543,10 +560,10 @@ function rm_label_from_node() {
 
 function install_precheck() {
 	if systemctl is-active --quiet crio; then
-	   do_crio_install="false"
+		do_crio_install="false"
 	fi
 
-   if systemctl is-active --quiet sysbox; then
+	if systemctl is-active --quiet sysbox; then
 		do_sysbox_install="false"
 	fi
 }
@@ -624,7 +641,6 @@ function semver_ge() {
 	fi
 }
 
-
 #
 # Main Function
 #
@@ -633,7 +649,7 @@ function main() {
 
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
-	   die "This script must be run as root"
+		die "This script must be run as root"
 	fi
 
 	k8s_runtime=$(get_container_runtime)
@@ -653,116 +669,116 @@ function main() {
 	local crio_restart_pending=false
 
 	case "$action" in
-		install)
-			mkdir -p ${host_run_sysbox_deploy_k8s}
-			install_precheck
+	install)
+		mkdir -p ${host_run_sysbox_deploy_k8s}
+		install_precheck
 
-			# Install CRI-O
-			if [[ "$do_crio_install" == "true" ]]; then
-				add_label_to_node "crio-runtime=installing"
-				deploy_crio_installer_service
-				remove_crio_installer_service
-				config_crio
-				crio_restart_pending=true
-				echo "yes" > ${host_run_sysbox_deploy_k8s}/crio_installed
-			fi
+		# Install CRI-O
+		if [[ "$do_crio_install" == "true" ]]; then
+			add_label_to_node "crio-runtime=installing"
+			deploy_crio_installer_service
+			remove_crio_installer_service
+			config_crio
+			crio_restart_pending=true
+			echo "yes" >${host_run_sysbox_deploy_k8s}/crio_installed
+		fi
 
-			# Install Sysbox
-			if [[ "$do_sysbox_install" == "true" ]]; then
-				add_label_to_node "sysbox-runtime=installing"
-				install_sysbox_deps
-				install_sysbox
-				config_crio_for_sysbox
-				crio_restart_pending=true
-				echo "yes" > ${host_run_sysbox_deploy_k8s}/sysbox_installed
-			fi
+		# Install Sysbox
+		if [[ "$do_sysbox_install" == "true" ]]; then
+			add_label_to_node "sysbox-runtime=installing"
+			install_sysbox_deps
+			install_sysbox
+			config_crio_for_sysbox
+			crio_restart_pending=true
+			echo "yes" >${host_run_sysbox_deploy_k8s}/sysbox_installed
+		fi
 
-			if [[ "$crio_restart_pending" == "true" ]]; then
-				restart_crio
-			fi
+		if [[ "$crio_restart_pending" == "true" ]]; then
+			restart_crio
+		fi
 
-			# Switch the K8s runtime to CRI-O
-			#
-			# Note: this will configure the Kubelet to use CRI-O and restart it;,
-			# thereby killing all pods on the K8s node (including this daemonset).
-			# The K8s control plane will then re-create the pods, but this time
-			# with CRI-O. The operation can take up to 1 minute.
-			if [[ "$k8s_runtime" != "crio" ]]; then
-				echo "yes" > ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
-				deploy_kubelet_config_service
-			fi
+		# Switch the K8s runtime to CRI-O
+		#
+		# Note: this will configure the Kubelet to use CRI-O and restart it;,
+		# thereby killing all pods on the K8s node (including this daemonset).
+		# The K8s control plane will then re-create the pods, but this time
+		# with CRI-O. The operation can take up to 1 minute.
+		if [[ "$k8s_runtime" != "crio" ]]; then
+			echo "yes" >${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
+			deploy_kubelet_config_service
+		fi
 
-			# Kubelet config service cleanup
-			if [ -f ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
-				remove_kubelet_config_service
-				rm ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
-				echo "Kubelet reconfig completed."
-			fi
+		# Kubelet config service cleanup
+		if [ -f ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
+			remove_kubelet_config_service
+			rm ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
+			echo "Kubelet reconfig completed."
+		fi
 
-			add_label_to_node "crio-runtime=running"
-			add_label_to_node "sysbox-runtime=running"
+		add_label_to_node "crio-runtime=running"
+		add_label_to_node "sysbox-runtime=running"
 
-			echo "The k8s runtime on this node is now CRI-O."
-			echo "Sysbox installation completed."
-			;;
+		echo "The k8s runtime on this node is now CRI-O."
+		echo "Sysbox installation completed."
+		;;
 
-		cleanup)
-			mkdir -p ${host_run_sysbox_deploy_k8s}
+	cleanup)
+		mkdir -p ${host_run_sysbox_deploy_k8s}
 
-			# Switch the K8s runtime away from CRI-O (but only if this daemonset installed CRI-O previously)
-			if [ -f ${host_run_sysbox_deploy_k8s}/crio_installed ] && [[ "$k8s_runtime" == "crio" ]]; then
-				add_label_to_node "crio-runtime=removing"
+		# Switch the K8s runtime away from CRI-O (but only if this daemonset installed CRI-O previously)
+		if [ -f ${host_run_sysbox_deploy_k8s}/crio_installed ] && [[ "$k8s_runtime" == "crio" ]]; then
+			add_label_to_node "crio-runtime=removing"
 
-				# Note: this will restart kubelet with the prior runtime (not
-				# CRI-O), thereby killing all pods (including this daemonset)
-				echo "yes" > ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
-				deploy_kubelet_unconfig_service
-			fi
+			# Note: this will restart kubelet with the prior runtime (not
+			# CRI-O), thereby killing all pods (including this daemonset)
+			echo "yes" >${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
+			deploy_kubelet_unconfig_service
+		fi
 
-			if [ -f ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
-				remove_kubelet_unconfig_service
-				rm ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
-				echo "Kubelet reconfig completed."
-			fi
+		if [ -f ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
+			remove_kubelet_unconfig_service
+			rm ${host_run_sysbox_deploy_k8s}/kubelet_reconfigured
+			echo "Kubelet reconfig completed."
+		fi
 
-			# Uninstall Sysbox
-			if [ -f ${host_run_sysbox_deploy_k8s}/sysbox_installed ]; then
-				add_label_to_node "sysbox-runtime=removing"
-				unconfig_crio_for_sysbox
-				remove_sysbox
-				remove_sysbox_deps
-				crio_restart_pending=true
-				rm ${host_run_sysbox_deploy_k8s}/sysbox_installed
-				rm_label_from_node "sysbox-runtime"
-				echo "Sysbox removal completed."
-			fi
+		# Uninstall Sysbox
+		if [ -f ${host_run_sysbox_deploy_k8s}/sysbox_installed ]; then
+			add_label_to_node "sysbox-runtime=removing"
+			unconfig_crio_for_sysbox
+			remove_sysbox
+			remove_sysbox_deps
+			crio_restart_pending=true
+			rm ${host_run_sysbox_deploy_k8s}/sysbox_installed
+			rm_label_from_node "sysbox-runtime"
+			echo "Sysbox removal completed."
+		fi
 
-			# Uninstall CRI-O
-			if [ -f ${host_run_sysbox_deploy_k8s}/crio_installed ]; then
-				deploy_crio_removal_service
-				remove_crio_removal_service
-				crio_restart_pending=false
-				rm ${host_run_sysbox_deploy_k8s}/crio_installed
-				rm_label_from_node "crio-runtime"
-			fi
+		# Uninstall CRI-O
+		if [ -f ${host_run_sysbox_deploy_k8s}/crio_installed ]; then
+			deploy_crio_removal_service
+			remove_crio_removal_service
+			crio_restart_pending=false
+			rm ${host_run_sysbox_deploy_k8s}/crio_installed
+			rm_label_from_node "crio-runtime"
+		fi
 
-			rm -rf ${host_run_sysbox_deploy_k8s}
+		rm -rf ${host_run_sysbox_deploy_k8s}
 
-			if [[ "$crio_restart_pending" == "true" ]]; then
-				restart_crio
-			fi
+		if [[ "$crio_restart_pending" == "true" ]]; then
+			restart_crio
+		fi
 
-			echo "The k8s runtime on this node is now $k8s_runtime."
-			;;
+		echo "The k8s runtime on this node is now $k8s_runtime."
+		;;
 
-		*)
-			echo invalid arguments
-			print_usage
-			;;
+	*)
+		echo invalid arguments
+		print_usage
+		;;
 	esac
 
 	# This script will be called as a daemonset. Do not return, otherwise the
-   # daemonset will restart and rexecute the script
+	# daemonset will restart and rexecute the script
 	echo "Done."
 
 	sleep infinity
