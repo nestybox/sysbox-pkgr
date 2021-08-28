@@ -27,9 +27,9 @@ set -o nounset
 shiftfs_dkms=/run/shiftfs-dkms
 
 function die() {
-   msg="$*"
-   echo "ERROR: $msg" >&2
-   exit 1
+	msg="$*"
+	echo "ERROR: $msg" >&2
+	exit 1
 }
 
 function install_package_deps() {
@@ -59,37 +59,53 @@ function install_shiftfs() {
 }
 
 function shiftfs_installed() {
-	modinfo shiftfs > /dev/null 2>&1
+	modinfo shiftfs >/dev/null 2>&1
 }
 
 function probe_kernel_mods() {
-	echo "Probing kernel modules"
-	modprobe shiftfs
-	modprobe configfs
+	local modpath=$1
 
-   if ! mount | grep -q configfs; then
-      echo -e "\nConfigfs kernel module is not loaded. Configfs may be required "\
-"by certain applications running inside a Sysbox container.\n"
+	echo "Probing kernel modules ..."
+	if [ -z ${modpath} ]; then
+		modprobe shiftfs
+		modprobe configfs
+	else
+		modprobe -t ${modpath} shiftfs
+		modprobe -t ${modpath} configfs
 	fi
 
-   if ! lsmod | grep -q shiftfs; then
-      echo -e "\nShiftfs kernel module is not loaded. Shiftfs is required "\
-"for host volume mounts into Sysbox containers to have proper ownership "\
-"(user-ID and group-ID).\n"
+	if ! mount | grep -q configfs; then
+		echo -e "\nConfigfs kernel module is not loaded. Configfs may be required " \
+			"by certain applications running inside a Sysbox container.\n"
 	fi
+
+	if ! lsmod | grep -q shiftfs; then
+		echo -e "\nShiftfs kernel module is not loaded. Shiftfs is required " \
+			"for host volume mounts into Sysbox containers to have proper ownership " \
+			"(user-ID and group-ID).\n"
+	fi
+}
+
+function flatcar_distro() {
+	grep -q "^ID=flatcar" /etc/os-release
 }
 
 function main() {
 
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
-	   die "This script must be run as root"
+		die "This script must be run as root"
+	fi
+
+	if flatcar_distro; then
+		probe_kernel_mods "/opt/lib/modules.d"
+		return
 	fi
 
 	apt-get update
-
 	install_package_deps
 	install_shiftfs
+
 	probe_kernel_mods
 }
 

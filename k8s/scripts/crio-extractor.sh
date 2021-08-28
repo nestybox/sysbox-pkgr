@@ -18,7 +18,8 @@ SELINUX=$(selinuxenabled 2>/dev/null && echo -Z)
 BASHINSTALLDIR=${PREFIX}/share/bash-completion/completions
 FISHINSTALLDIR=${PREFIX}/share/fish/completions
 ZSHINSTALLDIR=${PREFIX}/share/zsh/site-functions
-SYSTEMDDIR=${ETCDIR}/lib/systemd/system
+#SYSTEMDDIR=${ETCDIR}/lib/systemd/system
+SYSTEMDDIR=${ETCDIR}/systemd/system
 OPT_CNI_BIN_DIR=/opt/cni/bin
 
 ARCH=amd64

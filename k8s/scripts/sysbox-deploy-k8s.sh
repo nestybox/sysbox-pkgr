@@ -73,21 +73,15 @@ do_crio_install="true"
 # CRI-O Installation Functions
 #
 
-function flatcar_distro() {
-	grep -q "^ID=flatcar" /etc/os-release
-}
-
 function deploy_crio_installer_service() {
 	echo "Deploying CRI-O installer agent on the host ..."
 
-	if flatcar_distro; then
-		mkdir -p ${host_flatcar_bin}
-		cp ${crio_artifacts}/scripts/crio-installer.sh ${host_flatcar_bin}/crio-installer.sh
-		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_flatcar_bin}/crio-extractor.sh
-		cp ${crio_artifacts}/systemd/crio-installer-flatcar.service ${host_flatcar_systemd}/crio-installer.service
-	else
-		cp ${crio_artifacts}/scripts/crio-installer.sh ${host_usr_local_bin}/crio-installer.sh
-		cp ${crio_artifacts}/systemd/crio-installer.service ${host_lib_systemd}/crio-installer.service
+	cp ${crio_artifacts}/scripts/crio-installer.sh ${host_usr_local_bin}/crio-installer.sh
+	cp ${crio_artifacts}/systemd/crio-installer.service ${host_lib_systemd}/crio-installer.service
+
+	if host_flatcar_distro; then
+		sed -i 's@/usr/local/bin/crio@/opt/crio/bin/crio@g' ${host_lib_systemd}/crio-installer.service
+		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_usr_local_bin}/crio-extractor.sh
 	fi
 
 	systemctl daemon-reload
@@ -101,6 +95,11 @@ function remove_crio_installer_service() {
 	systemctl disable crio-installer.service
 	rm ${host_usr_local_bin}/crio-installer.sh
 	rm ${host_lib_systemd}/crio-installer.service
+
+	if host_flatcar_distro; then
+		rm ${host_usr_local_bin}/crio-extractor.sh
+	fi
+
 	systemctl daemon-reload
 }
 
@@ -108,6 +107,11 @@ function deploy_crio_removal_service() {
 	echo "Deploying CRI-O uninstaller ..."
 	cp ${crio_artifacts}/scripts/crio-removal.sh ${host_usr_local_bin}/crio-removal.sh
 	cp ${crio_artifacts}/systemd/crio-removal.service ${host_lib_systemd}/crio-removal.service
+
+	if host_flatcar_distro; then
+		sed -i 's@/usr/local/bin/crio@/opt/bin/crio@g' ${host_lib_systemd}/crio-removal.service
+	fi
+
 	systemctl daemon-reload
 	systemctl restart crio-removal.service
 }
@@ -148,6 +152,7 @@ function remove_kubelet_config_service() {
 
 function deploy_kubelet_unconfig_service() {
 	echo "Deploying Kubelet unconfig agent on the host ..."
+
 	cp ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh ${host_usr_local_bin}/kubelet-unconfig-helper.sh
 	cp ${crio_artifacts}/systemd/kubelet-unconfig-helper.service ${host_lib_systemd}/kubelet-unconfig-helper.service
 	cp /usr/local/bin/crictl ${host_usr_local_bin}/sysbox-deploy-k8s-crictl
@@ -214,7 +219,7 @@ function copy_sysbox_to_host() {
 
 	# TODO: add sysbox binaries for all supported distros
 
-	distro=$(get_host_distro)
+	local distro=$(get_host_distro)
 
 	echo "Detected host distro: $distro"
 
@@ -222,6 +227,8 @@ function copy_sysbox_to_host() {
 		artifact_dir="$sysbox_artifacts/bin/ubuntu-focal"
 	elif [[ "$distro" == "ubuntu_18.04" ]]; then
 		artifact_dir="$sysbox_artifacts/bin/ubuntu-bionic"
+	elif [[ "$distro" == "flatcar_2765.2.6" ]]; then
+		artifact_dir="$sysbox_artifacts/bin/flatcar-2765.2.6"
 	else
 		die "Sysbox is not supported on this host's distro ($distro)".
 	fi
@@ -268,25 +275,25 @@ function rm_systemd_units_from_host() {
 function apply_conf() {
 
 	# Note: this requires CAP_SYS_ADMIN on the host
-	echo "Configuring host sysctls"
+	echo "Configuring host sysctls ..."
 	sysctl -p "$host_lib_sysctl/99-sysbox-sysctl.conf"
 }
 
 function start_sysbox() {
-	echo "Starting Sysbox"
+	echo "Starting Sysbox ..."
 	systemctl restart sysbox
 	systemctl is-active --quiet sysbox
 }
 
 function stop_sysbox() {
 	if systemctl is-active --quiet sysbox; then
-		echo "Stopping Sysbox"
+		echo "Stopping Sysbox ..."
 		systemctl stop sysbox
 	fi
 }
 
 function install_sysbox() {
-	echo "Installing Sysbox on host"
+	echo "Installing Sysbox on host ..."
 	copy_sysbox_to_host
 	copy_conf_to_host
 	copy_systemd_units_to_host
@@ -295,7 +302,7 @@ function install_sysbox() {
 }
 
 function remove_sysbox() {
-	echo "Removing Sysbox from host"
+	echo "Removing Sysbox from host ..."
 	stop_sysbox
 	rm_systemd_units_from_host
 	rm_conf_from_host
@@ -359,16 +366,22 @@ function install_sysbox_deps() {
 		return
 	fi
 
-	echo "Copying shiftfs sources to host"
-	if semver_ge $version 5.4 && semver_lt $version 5.8; then
-		echo "Kernel version $version is >= 5.4 and < 5.8"
-		cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
-	elif semver_ge $version 5.8 && semver_lt $version 5.11; then
-		echo "Kernel version $version is >= 5.8 and < 5.11"
-		cp -r "/opt/shiftfs-k5.8" "$host_run/shiftfs-dkms"
+	if host_flatcar_distro; then
+		echo "Copying shiftfs module and sysbox dependencies to host"
+		cp ${artifacts}/shiftfs.ko ${host_usr_lib_mod}/shiftfs.ko
+		cp ${artifacts}/fusermount ${host_usr_bin}/fusermount
 	else
-		echo "Kernel version $version is >= 5.11"
-		cp -r "/opt/shiftfs-k5.11" "$host_run/shiftfs-dkms"
+		echo "Copying shiftfs sources to host"
+		if semver_ge $version 5.4 && semver_lt $version 5.8; then
+			echo "Kernel version $version is >= 5.4 and < 5.8"
+			cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
+		elif semver_ge $version 5.8 && semver_lt $version 5.11; then
+			echo "Kernel version $version is >= 5.8 and < 5.11"
+			cp -r "/opt/shiftfs-k5.8" "$host_run/shiftfs-dkms"
+		else
+			echo "Kernel version $version is >= 5.11"
+			cp -r "/opt/shiftfs-k5.11" "$host_run/shiftfs-dkms"
+		fi
 	fi
 
 	deploy_sysbox_installer_helper
@@ -495,6 +508,13 @@ function config_crio_for_sysbox() {
 
 	dasel put string -f "${host_crio_conf_file}" -p toml "crio.runtime.runtimes.sysbox-runc.allowed_annotations.[0]" \
 		"io.kubernetes.cri-o.userns-mode"
+
+	# In Flatcar's case we must further adjust crio config.
+	if host_flatcar_distro; then
+		sed 's@/usr/bin/sysbox-runc@/opt/bin/sysbox-runc@' ${host_crio_conf_file}
+		sed -i '/Type=notify/a Environment=PATH=/opt/crio/bin:/sbin:/bin:/usr/sbin:/usr/bin' ${host_lib_systemd}/crio.service
+		sed -i 's@/usr/local/bin/crio@/opt/crio/bin/crio@' ${host_lib_systemd}/crio.service
+	fi
 }
 
 function unconfig_crio_for_sysbox() {
@@ -540,6 +560,11 @@ function get_host_distro() {
 	local distro_name=$(grep -w "^ID" "$host_os_release" | cut -d "=" -f2)
 	local version_id=$(grep -w "^VERSION_ID" "$host_os_release" | cut -d "=" -f2 | tr -d '"')
 	echo "${distro_name}_${version_id}"
+}
+
+function host_flatcar_distro() {
+	local distro=$(get_host_distro)
+	echo $distro | grep -q "flatcar"
 }
 
 function get_host_kernel() {
@@ -641,6 +666,24 @@ function semver_ge() {
 	fi
 }
 
+# Global vars holding FS paths may require adjustments in certain distros to
+# account for read-only partitions (e.g. flatcar).
+function adjust_global_vars() {
+
+	if ! host_flatcar_distro; then
+		return
+	fi
+
+	host_usr_bin="/mnt/host/opt/bin"
+	host_usr_local_bin="/mnt/host/opt/bin"
+	host_lib_systemd="/mnt/host/etc/systemd/system"
+	host_lib_sysctl="/mnt/host/opt/lib/sysctl.d"
+	host_usr_lib_mod="/mnt/host/opt/lib/modules-load.d"
+
+	mkdir -p ${host_usr_bin} ${host_usr_local_bin} ${host_lib_systemd} \
+		${host_lib_sysctl} ${host_usr_lib_mod}
+}
+
 #
 # Main Function
 #
@@ -665,6 +708,8 @@ function main() {
 		print_usage
 		die "invalid arguments"
 	fi
+
+	adjust_global_vars
 
 	local crio_restart_pending=false
 
