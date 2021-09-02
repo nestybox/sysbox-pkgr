@@ -70,10 +70,6 @@ function install_crio_flatcar() {
 
 	echo "Installing CRI-O ..."
 
-	#local OS_VERSION_ID=$(grep VERSION_ID /etc/os-release | cut -d "=" -f2 | tr -d '"')
-	#local OS=xUbuntu_${OS_VERSION_ID}
-	#local VERSION=${CRIO_VERSION}
-
 	pushd /opt
 
 	if ! curl -S https://storage.googleapis.com/k8s-conform-cri-o/artifacts/cri-o.amd64.v1.20.3.tar.gz >cri-o.amd64.v1.20.3.tar.gz; then
@@ -86,7 +82,11 @@ function install_crio_flatcar() {
 	pushd cri-o
 
 	# Launch crio extraction procedure.
-	sh /opt/bin/crio-installer-flatcar.sh
+	sh /opt/bin/crio-extractor.sh
+
+	# Update crio path.
+	sed -i '/Type=notify/a Environment=PATH=/opt/crio/bin:/sbin:/bin:/usr/sbin:/usr/bin' /etc/systemd/system/crio.service
+	sed -i 's@/usr/local/bin/crio@/opt/crio/bin/crio@' /etc/systemd/system/crio.service
 
 	echo "CRI-O installation done."
 }
@@ -123,10 +123,6 @@ function main() {
 	fi
 
 	restart_crio
-
-	# backup_crictl_config
-	# install_crio
-	# restart_crio
 }
 
 main "$@"

@@ -27,9 +27,9 @@ set -o nounset
 CRIO_VERSION=1.20
 
 function die() {
-   msg="$*"
-   echo "ERROR: $msg" >&2
-   exit 1
+	msg="$*"
+	echo "ERROR: $msg" >&2
+	exit 1
 }
 
 function restore_crictl_config() {
@@ -54,14 +54,14 @@ function stop_crio() {
 }
 
 function is_crio_running() {
-	command -v crio > /dev/null 2>&1
+	command -v crio >/dev/null 2>&1
 }
 
 function main() {
 
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
-	   die "This script must be run as root"
+		die "This script must be run as root"
 	fi
 
 	if ! is_crio_running; then
