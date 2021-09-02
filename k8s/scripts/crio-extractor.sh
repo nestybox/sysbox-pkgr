@@ -18,13 +18,13 @@ SELINUX=$(selinuxenabled 2>/dev/null && echo -Z)
 BASHINSTALLDIR=${PREFIX}/share/bash-completion/completions
 FISHINSTALLDIR=${PREFIX}/share/fish/completions
 ZSHINSTALLDIR=${PREFIX}/share/zsh/site-functions
-#SYSTEMDDIR=${ETCDIR}/lib/systemd/system
 SYSTEMDDIR=${ETCDIR}/systemd/system
 OPT_CNI_BIN_DIR=/opt/cni/bin
 
 ARCH=amd64
 
 function install_all() {
+	mkdir -p ${PREFIX}
 	install_cni
 	install_conmon
 	install_crio
@@ -37,7 +37,8 @@ function install_all() {
 function install_cni() {
 	install ${SELINUX} -d -m 755 ${CNIDIR}
 	install ${SELINUX} -D -m 755 -t ${OPT_CNI_BIN_DIR} cni-plugins/*
-	install ${SELINUX} -D -m 644 -t ${CNIDIR} contrib/10-crio-bridge.conf
+	cp contrib/10-crio-bridge.conf contrib/100-crio-bridge.conf
+	install ${SELINUX} -D -m 644 -t ${CNIDIR} contrib/100-crio-bridge.conf
 }
 
 function install_conmon() {

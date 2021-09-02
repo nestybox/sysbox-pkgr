@@ -34,9 +34,9 @@ crictl_bin="/usr/local/bin/sysbox-deploy-k8s-crictl"
 kubelet_ctr_restart_mode="no"
 
 function die() {
-   msg="$*"
-   echo "ERROR: $msg" >&2
-   exit 1
+	msg="$*"
+	echo "ERROR: $msg" >&2
+	exit 1
 }
 
 function get_kubelet_bin() {
@@ -50,7 +50,7 @@ function replace_cmd_option {
 	opt=$2
 	want_val=$3
 
-	read -a curr_args <<< ${cmd_opts}
+	read -a curr_args <<<${cmd_opts}
 	declare -a new_args
 
 	found_opt=false
@@ -104,7 +104,7 @@ function add_systemd_dropin_file() {
 
 	mkdir -p "/etc/systemd/system/kubelet.service.d"
 
-	cat > "/etc/systemd/system/kubelet.service.d/01-kubelet.conf" << EOF
+	cat >"/etc/systemd/system/kubelet.service.d/01-kubelet.conf" <<EOF
 [service]
 EnvironmentFile=-$env_file
 ExecStart=
@@ -129,7 +129,7 @@ function add_kubelet_env_var() {
 	fi
 
 	if ! grep -q "$env_var" "$env_file"; then
-		echo "$env_var=\"\"" >> "$env_file"
+		echo "$env_var=\"\"" >>"$env_file"
 	fi
 
 	replace_kubelet_env_var "$env_file" "$env_var"
@@ -141,7 +141,7 @@ function replace_kubelet_env_var() {
 	local env_file=$1
 	local env_var=$2
 
-	readarray -t opts < ${run_sysbox_deploy_k8s}/crio-kubelet-options
+	readarray -t opts <${run_sysbox_deploy_k8s}/crio-kubelet-options
 
 	# add newline at end of $env_file if not present
 	sed -i '$a\' "$env_file"
@@ -168,20 +168,26 @@ function replace_kubelet_env_var() {
 				line_opts=${line#"$line_prefix"}
 			fi
 
+			set +e
 			for opt in "${opts[@]}"; do
 				opt_name=$(echo $opt | cut -d"=" -f1)
 				opt_val=$(echo $opt | cut -d"=" -f2)
 				if [[ "$opt_name" != "" ]] && [[ "$opt_val" != "" ]]; then
-					line_opts=$(replace_cmd_option "$line_opts" "$opt_name" "$opt_val")
+					if [[ $line_opts != "" ]]; then
+						line_opts=$(replace_cmd_option "$line_opts" "$opt_name" "$opt_val")
+					else
+						line_opts="${opt_name}=${opt_val}"
+					fi
 				fi
 			done
+			set -e
 
 			new_line="$line_prefix=\"$line_opts\""
 		fi
 
-		echo $new_line >> tmp.txt
+		echo $new_line >>tmp.txt
 
-	done < "$env_file"
+	done <"$env_file"
 	mv tmp.txt "$env_file"
 
 	echo "Modified kubelet env var $env_var in $env_file"
@@ -194,7 +200,7 @@ function backup_orig_config() {
 	mkdir -p "$run_sysbox_deploy_k8s"
 
 	if [ -f $env_file ]; then
-		echo "kubelet_env_file=${env_file}" > "$config_file"
+		echo "kubelet_env_file=${env_file}" >"$config_file"
 		cp "$env_file" "${run_sysbox_deploy_k8s}/kubelet.orig"
 	fi
 }
@@ -337,7 +343,7 @@ function config_kubelet_rke() {
 
 	# Extract kubelet's current execution attributes and store them in a temp file.
 	local cur_kubelet_attr=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | cut -d\" \" -f2-")
-	echo "${kubelet_tmp_var}=\"${cur_kubelet_attr}\"" > "${kubelet_tmp_file}"
+	echo "${kubelet_tmp_var}=\"${cur_kubelet_attr}\"" >"${kubelet_tmp_file}"
 
 	# Add crio-specific config attributes to the temporary kubelet config file.
 	replace_kubelet_env_var "$kubelet_tmp_file" "$kubelet_tmp_var"
@@ -486,7 +492,7 @@ function clean_runtime_state() {
 	# kubelet-unconfig-helper service can revert it if/when the crio-cleanup-k8s
 	# daemonset runs.
 	mkdir -p "$run_sysbox_deploy_k8s"
-	echo $runtime > ${run_sysbox_deploy_k8s}/prior_runtime
+	echo $runtime >${run_sysbox_deploy_k8s}/prior_runtime
 }
 
 function get_pods_uids() {
@@ -614,7 +620,7 @@ function kubelet_rke_deployment() {
 		return 1
 	fi
 
-	docker inspect --format='{{.Config.Labels}}' kubelet | \
+	docker inspect --format='{{.Config.Labels}}' kubelet |
 		egrep -q "rke.container.name:kubelet"
 }
 
@@ -627,10 +633,10 @@ function set_common_requirements() {
 }
 
 function main() {
-
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
-	   die "This script must be run as root"
+		die "This script must be run as root"
 	fi
 
 	set_common_requirements
