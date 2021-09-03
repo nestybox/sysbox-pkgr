@@ -44,11 +44,11 @@ function backup_crictl_config() {
 
 }
 
-function install_crio() {
+function flatcar_distro() {
+	grep -q "^ID=flatcar" /etc/os-release
+}
 
-	# TODO: add support for non-ubuntu distros
-
-	echo "Installing CRI-O ..."
+function install_crio_deb() {
 
 	local OS_VERSION_ID=$(grep VERSION_ID /etc/os-release | cut -d "=" -f2 | tr -d '"')
 	local OS=xUbuntu_${OS_VERSION_ID}
@@ -62,13 +62,9 @@ function install_crio() {
 
 	apt-get update
 	apt-get install -y cri-o cri-o-runc
-
-	echo "CRI-O installation done."
 }
 
 function install_crio_flatcar() {
-
-	echo "Installing CRI-O ..."
 
 	pushd /opt
 
@@ -81,12 +77,23 @@ function install_crio_flatcar() {
 	rm cri-o.amd64.v1.20.3.tar.gz
 	pushd cri-o
 
-	# Launch crio extraction procedure.
-	sh /opt/bin/crio-extractor.sh
+	chmod +x /opt/bin/crio-extractor.sh
+	/opt/bin/crio-extractor.sh install
 
 	# Update crio path.
 	sed -i '/Type=notify/a Environment=PATH=/opt/crio/bin:/sbin:/bin:/usr/sbin:/usr/bin' /etc/systemd/system/crio.service
 	sed -i 's@/usr/local/bin/crio@/opt/crio/bin/crio@' /etc/systemd/system/crio.service
+}
+
+function install_crio() {
+
+	echo "Installing CRI-O ..."
+
+	if flatcar_distro; then
+		install_crio_flatcar
+	else
+		install_crio_deb
+	fi
 
 	echo "CRI-O installation done."
 }
@@ -98,12 +105,8 @@ function restart_crio() {
 	echo "CRI-O restart done."
 }
 
-function flatcar_distro() {
-	grep -q "^ID=flatcar" /etc/os-release
-}
-
 function main() {
-
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
@@ -115,13 +118,7 @@ function main() {
 	fi
 
 	backup_crictl_config
-
-	if flatcar_distro; then
-		install_crio_flatcar
-	else
-		install_crio
-	fi
-
+	install_crio
 	restart_crio
 }
 

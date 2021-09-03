@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Script to install CRI-O on a Flatcar OS host
+# Script to install and uninstall CRI-O on a Flatcar OS host.
 #
 # NOTE: adapted from the CRI-O release bundle Makefile
 # found here: https://github.com/cri-o/cri-o/releases
@@ -94,8 +94,7 @@ function uninstall() {
 }
 
 function uninstall_cni() {
-	rm ${OPT_CNI_BIN_DIR}/*
-	rm ${CNIDIR}/10-crio-bridge.conf
+	rm ${CNIDIR}/100-crio-bridge.conf
 }
 
 function uninstall_conmon() {
@@ -136,4 +135,20 @@ function uninstall_crun() {
 	rm ${BINDIR}/crun
 }
 
-install_all
+function main() {
+	set -x
+	if [[ "$1" == "" ]]; then
+		printf "\n"
+		printf "Usage: crio-extractor.sh [install | uninstall]\n"
+		printf "\n"
+		exit 1
+	fi
+
+	if [[ $1 == "install" ]]; then
+		install_all
+	elif [[ $1 == "uninstall" ]]; then
+		uninstall
+	fi
+}
+
+main "$@"

@@ -63,15 +63,18 @@ function shiftfs_installed() {
 }
 
 function probe_kernel_mods() {
-	local modpath=$1
+	local shiftfs_module=$1
 
 	echo "Probing kernel modules ..."
-	if [ -z ${modpath} ]; then
+
+	modprobe configfs
+
+	if [ -z ${shiftfs_module} ]; then
 		modprobe shiftfs
-		modprobe configfs
 	else
-		modprobe -t ${modpath} shiftfs
-		modprobe -t ${modpath} configfs
+		if ! lsmod | grep -q shiftfs; then
+			insmod ${shiftfs_module}
+		fi
 	fi
 
 	if ! mount | grep -q configfs; then
@@ -97,15 +100,16 @@ function main() {
 		die "This script must be run as root"
 	fi
 
+	# In flatcar's case the shiftfs module is explicitly provided by the installer
+	# itself.
 	if flatcar_distro; then
-		probe_kernel_mods "/opt/lib/modules.d"
+		probe_kernel_mods "/opt/lib/modules-load.d/shiftfs.ko"
 		return
 	fi
 
 	apt-get update
 	install_package_deps
 	install_shiftfs
-
 	probe_kernel_mods
 }
 

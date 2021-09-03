@@ -75,7 +75,6 @@ function deploy_crio_installer_service() {
 	cp ${crio_artifacts}/systemd/crio-installer.service ${host_lib_systemd}/crio-installer.service
 
 	if host_flatcar_distro; then
-		sed -i 's@/usr/local/bin/crio@/opt/bin/crio@g' ${host_lib_systemd}/crio-installer.service
 		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_usr_local_bin}/crio-extractor.sh
 	fi
 
@@ -104,8 +103,7 @@ function deploy_crio_removal_service() {
 	cp ${crio_artifacts}/systemd/crio-removal.service ${host_lib_systemd}/crio-removal.service
 
 	if host_flatcar_distro; then
-		sed -i '/Type=oneshot/a Environment=PATH=/opt/crio/bin:/sbin:/bin:/usr/sbin:/usr/bin' ${host_lib_systemd}/crio-removal.service
-		sed -i 's@/usr/local/bin/crio@/opt/bin/crio@g' ${host_lib_systemd}/crio-removal.service
+		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_usr_local_bin}/crio-extractor.sh
 	fi
 
 	systemctl daemon-reload
@@ -118,6 +116,11 @@ function remove_crio_removal_service() {
 	systemctl disable crio-removal.service
 	rm ${host_usr_local_bin}/crio-removal.sh
 	rm ${host_lib_systemd}/crio-removal.service
+
+	if host_flatcar_distro; then
+		rm ${host_usr_local_bin}/crio-extractor.sh
+	fi
+
 	systemctl daemon-reload
 }
 
@@ -250,12 +253,6 @@ function rm_sysbox_from_host() {
 }
 
 function copy_conf_to_host() {
-
-	if host_flatcar_distro; then
-		sed -i '/^kernel.unprivileged_userns_clone/ s/^#*/# /' \
-			$sysbox_artifacts/systemd/99-sysbox-sysctl.conf
-	fi
-
 	cp "$sysbox_artifacts/systemd/99-sysbox-sysctl.conf" "$host_lib_sysctl/99-sysbox-sysctl.conf"
 	cp "$sysbox_artifacts/systemd/50-sysbox-mod.conf" "$host_usr_lib_mod/50-sysbox-mod.conf"
 }
@@ -368,7 +365,7 @@ function install_sysbox_deps() {
 	echo "Installing Sysbox dependencies on host"
 
 	local version=$(get_host_kernel)
-	if (($(echo "$version < 5.4" | bc -l))); then
+	if semver_lt $version 5.4; then
 		echo "Kernel has version $version, which is below the min required for shiftfs ($shiftfs_min_kernel_ver); skipping shiftfs installation."
 		return
 	fi
@@ -446,14 +443,16 @@ function config_subid_range() {
 	local subid_min=$3
 	local subid_max=$4
 
-	if [ ! -f $subid_file ]; then
-		touch $subid_file
+	if [ ! -f $subid_file ] || [ ! -s $subid_file ]; then
+		echo "$subid_user:$subid_min:$subid_size" >"${subid_file}"
+		return
 	fi
 
-	readarray -t subid_entries <"$subid_file"
+	readarray -t subid_entries <"${subid_file}"
 
 	# if a large enough subid config already exists for user $subid_user, there
 	# is nothing to do.
+
 	for entry in "${subid_entries[@]}"; do
 		user=$(echo $entry | cut -d ":" -f1)
 		start=$(echo $entry | cut -d ":" -f2)
@@ -595,8 +594,7 @@ function install_precheck() {
 	fi
 
 	if systemctl is-active --quiet sysbox; then
-		#do_sysbox_install="false"
-		do_sysbox_install="true"
+		do_sysbox_install="false"
 	fi
 }
 
@@ -673,12 +671,13 @@ function semver_ge() {
 	fi
 }
 
-# Global vars holding FS paths may require adjustments in certain distros to
-# account for read-only partitions (e.g. flatcar).
+# Function holds all the adjustments that need to be carried out to meet
+# distro-specific requirements. For example, in Flatcar's case these special
+# requirements are a consequence of its partition scheme (read-only /usr).
 function do_distro_adjustments() {
 
 	local distro=$(get_host_distro)
-	if [[ ${distro} != "flatcar_2765.2.6" ]]; then
+	if [[ ! ${distro} =~ "flatcar" ]]; then
 		return
 	fi
 
@@ -689,9 +688,13 @@ function do_distro_adjustments() {
 	host_lib_sysctl="/mnt/host/opt/lib/sysctl.d"
 	host_usr_lib_mod="/mnt/host/opt/lib/modules-load.d"
 
-	# We can't assume that required folders are already present.
-	mkdir -p ${host_usr_bin} ${host_usr_local_bin} ${host_lib_systemd} \
-		${host_lib_sysctl} ${host_usr_lib_mod}
+	# Ensure that required folders are already present.
+	mkdir -p ${host_usr_bin} ${host_usr_local_bin} ${host_lib_systemd} ${host_lib_sysctl} ${host_usr_lib_mod}
+
+	# Adjust crio helper scripts and services.
+	sed -i 's@/usr/local/bin/crio@/opt/bin/crio@g' ${crio_artifacts}/systemd/crio-installer.service
+	sed -i '/Type=oneshot/a Environment=PATH=/opt/crio/bin:/sbin:/bin:/usr/sbin:/usr/bin' ${crio_artifacts}/systemd/crio-removal.service
+	sed -i 's@/usr/local/bin/crio@/opt/bin/crio@g' ${crio_artifacts}/systemd/crio-removal.service
 
 	# Adjust kubelet helper scripts and services.
 	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/bin@' ${crio_artifacts}/systemd/kubelet-config-helper.service
@@ -702,11 +705,16 @@ function do_distro_adjustments() {
 	sed -i '/^crictl_bin/ s@/usr/local/bin/sysbox-deploy-k8s-crictl@/opt/bin/crictl@' ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh
 
 	# Adjust sysbox helper scripts and services.
+	sed -i '/Type=notify/a Environment=PATH=/opt/bin:/sbin:/bin:/usr/sbin:/usr/bin' ${sysbox_artifacts}/systemd/sysbox-mgr.service
 	sed -i '/^ExecStart=/ s@/usr/bin/sysbox-mgr@/opt/bin/sysbox-mgr@' ${sysbox_artifacts}/systemd/sysbox-mgr.service
 	sed -i '/^ExecStart=/ s@/usr/bin/sysbox-fs@/opt/bin/sysbox-fs@' ${sysbox_artifacts}/systemd/sysbox-fs.service
+	sed -i '/Type=notify/a Environment=PATH=/opt/bin:/sbin:/bin:/usr/sbin:/usr/bin' ${sysbox_artifacts}/systemd/sysbox-fs.service
 	sed -i '/^ExecStart=/ s@/usr/bin@/opt/bin@g' ${sysbox_artifacts}/systemd/sysbox.service
 	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/bin@g' ${sysbox_artifacts}/systemd/sysbox-installer-helper.service
 	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/bin@g' ${sysbox_artifacts}/systemd/sysbox-removal-helper.service
+
+	# Sysctl adjustments.
+	sed -i '/^kernel.unprivileged_userns_clone/ s/^#*/# /' ${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf
 }
 
 #
@@ -734,7 +742,7 @@ function main() {
 		die "invalid arguments"
 	fi
 
-	#
+	# Perform distro-specific adjustments.
 	do_distro_adjustments
 
 	local crio_restart_pending=false

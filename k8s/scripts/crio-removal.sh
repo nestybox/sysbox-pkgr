@@ -38,12 +38,34 @@ function restore_crictl_config() {
 	fi
 }
 
-function uninstall_crio() {
-	# TODO: add support for non-ubuntu distros
-	echo "Uninstalling CRI-O ..."
+function flatcar_distro() {
+	grep -q "^ID=flatcar" /etc/os-release
+}
+
+function uninstall_crio_deb() {
 	apt-get purge cri-o -y
+}
+
+function uninstall_crio_flatcar() {
+	chmod +x /opt/bin/crio-extractor.sh
+	/opt/bin/crio-extractor.sh uninstall
+}
+
+function uninstall_crio() {
+
+	echo "Uninstalling CRI-O ..."
+
+	if flatcar_distro; then
+		systemctl stop crio
+		systemctl disable crio
+		uninstall_crio_flatcar
+	else
+		uninstall_crio_deb
+	fi
+
 	sed -i '/containers:/d' /etc/subuid
 	sed -i '/containers:/d' /etc/subgid
+
 	echo "CRI-O uninstallation done."
 }
 
@@ -58,7 +80,7 @@ function is_crio_running() {
 }
 
 function main() {
-
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
