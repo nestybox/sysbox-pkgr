@@ -35,11 +35,12 @@ sysbox_artifacts="/opt/sysbox"
 crio_artifacts="/opt/crio-deploy"
 
 # The daemonset spec will set up these mounts
-host_lib_systemd="/mnt/host/lib/systemd/system"
-host_lib_sysctl="/mnt/host/lib/sysctl.d"
-host_usr_bin="/mnt/host/usr/bin"
-host_usr_lib_mod="/mnt/host/usr/lib/modules-load.d"
-host_usr_local_bin="/mnt/host/usr/local/bin"
+
+host_systemd="/mnt/host/lib/systemd/system"
+host_sysctl="/mnt/host/lib/sysctl.d"
+host_bin="/mnt/host/usr/bin"
+host_lib_mod="/mnt/host/usr/lib/modules-load.d"
+host_local_bin="/mnt/host/usr/local/bin"
 host_etc="/mnt/host/etc"
 host_os_release="/mnt/host/os-release"
 host_crio_conf_file="${host_etc}/crio/crio.conf"
@@ -71,11 +72,11 @@ do_crio_install="true"
 function deploy_crio_installer_service() {
 	echo "Deploying CRI-O installer agent on the host ..."
 
-	cp ${crio_artifacts}/scripts/crio-installer.sh ${host_usr_local_bin}/crio-installer.sh
-	cp ${crio_artifacts}/systemd/crio-installer.service ${host_lib_systemd}/crio-installer.service
+	cp ${crio_artifacts}/scripts/crio-installer.sh ${host_local_bin}/crio-installer.sh
+	cp ${crio_artifacts}/systemd/crio-installer.service ${host_systemd}/crio-installer.service
 
 	if host_flatcar_distro; then
-		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_usr_local_bin}/crio-extractor.sh
+		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_local_bin}/crio-extractor.sh
 	fi
 
 	systemctl daemon-reload
@@ -87,11 +88,11 @@ function remove_crio_installer_service() {
 	echo "Removing CRI-O installer agent from the host ..."
 	systemctl stop crio-installer.service
 	systemctl disable crio-installer.service
-	rm ${host_usr_local_bin}/crio-installer.sh
-	rm ${host_lib_systemd}/crio-installer.service
+	rm ${host_local_bin}/crio-installer.sh
+	rm ${host_systemd}/crio-installer.service
 
 	if host_flatcar_distro; then
-		rm ${host_usr_local_bin}/crio-extractor.sh
+		rm ${host_local_bin}/crio-extractor.sh
 	fi
 
 	systemctl daemon-reload
@@ -99,11 +100,11 @@ function remove_crio_installer_service() {
 
 function deploy_crio_removal_service() {
 	echo "Deploying CRI-O uninstaller ..."
-	cp ${crio_artifacts}/scripts/crio-removal.sh ${host_usr_local_bin}/crio-removal.sh
-	cp ${crio_artifacts}/systemd/crio-removal.service ${host_lib_systemd}/crio-removal.service
+	cp ${crio_artifacts}/scripts/crio-removal.sh ${host_local_bin}/crio-removal.sh
+	cp ${crio_artifacts}/systemd/crio-removal.service ${host_systemd}/crio-removal.service
 
 	if host_flatcar_distro; then
-		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_usr_local_bin}/crio-extractor.sh
+		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_local_bin}/crio-extractor.sh
 	fi
 
 	systemctl daemon-reload
@@ -114,11 +115,11 @@ function remove_crio_removal_service() {
 	echo "Removing the CRI-O uninstaller ..."
 	systemctl stop crio-removal.service
 	systemctl disable crio-removal.service
-	rm ${host_usr_local_bin}/crio-removal.sh
-	rm ${host_lib_systemd}/crio-removal.service
+	rm ${host_local_bin}/crio-removal.sh
+	rm ${host_systemd}/crio-removal.service
 
 	if host_flatcar_distro; then
-		rm ${host_usr_local_bin}/crio-extractor.sh
+		rm ${host_local_bin}/crio-extractor.sh
 	fi
 
 	systemctl daemon-reload
@@ -127,10 +128,10 @@ function remove_crio_removal_service() {
 function deploy_kubelet_config_service() {
 	echo "Deploying Kubelet config agent on the host ..."
 	mkdir -p ${host_run_sysbox_deploy_k8s}
-	cp ${crio_artifacts}/scripts/kubelet-config-helper.sh ${host_usr_local_bin}/kubelet-config-helper.sh
-	cp ${crio_artifacts}/systemd/kubelet-config-helper.service ${host_lib_systemd}/kubelet-config-helper.service
+	cp ${crio_artifacts}/scripts/kubelet-config-helper.sh ${host_local_bin}/kubelet-config-helper.sh
+	cp ${crio_artifacts}/systemd/kubelet-config-helper.service ${host_systemd}/kubelet-config-helper.service
 	cp ${crio_artifacts}/config/crio-kubelet-options ${host_run_sysbox_deploy_k8s}/crio-kubelet-options
-	cp /usr/local/bin/crictl ${host_usr_local_bin}/sysbox-deploy-k8s-crictl
+	cp /usr/local/bin/crictl ${host_local_bin}/sysbox-deploy-k8s-crictl
 
 	echo "Running Kubelet config agent on the host (will restart Kubelet and temporary bring down all pods on this node for ~1 min) ..."
 	systemctl daemon-reload
@@ -143,18 +144,18 @@ function remove_kubelet_config_service() {
 	systemctl disable kubelet-config-helper.service
 
 	echo "Removing Kubelet config agent from the host ..."
-	rm ${host_usr_local_bin}/kubelet-config-helper.sh
-	rm ${host_lib_systemd}/kubelet-config-helper.service
-	rm ${host_usr_local_bin}/sysbox-deploy-k8s-crictl
+	rm ${host_local_bin}/kubelet-config-helper.sh
+	rm ${host_systemd}/kubelet-config-helper.service
+	rm ${host_local_bin}/sysbox-deploy-k8s-crictl
 	systemctl daemon-reload
 }
 
 function deploy_kubelet_unconfig_service() {
 	echo "Deploying Kubelet unconfig agent on the host ..."
 
-	cp ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh ${host_usr_local_bin}/kubelet-unconfig-helper.sh
-	cp ${crio_artifacts}/systemd/kubelet-unconfig-helper.service ${host_lib_systemd}/kubelet-unconfig-helper.service
-	cp /usr/local/bin/crictl ${host_usr_local_bin}/sysbox-deploy-k8s-crictl
+	cp ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh ${host_local_bin}/kubelet-unconfig-helper.sh
+	cp ${crio_artifacts}/systemd/kubelet-unconfig-helper.service ${host_systemd}/kubelet-unconfig-helper.service
+	cp /usr/local/bin/crictl ${host_local_bin}/sysbox-deploy-k8s-crictl
 
 	echo "Running Kubelet unconfig agent on the host (will restart Kubelet and temporary bring down all pods on this node for ~1 min) ..."
 	systemctl daemon-reload
@@ -167,9 +168,9 @@ function remove_kubelet_unconfig_service() {
 	systemctl disable kubelet-unconfig-helper.service
 
 	echo "Removing Kubelet unconfig agent from the host ..."
-	rm ${host_usr_local_bin}/kubelet-unconfig-helper.sh
-	rm ${host_lib_systemd}/kubelet-unconfig-helper.service
-	rm ${host_usr_local_bin}/sysbox-deploy-k8s-crictl
+	rm ${host_local_bin}/kubelet-unconfig-helper.sh
+	rm ${host_systemd}/kubelet-unconfig-helper.service
+	rm ${host_local_bin}/sysbox-deploy-k8s-crictl
 	systemctl daemon-reload
 }
 
@@ -237,15 +238,15 @@ function copy_sysbox_to_host() {
 
 	local artifacts_dir=$(get_artifacts_dir)
 
-	cp "$artifacts_dir/sysbox-mgr" "$host_usr_bin/sysbox-mgr"
-	cp "$artifacts_dir/sysbox-fs" "$host_usr_bin/sysbox-fs"
-	cp "$artifacts_dir/sysbox-runc" "$host_usr_bin/sysbox-runc"
+	cp "$artifacts_dir/sysbox-mgr" "$host_bin/sysbox-mgr"
+	cp "$artifacts_dir/sysbox-fs" "$host_bin/sysbox-fs"
+	cp "$artifacts_dir/sysbox-runc" "$host_bin/sysbox-runc"
 }
 
 function rm_sysbox_from_host() {
-	rm -f "$host_usr_bin/sysbox-mgr"
-	rm -f "$host_usr_bin/sysbox-fs"
-	rm -f "$host_usr_bin/sysbox-runc"
+	rm -f "$host_bin/sysbox-mgr"
+	rm -f "$host_bin/sysbox-fs"
+	rm -f "$host_bin/sysbox-runc"
 
 	# Remove sysbox from the /etc/subuid and /etc/subgid files
 	sed -i '/sysbox:/d' "${host_etc}/subuid"
@@ -253,26 +254,26 @@ function rm_sysbox_from_host() {
 }
 
 function copy_conf_to_host() {
-	cp "$sysbox_artifacts/systemd/99-sysbox-sysctl.conf" "$host_lib_sysctl/99-sysbox-sysctl.conf"
-	cp "$sysbox_artifacts/systemd/50-sysbox-mod.conf" "$host_usr_lib_mod/50-sysbox-mod.conf"
+	cp "$sysbox_artifacts/systemd/99-sysbox-sysctl.conf" "$host_sysctl/99-sysbox-sysctl.conf"
+	cp "$sysbox_artifacts/systemd/50-sysbox-mod.conf" "$host_lib_mod/50-sysbox-mod.conf"
 }
 
 function rm_conf_from_host() {
-	rm -f "$host_lib_sysctl/99-sysbox-sysctl.conf"
-	rm -f "$host_usr_lib_mod/50-sysbox-mod.conf"
+	rm -f "$host_sysctl/99-sysbox-sysctl.conf"
+	rm -f "$host_lib_mod/50-sysbox-mod.conf"
 }
 
 function copy_systemd_units_to_host() {
-	cp "$sysbox_artifacts/systemd/sysbox.service" "$host_lib_systemd/sysbox.service"
-	cp "$sysbox_artifacts/systemd/sysbox-mgr.service" "$host_lib_systemd/sysbox-mgr.service"
-	cp "$sysbox_artifacts/systemd/sysbox-fs.service" "$host_lib_systemd/sysbox-fs.service"
+	cp "$sysbox_artifacts/systemd/sysbox.service" "$host_systemd/sysbox.service"
+	cp "$sysbox_artifacts/systemd/sysbox-mgr.service" "$host_systemd/sysbox-mgr.service"
+	cp "$sysbox_artifacts/systemd/sysbox-fs.service" "$host_systemd/sysbox-fs.service"
 	systemctl daemon-reload
 }
 
 function rm_systemd_units_from_host() {
-	rm -f "$host_lib_systemd/sysbox.service"
-	rm -f "$host_lib_systemd/sysbox-mgr.service"
-	rm -f "$host_lib_systemd/sysbox-fs.service"
+	rm -f "$host_systemd/sysbox.service"
+	rm -f "$host_systemd/sysbox-mgr.service"
+	rm -f "$host_systemd/sysbox-fs.service"
 	systemctl daemon-reload
 }
 
@@ -280,7 +281,7 @@ function apply_conf() {
 
 	# Note: this requires CAP_SYS_ADMIN on the host
 	echo "Configuring host sysctls ..."
-	sysctl -p "$host_lib_sysctl/99-sysbox-sysctl.conf"
+	sysctl -p "$host_sysctl/99-sysbox-sysctl.conf"
 }
 
 function start_sysbox() {
@@ -315,8 +316,8 @@ function remove_sysbox() {
 
 function deploy_sysbox_installer_helper() {
 	echo "Deploying Sysbox installer helper on the host ..."
-	cp ${sysbox_artifacts}/scripts/sysbox-installer-helper.sh ${host_usr_local_bin}/sysbox-installer-helper.sh
-	cp ${sysbox_artifacts}/systemd/sysbox-installer-helper.service ${host_lib_systemd}/sysbox-installer-helper.service
+	cp ${sysbox_artifacts}/scripts/sysbox-installer-helper.sh ${host_local_bin}/sysbox-installer-helper.sh
+	cp ${sysbox_artifacts}/systemd/sysbox-installer-helper.service ${host_systemd}/sysbox-installer-helper.service
 	systemctl daemon-reload
 	echo "Running Sysbox installer helper on the host (may take several seconds) ..."
 	systemctl restart sysbox-installer-helper.service
@@ -327,15 +328,15 @@ function remove_sysbox_installer_helper() {
 	systemctl stop sysbox-installer-helper.service
 	systemctl disable sysbox-installer-helper.service
 	echo "Removing Sysbox installer helper from the host ..."
-	rm ${host_usr_local_bin}/sysbox-installer-helper.sh
-	rm ${host_lib_systemd}/sysbox-installer-helper.service
+	rm ${host_local_bin}/sysbox-installer-helper.sh
+	rm ${host_systemd}/sysbox-installer-helper.service
 	systemctl daemon-reload
 }
 
 function deploy_sysbox_removal_helper() {
 	echo "Deploying Sysbox removal helper on the host..."
-	cp ${sysbox_artifacts}/scripts/sysbox-removal-helper.sh ${host_usr_local_bin}/sysbox-removal-helper.sh
-	cp ${sysbox_artifacts}/systemd/sysbox-removal-helper.service ${host_lib_systemd}/sysbox-removal-helper.service
+	cp ${sysbox_artifacts}/scripts/sysbox-removal-helper.sh ${host_local_bin}/sysbox-removal-helper.sh
+	cp ${sysbox_artifacts}/systemd/sysbox-removal-helper.service ${host_systemd}/sysbox-removal-helper.service
 	systemctl daemon-reload
 	systemctl restart sysbox-removal-helper.service
 }
@@ -344,8 +345,8 @@ function remove_sysbox_removal_helper() {
 	echo "Removing the Sysbox removal helper ..."
 	systemctl stop sysbox-removal-helper.service
 	systemctl disable sysbox-removal-helper.service
-	rm ${host_usr_local_bin}/sysbox-removal-helper.sh
-	rm ${host_lib_systemd}/sysbox-removal-helper.service
+	rm ${host_local_bin}/sysbox-removal-helper.sh
+	rm ${host_systemd}/sysbox-removal-helper.service
 	systemctl daemon-reload
 }
 
@@ -373,8 +374,8 @@ function install_sysbox_deps() {
 	if host_flatcar_distro; then
 		echo "Copying shiftfs module and sysbox dependencies to host"
 		local artifacts_dir=$(get_artifacts_dir)
-		cp ${artifacts_dir}/shiftfs.ko ${host_usr_lib_mod}/shiftfs.ko
-		cp ${artifacts_dir}/fusermount ${host_usr_bin}/fusermount
+		cp ${artifacts_dir}/shiftfs.ko ${host_lib_mod}/shiftfs.ko
+		cp ${artifacts_dir}/fusermount ${host_bin}/fusermount
 	else
 		echo "Copying shiftfs sources to host"
 		if semver_ge $version 5.4 && semver_lt $version 5.8; then
@@ -682,14 +683,14 @@ function do_distro_adjustments() {
 	fi
 
 	# Adjust global vars.
-	host_usr_bin="/mnt/host/opt/bin"
-	host_usr_local_bin="/mnt/host/opt/bin"
-	host_lib_systemd="/mnt/host/etc/systemd/system"
-	host_lib_sysctl="/mnt/host/opt/lib/sysctl.d"
-	host_usr_lib_mod="/mnt/host/opt/lib/modules-load.d"
+	host_bin="/mnt/host/opt/bin"
+	host_local_bin="/mnt/host/opt/bin"
+	host_systemd="/mnt/host/etc/systemd/system"
+	host_sysctl="/mnt/host/opt/lib/sysctl.d"
+	host_lib_mod="/mnt/host/opt/lib/modules-load.d"
 
 	# Ensure that required folders are already present.
-	mkdir -p ${host_usr_bin} ${host_usr_local_bin} ${host_lib_systemd} ${host_lib_sysctl} ${host_usr_lib_mod}
+	mkdir -p ${host_bin} ${host_local_bin} ${host_systemd} ${host_sysctl} ${host_lib_mod}
 
 	# Adjust crio helper scripts and services.
 	sed -i 's@/usr/local/bin/crio@/opt/bin/crio@g' ${crio_artifacts}/systemd/crio-installer.service
