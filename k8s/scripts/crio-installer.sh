@@ -80,7 +80,7 @@ function install_crio_flatcar() {
 	chmod +x /opt/bin/crio-extractor.sh
 	/opt/bin/crio-extractor.sh install
 
-	# Update crio path.
+	# Adjust crio path.
 	sed -i '/Type=notify/a Environment=PATH=/opt/crio/bin:/sbin:/bin:/usr/sbin:/usr/bin' /etc/systemd/system/crio.service
 	sed -i 's@/usr/local/bin/crio@/opt/crio/bin/crio@' /etc/systemd/system/crio.service
 }
@@ -119,7 +119,6 @@ function main() {
 
 	backup_crictl_config
 	install_crio
-	restart_crio
 }
 
 main "$@"
