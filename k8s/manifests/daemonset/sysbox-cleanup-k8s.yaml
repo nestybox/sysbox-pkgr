@@ -31,22 +31,33 @@ spec:
         volumeMounts:
         - name: host-etc
           mountPath: /mnt/host/etc
+        - name: host-osrelease
+          mountPath: /mnt/host/os-release
         - name: host-dbus
           mountPath: /var/run/dbus
         - name: host-run-systemd
           mountPath: /run/systemd
         - name: host-lib-systemd
-          mountPath: /mnt/host/lib/systemd
+          mountPath: /mnt/host/lib/systemd/system
+        - name: host-etc-systemd
+          mountPath: /mnt/host/etc/systemd/system
         - name: host-usr-bin
-          mountPath: /mnt/host/usr/bin/
+          mountPath: /mnt/host/usr/bin
+        - name: host-opt-bin
+          mountPath: /mnt/host/opt/bin
         - name: host-usr-local-bin
           mountPath: /mnt/host/usr/local/bin
+        - name: host-opt-local-bin
+          mountPath: /mnt/host/opt/local/bin
         - name: host-run
           mountPath: /mnt/host/run
       volumes:
         - name: host-etc
           hostPath:
             path: /etc
+        - name: host-osrelease
+          hostPath:
+            path: /etc/os-release
         - name: host-dbus
           hostPath:
             path: /var/run/dbus
@@ -55,13 +66,22 @@ spec:
             path: /run/systemd
         - name: host-lib-systemd
           hostPath:
-            path: /lib/systemd
+            path: /lib/systemd/system
+        - name: host-etc-systemd
+          hostPath:
+            path: /etc/systemd/system
         - name: host-usr-bin
           hostPath:
-            path: /usr/bin/
+            path: /usr/bin
+        - name: host-opt-bin
+          hostPath:
+            path: /opt/bin
         - name: host-usr-local-bin
           hostPath:
-            path: /usr/local/bin/
+            path: /usr/local/bin
+        - name: host-opt-local-bin
+          hostPath:
+            path: /opt/local/bin/
         - name: host-run
           hostPath:
             path: /run
