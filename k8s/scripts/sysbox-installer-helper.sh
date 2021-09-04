@@ -63,19 +63,21 @@ function shiftfs_installed() {
 }
 
 function probe_kernel_mods() {
-	local shiftfs_module=$1
 
 	echo "Probing kernel modules ..."
 
-	modprobe configfs
-
-	if [ -z ${shiftfs_module} ]; then
-		modprobe shiftfs
-	else
+	# If provided by the caller, load the passed shiftfs module, otherwise assume
+	# that this one is already present in the system's default modules location.
+	local shiftfs_module=${1:-}
+	if [ ! -z "${shiftfs_module}" ]; then
 		if ! lsmod | grep -q shiftfs; then
 			insmod ${shiftfs_module}
 		fi
+	else
+		modprobe shiftfs
 	fi
+
+	modprobe configfs
 
 	if ! mount | grep -q configfs; then
 		echo -e "\nConfigfs kernel module is not loaded. Configfs may be required " \
