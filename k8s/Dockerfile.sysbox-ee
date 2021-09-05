@@ -69,7 +69,7 @@ COPY systemd/sysbox-fs.service /opt/sysbox/systemd/sysbox-fs.service
 COPY systemd/sysbox-mgr.service /opt/sysbox/systemd/sysbox-mgr.service
 COPY systemd/sysbox.service /opt/sysbox/systemd/sysbox.service
 
-COPY scripts/sysbox-ee-deploy-k8s.sh /opt/sysbox/scripts/sysbox-ee-deploy-k8s.sh
+COPY scripts/sysbox-deploy-k8s.sh /opt/sysbox/scripts/sysbox-deploy-k8s.sh
 COPY scripts/sysbox-installer-helper.sh /opt/sysbox/scripts/sysbox-installer-helper.sh
 COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.sh
 
