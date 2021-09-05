@@ -700,7 +700,11 @@ function do_edition_adjustments() {
 
 # Function holds all the adjustments that need to be carried out to meet
 # distro-specific requirements. For example, in Flatcar's case these special
-# requirements are a consequence of its partition scheme (read-only /usr).
+# requirements are a consequence of its particular partition scheme (read-only
+# /usr). For readability and maintainability purposes, we opted by placing this
+# adjustment logic away from the natural location where each file component is
+# utilized, so we must keep this point in mind if the files being edited here
+# were to be modified prior to the invocation of this routine.
 function do_distro_adjustments() {
 
 	local distro=$(get_host_distro)
