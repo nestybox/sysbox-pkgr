@@ -17,11 +17,11 @@
 #
 
 #
-# Script to install or remove Sysbox on a Kubernetes node. The script assumes it
-# will run inside the sysbox deploy daemonset container, and that several host
-# directories are mounted onto the container. The script requires full root
-# privileges on the host (e.g., CAP_SYS_ADMIN + write access to /proc) in order
-# to install Sysbox on it.
+# Script to install or remove Sysbox (CE) and Sysbox-EE on a Kubernetes node.
+# The script assumes it will run inside the sysbox deploy daemonset container,
+# and that several host directories are mounted onto the container. The script
+# requires full root privileges on the host (e.g., CAP_SYS_ADMIN + write access
+# to /proc) in order to install Sysbox on it.
 #
 # Note: inspired by kata-deploy (github.com/kata-containers/packaging/tree/master/kata-deploy)
 #
@@ -29,6 +29,9 @@
 set -o errexit
 set -o pipefail
 set -o nounset
+
+# The Sysbox edition to install: Sysbox (CE) or Sysbox-EE.
+sysbox_edition=""
 
 # The daemonset Dockerfile places sysbox artifacts here
 sysbox_artifacts="/opt/sysbox"
@@ -48,11 +51,13 @@ host_crio_conf_file_backup="${host_crio_conf_file}.orig"
 host_run="/mnt/host/run"
 host_run_sysbox_deploy_k8s="${host_run}/sysbox-deploy-k8s"
 
-# Subid defaults (Sysbox supports up to 16 sys containers, each with 64k uids(gids)).
-# We use CRI-O's default user "containers" for the sub-id range (rather than user "sysbox").
+# Subid default values.
 subid_alloc_min_start=100000
-subid_alloc_min_range=1048576
+subid_alloc_min_range=""
 subid_alloc_max_end=4294967295
+
+# We use CRI-O's default user "containers" for the sub-id range (rather than
+# user "sysbox").
 subid_user="containers"
 subid_def_file="${host_etc}/login.defs"
 subuid_file="${host_etc}/subuid"
@@ -285,20 +290,20 @@ function apply_conf() {
 }
 
 function start_sysbox() {
-	echo "Starting Sysbox ..."
+	echo "Starting $sysbox_edition ..."
 	systemctl restart sysbox
 	systemctl is-active --quiet sysbox
 }
 
 function stop_sysbox() {
 	if systemctl is-active --quiet sysbox; then
-		echo "Stopping Sysbox ..."
+		echo "Stopping $sysbox_edition ..."
 		systemctl stop sysbox
 	fi
 }
 
 function install_sysbox() {
-	echo "Installing Sysbox on host ..."
+	echo "Installing $sysbox_edition on host ..."
 	copy_sysbox_to_host
 	copy_conf_to_host
 	copy_systemd_units_to_host
@@ -307,7 +312,7 @@ function install_sysbox() {
 }
 
 function remove_sysbox() {
-	echo "Removing Sysbox from host ..."
+	echo "Removing $sysbox_edition from host ..."
 	stop_sysbox
 	rm_systemd_units_from_host
 	rm_conf_from_host
@@ -315,26 +320,26 @@ function remove_sysbox() {
 }
 
 function deploy_sysbox_installer_helper() {
-	echo "Deploying Sysbox installer helper on the host ..."
+	echo "Deploying $sysbox_edition installer helper on the host ..."
 	cp ${sysbox_artifacts}/scripts/sysbox-installer-helper.sh ${host_local_bin}/sysbox-installer-helper.sh
 	cp ${sysbox_artifacts}/systemd/sysbox-installer-helper.service ${host_systemd}/sysbox-installer-helper.service
 	systemctl daemon-reload
-	echo "Running Sysbox installer helper on the host (may take several seconds) ..."
+	echo "Running $sysbox_edition installer helper on the host (may take several seconds) ..."
 	systemctl restart sysbox-installer-helper.service
 }
 
 function remove_sysbox_installer_helper() {
-	echo "Stopping the Sysbox installer helper on the host ..."
+	echo "Stopping the $sysbox_edition installer helper on the host ..."
 	systemctl stop sysbox-installer-helper.service
 	systemctl disable sysbox-installer-helper.service
-	echo "Removing Sysbox installer helper from the host ..."
+	echo "Removing $sysbox_edition installer helper from the host ..."
 	rm ${host_local_bin}/sysbox-installer-helper.sh
 	rm ${host_systemd}/sysbox-installer-helper.service
 	systemctl daemon-reload
 }
 
 function deploy_sysbox_removal_helper() {
-	echo "Deploying Sysbox removal helper on the host..."
+	echo "Deploying $sysbox_edition removal helper on the host..."
 	cp ${sysbox_artifacts}/scripts/sysbox-removal-helper.sh ${host_local_bin}/sysbox-removal-helper.sh
 	cp ${sysbox_artifacts}/systemd/sysbox-removal-helper.service ${host_systemd}/sysbox-removal-helper.service
 	systemctl daemon-reload
@@ -342,7 +347,7 @@ function deploy_sysbox_removal_helper() {
 }
 
 function remove_sysbox_removal_helper() {
-	echo "Removing the Sysbox removal helper ..."
+	echo "Removing the $sysbox_edition removal helper ..."
 	systemctl stop sysbox-removal-helper.service
 	systemctl disable sysbox-removal-helper.service
 	rm ${host_local_bin}/sysbox-removal-helper.sh
@@ -542,7 +547,7 @@ function die() {
 }
 
 function print_usage() {
-	echo "Usage: $0 [install|cleanup]"
+	echo "Usage: $0 [ce|ee] [install|cleanup]"
 }
 
 function get_container_runtime() {
@@ -672,6 +677,27 @@ function semver_ge() {
 	fi
 }
 
+function do_edition_adjustments() {
+	local edition_tag=$1
+
+	# Set the Sysbox edition name being installed and define the corresponding
+	# number of sys containers being supported.
+	#
+	# * Sysbox (CE) supports up to 16 sys containers, each with 64k uids(gids).
+	# * Sysbox-EE supports up to 4K sys containers, each with 64k uids(gids).
+
+	if [[ ${edition_tag} == "ce" ]]; then
+		sysbox_edition="Sysbox"
+		subid_alloc_min_range=1048576
+	elif [[ ${edition_tag} == "ee" ]]; then
+		sysbox_edition="Sysbox-EE"
+		subid_alloc_min_range=268435456
+	else
+		print_usage
+		die "invalid sysbox edition value: $edition_tag"
+	fi
+}
+
 # Function holds all the adjustments that need to be carried out to meet
 # distro-specific requirements. For example, in Flatcar's case these special
 # requirements are a consequence of its partition scheme (read-only /usr).
@@ -737,7 +763,16 @@ function main() {
 		k8s_runtime="crio"
 	fi
 
-	action=${1:-}
+	local edition_tag=${1:-}
+	if [ -z "$edition_tag" ]; then
+		print_usage
+		die "invalid arguments"
+	fi
+
+	# Adjust env-vars associated to the Sysbox product edition being (un)installed.
+	do_edition_adjustments $edition_tag
+
+	local action=${2:-}
 	if [ -z "$action" ]; then
 		print_usage
 		die "invalid arguments"
@@ -799,7 +834,7 @@ function main() {
 		add_label_to_node "sysbox-runtime=running"
 
 		echo "The k8s runtime on this node is now CRI-O."
-		echo "Sysbox installation completed."
+		echo "$sysbox_edition installation completed."
 		;;
 
 	cleanup)
@@ -830,7 +865,7 @@ function main() {
 			crio_restart_pending=true
 			rm ${host_run_sysbox_deploy_k8s}/sysbox_installed
 			rm_label_from_node "sysbox-runtime"
-			echo "Sysbox removal completed."
+			echo "$sysbox_edition removal completed."
 		fi
 
 		# Uninstall CRI-O

@@ -20,7 +20,7 @@ spec:
       - name: sysbox-deploy-k8s
         image: registry.nestybox.com/nestybox/sysbox-deploy-k8s
         imagePullPolicy: Always
-        command: [ "bash", "-c", "/opt/sysbox/scripts/sysbox-deploy-k8s.sh install" ]
+        command: [ "bash", "-c", "/opt/sysbox/scripts/sysbox-deploy-k8s.sh ce install" ]
         env:
         - name: NODE_NAME
           valueFrom:
