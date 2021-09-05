@@ -176,6 +176,8 @@ function replace_kubelet_env_var() {
 					if [[ $line_opts != "" ]]; then
 						line_opts=$(replace_cmd_option "$line_opts" "$opt_name" "$opt_val")
 					else
+						# If there are no existing kubelet-config attrs to replace, then
+						# simply take the crio-kubelet options being provided.
 						line_opts="${opt_name}=${opt_val}"
 					fi
 				fi
