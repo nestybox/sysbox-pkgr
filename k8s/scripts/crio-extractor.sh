@@ -1,7 +1,8 @@
 #!/bin/sh
 
 #
-# Script to install and uninstall CRI-O on a Flatcar OS host.
+# Script to install and uninstall CRI-O from a tar archive. Typically needed in
+# OSes that don't have a package manager (e.g., Flatcar).
 #
 # NOTE: adapted from the CRI-O release bundle Makefile
 # found here: https://github.com/cri-o/cri-o/releases
@@ -83,7 +84,7 @@ function install_crun() {
 	install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crun
 }
 
-function uninstall() {
+function uninstall_all() {
 	uninstall_cni
 	uninstall_conmon
 	uninstall_crio
@@ -136,7 +137,7 @@ function uninstall_crun() {
 }
 
 function main() {
-	set -x
+
 	if [[ "$1" == "" ]]; then
 		printf "\n"
 		printf "Usage: crio-extractor.sh [install | uninstall]\n"
@@ -147,7 +148,7 @@ function main() {
 	if [[ $1 == "install" ]]; then
 		install_all
 	elif [[ $1 == "uninstall" ]]; then
-		uninstall
+		uninstall_all
 	fi
 }
 
