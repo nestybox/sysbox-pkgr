@@ -43,6 +43,8 @@ spec:
           mountPath: /mnt/host/usr/local/bin
         - name: host-run
           mountPath: /mnt/host/run
+        - name: host-var-lib
+          mountPath: /mnt/host/var/lib
       volumes:
         - name: host-etc
           hostPath:
@@ -65,6 +67,9 @@ spec:
         - name: host-run
           hostPath:
             path: /run
+        - name: host-var-lib
+          hostPath:
+            path: /var/lib
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 1
