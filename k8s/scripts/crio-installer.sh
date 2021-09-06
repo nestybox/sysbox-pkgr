@@ -95,6 +95,9 @@ function install_crio() {
 		install_crio_deb
 	fi
 
+	# Ensure that cri-o service is automatically started at boot-up time.
+	systemctl enable crio
+
 	echo "CRI-O installation done."
 }
 
