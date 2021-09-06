@@ -273,6 +273,9 @@ function copy_systemd_units_to_host() {
 	cp "$sysbox_artifacts/systemd/sysbox-mgr.service" "$host_systemd/sysbox-mgr.service"
 	cp "$sysbox_artifacts/systemd/sysbox-fs.service" "$host_systemd/sysbox-fs.service"
 	systemctl daemon-reload
+	systemctl enable sysbox.service
+	systemctl enable sysbox-mgr.service
+	systemctl enable sysbox-fs.service
 }
 
 function rm_systemd_units_from_host() {
