@@ -37,8 +37,7 @@ sysbox_edition=""
 sysbox_artifacts="/opt/sysbox"
 crio_artifacts="/opt/crio-deploy"
 
-# The daemonset spec will set up these mounts
-
+# The daemonset spec will set up these mounts.
 host_systemd="/mnt/host/lib/systemd/system"
 host_sysctl="/mnt/host/lib/sysctl.d"
 host_bin="/mnt/host/usr/bin"
@@ -94,11 +93,11 @@ function remove_crio_installer_service() {
 	echo "Removing CRI-O installer agent from the host ..."
 	systemctl stop crio-installer.service
 	systemctl disable crio-installer.service
-	rm ${host_local_bin}/crio-installer.sh
-	rm ${host_systemd}/crio-installer.service
+	rm -f ${host_local_bin}/crio-installer.sh
+	rm -f ${host_systemd}/crio-installer.service
 
 	if host_flatcar_distro; then
-		rm ${host_local_bin}/crio-extractor.sh
+		rm -f ${host_local_bin}/crio-extractor.sh
 	fi
 
 	systemctl daemon-reload
@@ -121,11 +120,11 @@ function remove_crio_removal_service() {
 	echo "Removing the CRI-O uninstaller ..."
 	systemctl stop crio-removal.service
 	systemctl disable crio-removal.service
-	rm ${host_local_bin}/crio-removal.sh
-	rm ${host_systemd}/crio-removal.service
+	rm -f ${host_local_bin}/crio-removal.sh
+	rm -f ${host_systemd}/crio-removal.service
 
 	if host_flatcar_distro; then
-		rm ${host_local_bin}/crio-extractor.sh
+		rm -f ${host_local_bin}/crio-extractor.sh
 	fi
 
 	systemctl daemon-reload
@@ -150,9 +149,9 @@ function remove_kubelet_config_service() {
 	systemctl disable kubelet-config-helper.service
 
 	echo "Removing Kubelet config agent from the host ..."
-	rm ${host_local_bin}/kubelet-config-helper.sh
-	rm ${host_systemd}/kubelet-config-helper.service
-	rm ${host_local_bin}/sysbox-deploy-k8s-crictl
+	rm -f ${host_local_bin}/kubelet-config-helper.sh
+	rm -f ${host_systemd}/kubelet-config-helper.service
+	rm -f ${host_local_bin}/sysbox-deploy-k8s-crictl
 	systemctl daemon-reload
 }
 
@@ -174,9 +173,9 @@ function remove_kubelet_unconfig_service() {
 	systemctl disable kubelet-unconfig-helper.service
 
 	echo "Removing Kubelet unconfig agent from the host ..."
-	rm ${host_local_bin}/kubelet-unconfig-helper.sh
-	rm ${host_systemd}/kubelet-unconfig-helper.service
-	rm ${host_local_bin}/sysbox-deploy-k8s-crictl
+	rm -f ${host_local_bin}/kubelet-unconfig-helper.sh
+	rm -f ${host_systemd}/kubelet-unconfig-helper.service
+	rm -f ${host_local_bin}/sysbox-deploy-k8s-crictl
 	systemctl daemon-reload
 }
 
@@ -225,6 +224,8 @@ function get_artifacts_dir() {
 
 	local distro=$(get_host_distro)
 
+	# TODO: add sysbox binaries for all supported distros.
+
 	if [[ "$distro" == "ubuntu_20.04" ]]; then
 		artifacts_dir="$sysbox_artifacts/bin/ubuntu-focal"
 	elif [[ "$distro" == "ubuntu_18.04" ]]; then
@@ -239,8 +240,6 @@ function get_artifacts_dir() {
 }
 
 function copy_sysbox_to_host() {
-
-	# TODO: add sysbox binaries for all supported distros
 
 	local artifacts_dir=$(get_artifacts_dir)
 
@@ -337,8 +336,8 @@ function remove_sysbox_installer_helper() {
 	systemctl stop sysbox-installer-helper.service
 	systemctl disable sysbox-installer-helper.service
 	echo "Removing $sysbox_edition installer helper from the host ..."
-	rm ${host_local_bin}/sysbox-installer-helper.sh
-	rm ${host_systemd}/sysbox-installer-helper.service
+	rm -f ${host_local_bin}/sysbox-installer-helper.sh
+	rm -f ${host_systemd}/sysbox-installer-helper.service
 	systemctl daemon-reload
 }
 
@@ -354,8 +353,8 @@ function remove_sysbox_removal_helper() {
 	echo "Removing the $sysbox_edition removal helper ..."
 	systemctl stop sysbox-removal-helper.service
 	systemctl disable sysbox-removal-helper.service
-	rm ${host_local_bin}/sysbox-removal-helper.sh
-	rm ${host_systemd}/sysbox-removal-helper.service
+	rm -f ${host_local_bin}/sysbox-removal-helper.sh
+	rm -f ${host_systemd}/sysbox-removal-helper.service
 	systemctl daemon-reload
 }
 
@@ -365,12 +364,14 @@ function install_sysbox_deps() {
 	# sysbox-installer-helper agent, which is a systemd service that we drop on
 	# the host and request systemd to start. This way the agent can install
 	# packages on the host as needed. One of those dependencies is shiftfs, which
-	# unlike the other dependencies needs to be built from source on the host
+	# unlike the other dependencies, needs to be built from source on the host
 	# machine (with the corresponding kernel headers, etc). The shiftfs sources
 	# are included in the sysbox-deploy-k8s container image, and here we copy
 	# them to the host machine (in dir /run/shiftfs_dkms). The
 	# sysbox-installer-helper agent will build those sources on the host and
-	# install shiftfs on the host kernel via dkms.
+	# install shiftfs on the host kernel via dkms. For the specific case of
+	# Flatcar, we carry a pre-built shiftfs binary as we can't easily build it
+	# on the Flatcar host.
 
 	echo "Installing Sysbox dependencies on host"
 
@@ -757,7 +758,7 @@ function do_distro_adjustments() {
 #
 
 function main() {
-	set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
@@ -834,7 +835,7 @@ function main() {
 		# Kubelet config service cleanup
 		if [ -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
 			remove_kubelet_config_service
-			rm ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
+			rm -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
 			echo "Kubelet reconfig completed."
 		fi
 
@@ -860,7 +861,7 @@ function main() {
 
 		if [ -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
 			remove_kubelet_unconfig_service
-			rm ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
+			rm -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
 			echo "Kubelet reconfig completed."
 		fi
 
@@ -871,7 +872,7 @@ function main() {
 			remove_sysbox
 			remove_sysbox_deps
 			crio_restart_pending=true
-			rm ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
+			rm -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
 			rm_label_from_node "sysbox-runtime"
 			echo "$sysbox_edition removal completed."
 		fi
@@ -881,7 +882,7 @@ function main() {
 			deploy_crio_removal_service
 			remove_crio_removal_service
 			crio_restart_pending=false
-			rm ${host_var_lib_sysbox_deploy_k8s}/crio_installed
+			rm -f ${host_var_lib_sysbox_deploy_k8s}/crio_installed
 			rm_label_from_node "crio-runtime"
 		fi
 

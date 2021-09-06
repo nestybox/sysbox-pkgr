@@ -635,7 +635,7 @@ function set_common_requirements() {
 }
 
 function main() {
-	set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
