@@ -24,7 +24,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-run_sysbox_deploy_k8s="/run/sysbox-deploy-k8s"
+var_lib_sysbox_deploy_k8s="/var/lib/sysbox-deploy-k8s"
 runtime=""
 
 kubelet_bin="/usr/bin/kubelet"
@@ -141,7 +141,7 @@ function replace_kubelet_env_var() {
 	local env_file=$1
 	local env_var=$2
 
-	readarray -t opts <${run_sysbox_deploy_k8s}/crio-kubelet-options
+	readarray -t opts <${var_lib_sysbox_deploy_k8s}/crio-kubelet-options
 
 	# add newline at end of $env_file if not present
 	sed -i '$a\' "$env_file"
@@ -197,13 +197,13 @@ function replace_kubelet_env_var() {
 
 function backup_orig_config() {
 	local env_file=$1
-	local config_file="${run_sysbox_deploy_k8s}/config"
+	local config_file="${var_lib_sysbox_deploy_k8s}/config"
 
-	mkdir -p "$run_sysbox_deploy_k8s"
+	mkdir -p "$var_lib_sysbox_deploy_k8s"
 
 	if [ -f $env_file ]; then
 		echo "kubelet_env_file=${env_file}" >"$config_file"
-		cp "$env_file" "${run_sysbox_deploy_k8s}/kubelet.orig"
+		cp "$env_file" "${var_lib_sysbox_deploy_k8s}/kubelet.orig"
 	fi
 }
 
@@ -493,8 +493,8 @@ function clean_runtime_state() {
 	# Store info about the prior runtime on the host so the
 	# kubelet-unconfig-helper service can revert it if/when the crio-cleanup-k8s
 	# daemonset runs.
-	mkdir -p "$run_sysbox_deploy_k8s"
-	echo $runtime >${run_sysbox_deploy_k8s}/prior_runtime
+	mkdir -p "$var_lib_sysbox_deploy_k8s"
+	echo $runtime >${var_lib_sysbox_deploy_k8s}/prior_runtime
 }
 
 function get_pods_uids() {

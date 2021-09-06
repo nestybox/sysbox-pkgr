@@ -24,7 +24,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-run_sysbox_deploy_k8s="/run/sysbox-deploy-k8s"
+var_lib_sysbox_deploy_k8s="/var/lib/sysbox-deploy-k8s"
 runtime=""
 
 kubelet_bin="/usr/bin/kubelet"
@@ -34,9 +34,9 @@ crictl_bin="/usr/local/bin/sysbox-deploy-k8s-crictl"
 kubelet_ctr_restart_mode="no"
 
 function die() {
-   msg="$*"
-   echo "ERROR: $msg" >&2
-   exit 1
+	msg="$*"
+	echo "ERROR: $msg" >&2
+	exit 1
 }
 
 function get_kubelet_bin() {
@@ -46,7 +46,7 @@ function get_kubelet_bin() {
 }
 
 function revert_kubelet_config() {
-	local config_file="${run_sysbox_deploy_k8s}/config"
+	local config_file="${var_lib_sysbox_deploy_k8s}/config"
 
 	echo "Reverting kubelet config (from $config_file)"
 
@@ -63,8 +63,8 @@ function revert_kubelet_config() {
 	# The config file will have this: kubelet_env_file=/path/to/file
 	# Here, we copy the orig config file to the target "/path/to/file".
 	local target=$(grep "kubelet_env_file" "$config_file" | cut -d "=" -f2)
-	cp "${run_sysbox_deploy_k8s}/kubelet.orig" "$target"
-	rm "${run_sysbox_deploy_k8s}/kubelet.orig"
+	cp "${var_lib_sysbox_deploy_k8s}/kubelet.orig" "$target"
+	rm "${var_lib_sysbox_deploy_k8s}/kubelet.orig"
 	rm "$config_file"
 }
 
@@ -79,7 +79,7 @@ function stop_kubelet() {
 }
 
 function revert_kubelet_config_snap() {
-	local prior_runtime=$(cat ${run_sysbox_deploy_k8s}/prior_runtime)
+	local prior_runtime=$(cat ${var_lib_sysbox_deploy_k8s}/prior_runtime)
 
 	echo "Reverting kubelet snap config"
 
@@ -186,7 +186,7 @@ function clean_runtime_state() {
 	set -e
 
 	# Restart prior runtime
-	local prior_runtime=$(cat ${run_sysbox_deploy_k8s}/prior_runtime)
+	local prior_runtime=$(cat ${var_lib_sysbox_deploy_k8s}/prior_runtime)
 
 	if [[ "$prior_runtime" =~ "containerd" ]]; then
 
@@ -314,7 +314,7 @@ function kubelet_rke_deployment() {
 		return 1
 	fi
 
-	docker inspect --format='{{.Config.Labels}}' kubelet | \
+	docker inspect --format='{{.Config.Labels}}' kubelet |
 		egrep -q "rke.container.name:kubelet"
 }
 
@@ -322,7 +322,7 @@ function main() {
 
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
-	   die "This script must be run as root"
+		die "This script must be run as root"
 	fi
 
 	#
