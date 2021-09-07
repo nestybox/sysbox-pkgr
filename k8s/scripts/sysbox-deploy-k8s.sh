@@ -717,6 +717,11 @@ function do_distro_adjustments() {
 		return
 	fi
 
+	# Ensure that Flatcar installation proceeds only in Sysbox-EE case.
+	if [[ ${sysbox_edition} != "Sysbox-EE" ]]; then
+		die "Flatcar OS distribution is only supported on Sysbox Enterprise-Edition. Exiting ..."
+	fi
+
 	# Adjust global vars.
 	host_bin="/mnt/host/opt/bin"
 	host_local_bin="/mnt/host/opt/bin"
