@@ -82,7 +82,6 @@ COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
 
 COPY scripts/crio-installer.sh /opt/crio-deploy/scripts/crio-installer.sh
 COPY scripts/crio-removal.sh /opt/crio-deploy/scripts/crio-removal.sh
-COPY scripts/crio-extractor.sh /opt/crio-deploy/scripts/crio-extractor.sh
 
 COPY systemd/kubelet-config-helper.service /opt/crio-deploy/systemd/kubelet-config-helper.service
 COPY scripts/kubelet-config-helper.sh /opt/crio-deploy/scripts/kubelet-config-helper.sh
