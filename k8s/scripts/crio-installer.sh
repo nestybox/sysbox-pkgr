@@ -61,7 +61,6 @@ function do_install_crio() {
 	# location.
 	if [[ "$path" != "/usr/local/bin" ]]; then
 		sed -i "/Type=notify/a Environment=PATH=${path}:/sbin:/bin:/usr/sbin:/usr/bin" /etc/systemd/system/crio.service
-		# Adjust crio's location based on the installation path.
 		sed -i "s@/usr/local/bin/crio@${path}/crio@" /etc/systemd/system/crio.service
 	fi
 
