@@ -50,6 +50,7 @@ host_crio_conf_file_backup="${host_crio_conf_file}.orig"
 host_run="/mnt/host/run"
 host_var_lib="/mnt/host/var/lib"
 host_var_lib_sysbox_deploy_k8s="${host_var_lib}/sysbox-deploy-k8s"
+host_var_lib_sysbox_deploy_k8s_distro="${host_var_lib}/sysbox-deploy-k8s/distro_release"
 
 # Subid default values.
 subid_alloc_min_start=100000
@@ -66,8 +67,12 @@ subgid_file="${host_etc}/subgid"
 # Shiftfs
 shiftfs_min_kernel_ver=5.4
 
+# Current OS distro release
+os_distro_release=""
+
 # Installation flags
 do_sysbox_install="true"
+do_sysbox_update="false"
 do_crio_install="true"
 
 #
@@ -209,18 +214,31 @@ function restart_crio() {
 # Sysbox Installation Functions
 #
 
-function get_artifacts_dir() {
+function is_supported_distro() {
 
-	local distro=$(get_host_distro)
+	local distro=$os_distro_release
 
 	# TODO: add sysbox binaries for all supported distros.
+	if [[ "$distro" == "ubuntu-20.04" ]] ||
+		[[ "$distro" == "ubuntu-18.04" ]] ||
+		[[ "$distro" =~ "flatcar" ]]; then
+		return
+	fi
 
-	if [[ "$distro" == "ubuntu_20.04" ]]; then
-		artifacts_dir="$sysbox_artifacts/bin/ubuntu-focal"
-	elif [[ "$distro" == "ubuntu_18.04" ]]; then
-		artifacts_dir="$sysbox_artifacts/bin/ubuntu-bionic"
-	elif [[ "$distro" == "flatcar_2765.2.6" ]]; then
-		artifacts_dir="$sysbox_artifacts/bin/flatcar-2765.2.6"
+	false
+}
+
+function get_artifacts_dir() {
+
+	local distro=$os_distro_release
+
+	if [[ "$distro" == "ubuntu-20.04" ]]; then
+		artifacts_dir="${sysbox_artifacts}/bin/ubuntu-focal"
+	elif [[ "$distro" == "ubuntu-18.04" ]]; then
+		artifacts_dir="${sysbox_artifacts}/bin/ubuntu-bionic"
+	elif [[ "$distro" =~ "flatcar" ]]; then
+		local release=$(echo $distro | cut -d"-" -f2)
+		artifacts_dir="${sysbox_artifacts}/bin/flatcar-${release}"
 	else
 		die "Sysbox is not supported on this host's distro ($distro)".
 	fi
@@ -232,15 +250,15 @@ function copy_sysbox_to_host() {
 
 	local artifacts_dir=$(get_artifacts_dir)
 
-	cp "$artifacts_dir/sysbox-mgr" "$host_bin/sysbox-mgr"
-	cp "$artifacts_dir/sysbox-fs" "$host_bin/sysbox-fs"
-	cp "$artifacts_dir/sysbox-runc" "$host_bin/sysbox-runc"
+	cp "${artifacts_dir}/sysbox-mgr" "${host_bin}/sysbox-mgr"
+	cp "${artifacts_dir}/sysbox-fs" "${host_bin}/sysbox-fs"
+	cp "${artifacts_dir}/sysbox-runc" "${host_bin}/sysbox-runc"
 }
 
 function rm_sysbox_from_host() {
-	rm -f "$host_bin/sysbox-mgr"
-	rm -f "$host_bin/sysbox-fs"
-	rm -f "$host_bin/sysbox-runc"
+	rm -f "${host_bin}/sysbox-mgr"
+	rm -f "${host_bin}/sysbox-fs"
+	rm -f "${host_bin}/sysbox-runc"
 
 	# Remove sysbox from the /etc/subuid and /etc/subgid files
 	sed -i '/sysbox:/d' "${host_etc}/subuid"
@@ -248,19 +266,19 @@ function rm_sysbox_from_host() {
 }
 
 function copy_conf_to_host() {
-	cp "$sysbox_artifacts/systemd/99-sysbox-sysctl.conf" "$host_sysctl/99-sysbox-sysctl.conf"
-	cp "$sysbox_artifacts/systemd/50-sysbox-mod.conf" "$host_lib_mod/50-sysbox-mod.conf"
+	cp "${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf" "${host_sysctl}/99-sysbox-sysctl.conf"
+	cp "${sysbox_artifacts}/systemd/50-sysbox-mod.conf" "${host_lib_mod}/50-sysbox-mod.conf"
 }
 
 function rm_conf_from_host() {
-	rm -f "$host_sysctl/99-sysbox-sysctl.conf"
-	rm -f "$host_lib_mod/50-sysbox-mod.conf"
+	rm -f "${host_sysctl}/99-sysbox-sysctl.conf"
+	rm -f "${host_lib_mod}/50-sysbox-mod.conf"
 }
 
 function copy_systemd_units_to_host() {
-	cp "$sysbox_artifacts/systemd/sysbox.service" "$host_systemd/sysbox.service"
-	cp "$sysbox_artifacts/systemd/sysbox-mgr.service" "$host_systemd/sysbox-mgr.service"
-	cp "$sysbox_artifacts/systemd/sysbox-fs.service" "$host_systemd/sysbox-fs.service"
+	cp "${sysbox_artifacts}/systemd/sysbox.service" "${host_systemd}/sysbox.service"
+	cp "${sysbox_artifacts}/systemd/sysbox-mgr.service" "${host_systemd}/sysbox-mgr.service"
+	cp "${sysbox_artifacts}/systemd/sysbox-fs.service" "${host_systemd}/sysbox-fs.service"
 	systemctl daemon-reload
 	systemctl enable sysbox.service
 	systemctl enable sysbox-mgr.service
@@ -268,9 +286,9 @@ function copy_systemd_units_to_host() {
 }
 
 function rm_systemd_units_from_host() {
-	rm -f "$host_systemd/sysbox.service"
-	rm -f "$host_systemd/sysbox-mgr.service"
-	rm -f "$host_systemd/sysbox-fs.service"
+	rm -f "${host_systemd}/sysbox.service"
+	rm -f "${host_systemd}/sysbox-mgr.service"
+	rm -f "${host_systemd}/sysbox-fs.service"
 	systemctl daemon-reload
 }
 
@@ -278,7 +296,7 @@ function apply_conf() {
 
 	# Note: this requires CAP_SYS_ADMIN on the host
 	echo "Configuring host sysctls ..."
-	sysctl -p "$host_sysctl/99-sysbox-sysctl.conf"
+	sysctl -p "${host_sysctl}/99-sysbox-sysctl.conf"
 }
 
 function start_sysbox() {
@@ -347,6 +365,29 @@ function remove_sysbox_removal_helper() {
 	systemctl daemon-reload
 }
 
+function install_sysbox_deps_flatcar() {
+
+	# Expected vars layout:
+	# * artifacts-dir == "/opt/sysbox/bin/flatcar-<release>"
+	# * distro-release == "flatcar-<release>"
+	local artifacts_dir=$(get_artifacts_dir)
+	local distro_release=$(echo ${artifacts_dir} | cut -d"/" -f5)
+
+	echo "Fetching / copying shiftfs module and sysbox dependencies to host"
+	mkdir -p ${artifacts_dir}
+	pushd ${artifacts_dir}/..
+	curl -LJOSs https://github.com/nestybox/sysbox-flatcar-preview/releases/download/${distro_release}/${distro_release}.tar.gz
+	if [ $? -ne 0 ]; then
+		die "Unable to fetch Sysbox dependencies for ${distro_release} distribution. Exiting ..."
+	fi
+
+	tar -xf ${distro_release}.tar.gz
+	rm -r ${distro_release}.tar.gz
+
+	cp ${artifacts_dir}/shiftfs.ko ${host_lib_mod}/shiftfs.ko
+	cp ${artifacts_dir}/fusermount ${host_bin}/fusermount
+}
+
 function install_sysbox_deps() {
 
 	# The installation of sysbox dependencies on the host is done via the
@@ -371,10 +412,7 @@ function install_sysbox_deps() {
 	fi
 
 	if host_flatcar_distro; then
-		echo "Copying shiftfs module and sysbox dependencies to host"
-		local artifacts_dir=$(get_artifacts_dir)
-		cp ${artifacts_dir}/shiftfs.ko ${host_lib_mod}/shiftfs.ko
-		cp ${artifacts_dir}/fusermount ${host_bin}/fusermount
+		install_sysbox_deps_flatcar
 	else
 		echo "Copying shiftfs sources to host"
 		if semver_ge $version 5.4 && semver_lt $version 5.8; then
@@ -564,7 +602,7 @@ function get_container_runtime() {
 function get_host_distro() {
 	local distro_name=$(grep -w "^ID" "$host_os_release" | cut -d "=" -f2)
 	local version_id=$(grep -w "^VERSION_ID" "$host_os_release" | cut -d "=" -f2 | tr -d '"')
-	echo "${distro_name}_${version_id}"
+	echo "${distro_name}-${version_id}"
 }
 
 function host_flatcar_distro() {
@@ -574,6 +612,23 @@ function host_flatcar_distro() {
 
 function get_host_kernel() {
 	cat /proc/version | cut -d" " -f3 | cut -d "." -f1-2
+}
+
+function is_host_upgraded() {
+	local cur_distro=$os_distro_release
+
+	if [ ! -f ${host_var_lib_sysbox_deploy_k8s_distro} ]; then
+		false
+		return
+	fi
+
+	local prev_distro=$(cat ${host_var_lib_sysbox_deploy_k8s_distro})
+	if [[ ${cur_distro} == ${prev_distro} ]]; then
+		false
+		return
+	fi
+
+	true
 }
 
 function add_label_to_node() {
@@ -595,6 +650,10 @@ function install_precheck() {
 
 	if systemctl is-active --quiet sysbox; then
 		do_sysbox_install="false"
+	fi
+
+	if is_host_upgraded; then
+		do_sysbox_update="true"
 	fi
 }
 
@@ -752,14 +811,18 @@ function do_distro_adjustments() {
 #
 
 function main() {
-
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
 	fi
 
-	k8s_runtime=$(get_container_runtime)
+	os_distro_release=$(get_host_distro)
+	if ! is_supported_distro; then
+		die "Sysbox is not supported on this host's distro ($os_distro_release)".
+	fi
 
+	k8s_runtime=$(get_container_runtime)
 	if [[ $k8s_runtime == "" ]]; then
 		die "Failed to detect K8s node runtime."
 	elif [ "$k8s_runtime" == "cri-o" ]; then
@@ -802,13 +865,15 @@ function main() {
 		fi
 
 		# Install Sysbox
-		if [[ "$do_sysbox_install" == "true" ]]; then
+		if [[ "$do_sysbox_install" == "true" ]] ||
+			[[ "$do_sysbox_update" == "true" ]]; then
 			add_label_to_node "sysbox-runtime=installing"
 			install_sysbox_deps
 			install_sysbox
 			config_crio_for_sysbox
 			crio_restart_pending=true
 			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
+			echo "$os_distro_release" >${host_var_lib_sysbox_deploy_k8s}/os_distro_release
 		fi
 
 		if [[ "$crio_restart_pending" == "true" ]]; then
@@ -867,6 +932,7 @@ function main() {
 			remove_sysbox_deps
 			crio_restart_pending=true
 			rm -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
+			rm -f ${host_var_lib_sysbox_deploy_k8s}/os_distro_release
 			rm_label_from_node "sysbox-runtime"
 			echo "$sysbox_edition removal completed."
 		fi
