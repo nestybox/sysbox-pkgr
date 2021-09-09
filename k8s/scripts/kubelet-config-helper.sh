@@ -85,12 +85,22 @@ function get_kubelet_env_files() {
 
 function get_kubelet_env_var() {
 	local env_var=$(systemctl show kubelet | grep ExecStart= | cut -d ";" -f2 | sed -e 's@argv\[\]=${kubelet_bin}@@g' | awk '{print $NF}')
+
+	if ! echo ${env_var} | grep -q "^$"; then
+		echo ""
+		return
+	fi
+
 	env_var=${env_var#"$"}
-	echo $env_var
+	echo ${env_var}
 }
 
 function get_kubelet_service_file() {
 	systemctl show kubelet | grep "^FragmentPath" | cut -d "=" -f2
+}
+
+function get_kubelet_service_dropin_file() {
+	systemctl show kubelet | grep "^DropInPaths" | cut -d "=" -f2
 }
 
 # Creates a systemd service unit "drop-in" file for the kubelet, configured to
@@ -111,7 +121,45 @@ ExecStart=
 $exec_start \$$env_var
 EOF
 
+	# Ask systemd to reload it's config.
+	systemctl daemon-reload
+
 	echo "Created systemd drop-in file for kubelet (/etc/systemd/system/kubelet.service.d/01-kubelet.conf)"
+}
+
+# Adds a new env-var to kubelet's service drop-in file. This function is useful
+# in scenarios where no env-var is found as the last element in the list of
+# ExecStart attributes within the kubelet service file. This is the case when
+# kubelet execution attributes are explicitly defined as part of the ExecStart
+# unit component.
+function add_systemd_kubelet_env_var() {
+	local env_file=$1
+	local env_var=$2
+
+	# Find kubelet's drop-in file (if any), create it otherwise.
+	local dropin_file=$(get_kubelet_service_dropin_file)
+	if [[ "${dropin_file}" == "" ]]; then
+		add_systemd_dropin_file "$env_file" "$env_var"
+		return
+	fi
+
+	# Skip if the env_var is already being referenced in kubelet's drop-in file.
+	if grep -q "^ExecStart=${kubelet_bin}.*${kubelet_env_var}" $dropin_file; then
+		return
+	fi
+
+	# Backup original service file.
+	mkdir -p "$var_lib_sysbox_deploy_k8s"
+	local dropin_file_name=$(basename -- "$dropin_file")
+	cp "$dropin_file" "${var_lib_sysbox_deploy_k8s}/${dropin_file_name}.orig"
+
+	# Append env_var to dropin-file.
+	sed -i "s@^ExecStart=${kubelet_bin}.*@& \$${env_var}@" "$dropin_file"
+
+	# Ask systemd to reload it's config.
+	systemctl daemon-reload
+
+	echo "Appended $env_var to kubelet's systemd drop-in file ($dropin_file)"
 }
 
 # Adds the kubelet config in the given file; the given $env_file may or may not
@@ -213,24 +261,26 @@ function config_kubelet() {
 
 	local kubelet_env_files=$(get_kubelet_env_files)
 
-	# If systemd shows no kubelet environment files, let's create one
+	# If systemd shows no kubelet environment files, let's create one.
 	if [[ "$kubelet_env_files" == "" ]]; then
-		kubelet_env_file="/etc/default/kubelet"
-		kubelet_env_var="KUBELET_EXTRA_ARGS"
+		local kubelet_env_file="/etc/default/kubelet"
+		local kubelet_env_var="KUBELET_EXTRA_ARGS"
 		backup_orig_config "$kubelet_env_file"
 		add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
 		add_systemd_dropin_file "$kubelet_env_file" "$kubelet_env_var"
 		return
 	fi
 
-	# If no kubelet env var was found, let's use our default one
+	# If no kubelet env var was found, let's use our default one.
 	local kubelet_env_var=$(get_kubelet_env_var)
 	if [[ "$kubelet_env_var" == "" ]]; then
 		kubelet_env_var="KUBELET_EXTRA_ARGS"
+		local kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
+		add_systemd_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
 	fi
 
 	# If systemd shows kubelet environment files, let's check if they exist and
-	# if so replace the env variable ($kubelet_env_var)
+	# if so replace the env variable ($kubelet_env_var).
 	for kubelet_env_file in $kubelet_env_files; do
 		if [ -f "$kubelet_env_file" ]; then
 			if grep -q "$kubelet_env_var" "$kubelet_env_file"; then
@@ -244,7 +294,7 @@ function config_kubelet() {
 	# Either the kubelet env file does not exist, or it exists but does not
 	# contain the $kubelet_env_var; lets create the file and/or add the
 	# $kubelet_env_var to it.
-	kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
+	local kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
 
 	if [ ! -f "$kubelet_env_file" ]; then
 		touch "$kubelet_env_file"
@@ -635,7 +685,7 @@ function set_common_requirements() {
 }
 
 function main() {
-
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
