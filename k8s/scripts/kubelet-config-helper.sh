@@ -103,38 +103,46 @@ function get_kubelet_service_dropin_file() {
 	systemctl show kubelet | grep "^DropInPaths" | cut -d "=" -f2
 }
 
+function get_kubelet_service_execstart() {
+	# Note that "no-pager" attribute is necessary to prevent systemctl's output
+	# from being truncated in cases with a long set of command attributes.
+	systemctl show kubelet.service -p ExecStart --no-pager | cut -d";" -f2 | sed 's@argv\[\]=@@' | sed 's@^ @@'
+}
+
 # Creates a systemd service unit "drop-in" file for the kubelet, configured to
 # use the $env_var from the given $env_file.
 function add_systemd_dropin_file() {
 	local env_file=$1
 	local env_var=$2
 
+	local kubelet_sysbox_dropin="/etc/systemd/system/kubelet.service.d/01-kubelet-sysbox-dropin.conf"
 	local kubelet_service_file=$(get_kubelet_service_file)
-	local exec_start=$(grep "^ExecStart=" $kubelet_service_file)
+	local exec_start=$(get_kubelet_service_execstart)
 
 	mkdir -p "/etc/systemd/system/kubelet.service.d"
 
-	cat >"/etc/systemd/system/kubelet.service.d/01-kubelet.conf" <<EOF
-[service]
+	cat >"${kubelet_sysbox_dropin}" <<EOF
+[Service]
 EnvironmentFile=-$env_file
 ExecStart=
-$exec_start \$$env_var
+ExecStart=$exec_start \$$env_var
 EOF
 
 	# Ask systemd to reload it's config.
 	systemctl daemon-reload
 
-	echo "Created systemd drop-in file for kubelet (/etc/systemd/system/kubelet.service.d/01-kubelet.conf)"
+	echo "Created systemd drop-in file for kubelet ($kubelet_sysbox_dropin)"
 }
 
 # Adds a new env-var to kubelet's service drop-in file. This function is useful
 # in scenarios where no env-var is found as the last element in the list of
 # ExecStart attributes within the kubelet service file. This is the case when
-# kubelet execution attributes are explicitly defined as part of the ExecStart
-# unit component.
+# kubelet's execution attributes are explicitly defined as part of the ExecStart
+# unit component (e.g. terraform k8s cluster deployments).
 function add_systemd_kubelet_env_var() {
 	local env_file=$1
 	local env_var=$2
+	local kubelet_systemd_dropin="${var_lib_sysbox_deploy_k8s}/kubelet_systemd_dropin"
 
 	# Find kubelet's drop-in file (if any), create it otherwise.
 	local dropin_file=$(get_kubelet_service_dropin_file)
@@ -150,8 +158,7 @@ function add_systemd_kubelet_env_var() {
 
 	# Backup original service file.
 	mkdir -p "$var_lib_sysbox_deploy_k8s"
-	local dropin_file_name=$(basename -- "$dropin_file")
-	cp "$dropin_file" "${var_lib_sysbox_deploy_k8s}/${dropin_file_name}.orig"
+	cp "$dropin_file" "${kubelet_systemd_dropin}"
 
 	# Append env_var to dropin-file.
 	sed -i "s@^ExecStart=${kubelet_bin}.*@& \$${env_var}@" "$dropin_file"

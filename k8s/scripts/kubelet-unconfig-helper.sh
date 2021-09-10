@@ -45,8 +45,14 @@ function get_kubelet_bin() {
 	kubelet_bin=$(echo $kubelet_bin | xargs)
 }
 
+function get_kubelet_service_dropin_file() {
+	systemctl show kubelet | grep "^DropInPaths" | cut -d "=" -f2
+}
+
 function revert_kubelet_config() {
 	local config_file="${var_lib_sysbox_deploy_k8s}/config"
+	local kubelet_systemd_dropin="${var_lib_sysbox_deploy_k8s}/kubelet_systemd_dropin"
+	local kubelet_sysbox_systemd_dropin="/etc/systemd/system/kubelet.service.d/01-kubelet-sysbox-dropin.conf"
 
 	echo "Reverting kubelet config (from $config_file)"
 
@@ -58,6 +64,23 @@ function revert_kubelet_config() {
 	if ! grep "kubelet_env_file" "$config_file"; then
 		echo "Failed to revert kubelet config; config not found in $config_file"
 		return
+	fi
+
+	# If a kubelet drop-in file is identified in systemd, we must act depending
+	# on how/who created this drop-in file in the first place:
+	#
+	# 1) If the drop-in file was created by the Sysbox installer, then we must
+	#    simply eliminate this file.
+	# 2) If the drop-in file was already present and was modified by the Sysbox
+	#    installer, then we must copy the original file back to its prior
+	#    location.
+	local dropin_file=$(get_kubelet_service_dropin_file)
+	if [[ "$dropin_file" == "$kubelet_sysbox_systemd_dropin" ]]; then
+		rm -r "$dropin_file"
+		systemctl daemon-reload
+	elif [[ "$dropin_file" != "" ]]; then
+		cp "$kubelet_systemd_dropin" "$dropin_file"
+		systemctl daemon-reload
 	fi
 
 	# The config file will have this: kubelet_env_file=/path/to/file
@@ -319,7 +342,7 @@ function kubelet_rke_deployment() {
 }
 
 function main() {
-
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
