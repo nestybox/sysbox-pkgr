@@ -77,12 +77,10 @@ do_crio_install="true"
 function deploy_crio_installer_service() {
 	echo "Deploying CRI-O installer agent on the host ..."
 
+	cp ${crio_artifacts}/bin/cri-o* ${host_local_bin}/
 	cp ${crio_artifacts}/scripts/crio-installer.sh ${host_local_bin}/crio-installer.sh
+	cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_local_bin}/crio-extractor.sh
 	cp ${crio_artifacts}/systemd/crio-installer.service ${host_systemd}/crio-installer.service
-
-	if host_flatcar_distro; then
-		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_local_bin}/crio-extractor.sh
-	fi
 
 	systemctl daemon-reload
 	echo "Running CRI-O installer agent on the host (may take several seconds) ..."
@@ -94,11 +92,8 @@ function remove_crio_installer_service() {
 	systemctl stop crio-installer.service
 	systemctl disable crio-installer.service
 	rm -f ${host_local_bin}/crio-installer.sh
+	rm -f ${host_local_bin}/crio-extractor.sh
 	rm -f ${host_systemd}/crio-installer.service
-
-	if host_flatcar_distro; then
-		rm -f ${host_local_bin}/crio-extractor.sh
-	fi
 
 	systemctl daemon-reload
 }
@@ -106,11 +101,8 @@ function remove_crio_installer_service() {
 function deploy_crio_removal_service() {
 	echo "Deploying CRI-O uninstaller ..."
 	cp ${crio_artifacts}/scripts/crio-removal.sh ${host_local_bin}/crio-removal.sh
+	cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_local_bin}/crio-extractor.sh
 	cp ${crio_artifacts}/systemd/crio-removal.service ${host_systemd}/crio-removal.service
-
-	if host_flatcar_distro; then
-		cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_local_bin}/crio-extractor.sh
-	fi
 
 	systemctl daemon-reload
 	systemctl restart crio-removal.service
@@ -121,11 +113,8 @@ function remove_crio_removal_service() {
 	systemctl stop crio-removal.service
 	systemctl disable crio-removal.service
 	rm -f ${host_local_bin}/crio-removal.sh
+	rm -f ${host_local_bin}/crio-extractor.sh
 	rm -f ${host_systemd}/crio-removal.service
-
-	if host_flatcar_distro; then
-		rm -f ${host_local_bin}/crio-extractor.sh
-	fi
 
 	systemctl daemon-reload
 }
@@ -724,7 +713,7 @@ function do_distro_adjustments() {
 
 	# Adjust global vars.
 	host_bin="/mnt/host/opt/bin"
-	host_local_bin="/mnt/host/opt/bin"
+	host_local_bin="/mnt/host/opt/local/bin"
 	host_systemd="/mnt/host/etc/systemd/system"
 	host_sysctl="/mnt/host/opt/lib/sysctl.d"
 	host_lib_mod="/mnt/host/opt/lib/modules-load.d"
@@ -733,17 +722,17 @@ function do_distro_adjustments() {
 	mkdir -p ${host_bin} ${host_local_bin} ${host_systemd} ${host_sysctl} ${host_lib_mod}
 
 	# Adjust crio helper scripts and services.
-	sed -i 's@/usr/local/bin/crio@/opt/bin/crio@g' ${crio_artifacts}/systemd/crio-installer.service
-	sed -i '/Type=oneshot/a Environment=PATH=/opt/crio/bin:/sbin:/bin:/usr/sbin:/usr/bin' ${crio_artifacts}/systemd/crio-removal.service
-	sed -i 's@/usr/local/bin/crio@/opt/bin/crio@g' ${crio_artifacts}/systemd/crio-removal.service
+	sed -i 's@/usr/local/bin/crio@/opt/local/bin/crio@g' ${crio_artifacts}/systemd/crio-installer.service
+	sed -i '/Type=oneshot/a Environment=PATH=/opt/local/bin:/sbin:/bin:/usr/sbin:/usr/bin' ${crio_artifacts}/systemd/crio-removal.service
+	sed -i 's@/usr/local/bin/crio@/opt/local/bin/crio@g' ${crio_artifacts}/systemd/crio-removal.service
 
 	# Adjust kubelet helper scripts and services.
-	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/bin@' ${crio_artifacts}/systemd/kubelet-config-helper.service
-	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/bin@' ${crio_artifacts}/systemd/kubelet-unconfig-helper.service
-	sed -i '/^kubelet_bin/ s@/usr/bin@/opt/bin@' ${crio_artifacts}/scripts/kubelet-config-helper.sh
-	sed -i '/^crictl_bin/ s@/usr/local/bin/sysbox-deploy-k8s-crictl@/opt/bin/crictl@' ${crio_artifacts}/scripts/kubelet-config-helper.sh
-	sed -i '/^kubelet_bin/ s@/usr/bin@/opt/bin@' ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh
-	sed -i '/^crictl_bin/ s@/usr/local/bin/sysbox-deploy-k8s-crictl@/opt/bin/crictl@' ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh
+	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@' ${crio_artifacts}/systemd/kubelet-config-helper.service
+	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@' ${crio_artifacts}/systemd/kubelet-unconfig-helper.service
+	sed -i '/^kubelet_bin/ s@/usr/bin@/opt/local/bin@' ${crio_artifacts}/scripts/kubelet-config-helper.sh
+	sed -i '/^crictl_bin/ s@/usr/local/bin@/opt/local/bin@' ${crio_artifacts}/scripts/kubelet-config-helper.sh
+	sed -i '/^kubelet_bin/ s@/usr/bin@/opt/local/bin@' ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh
+	sed -i '/^crictl_bin/ s@/usr/local/bin@/opt/local/bin@' ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh
 
 	# Adjust sysbox helper scripts and services.
 	sed -i '/Type=notify/a Environment=PATH=/opt/bin:/sbin:/bin:/usr/sbin:/usr/bin' ${sysbox_artifacts}/systemd/sysbox-mgr.service
@@ -751,8 +740,8 @@ function do_distro_adjustments() {
 	sed -i '/^ExecStart=/ s@/usr/bin/sysbox-fs@/opt/bin/sysbox-fs@' ${sysbox_artifacts}/systemd/sysbox-fs.service
 	sed -i '/Type=notify/a Environment=PATH=/opt/bin:/sbin:/bin:/usr/sbin:/usr/bin' ${sysbox_artifacts}/systemd/sysbox-fs.service
 	sed -i '/^ExecStart=/ s@/usr/bin@/opt/bin@g' ${sysbox_artifacts}/systemd/sysbox.service
-	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/bin@g' ${sysbox_artifacts}/systemd/sysbox-installer-helper.service
-	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/bin@g' ${sysbox_artifacts}/systemd/sysbox-removal-helper.service
+	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@g' ${sysbox_artifacts}/systemd/sysbox-installer-helper.service
+	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@g' ${sysbox_artifacts}/systemd/sysbox-removal-helper.service
 
 	# Sysctl adjustments.
 	sed -i '/^kernel.unprivileged_userns_clone/ s/^#*/# /' ${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf

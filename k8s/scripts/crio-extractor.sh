@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #
 # Script to install and uninstall CRI-O from a tar archive. Typically needed in
@@ -8,20 +8,14 @@
 # found here: https://github.com/cri-o/cri-o/releases
 #
 
-PREFIX=/opt/crio
 ETCDIR=/etc
 CONTAINERS_DIR=${ETCDIR}/containers
 CNIDIR=${ETCDIR}/cni/net.d
-BINDIR=${PREFIX}/bin
-MANDIR=${PREFIX}/share/man
-OCIDIR=${PREFIX}/share/oci-umount/oci-umount.d
-SELINUX=$(selinuxenabled 2>/dev/null && echo -Z)
-BASHINSTALLDIR=${PREFIX}/share/bash-completion/completions
-FISHINSTALLDIR=${PREFIX}/share/fish/completions
-ZSHINSTALLDIR=${PREFIX}/share/zsh/site-functions
 SYSTEMDDIR=${ETCDIR}/systemd/system
+SELINUX=$(selinuxenabled 2>/dev/null && echo -Z)
 OPT_CNI_BIN_DIR=/opt/cni/bin
 
+# TODO: Expand this script to support ARM too.
 ARCH=amd64
 
 function install_all() {
@@ -138,16 +132,28 @@ function uninstall_crun() {
 
 function main() {
 
-	if [[ "$1" == "" ]]; then
+	# Two parameters are expected:
+	# * Action: install / uinstall
+	# * Path: Top location where to install (uninstall) crio to (from).
+	if [ "$#" -ne 2 ]; then
 		printf "\n"
-		printf "Usage: crio-extractor.sh [install | uninstall]\n"
+		printf "Usage: crio-extractor.sh [install | uninstall] path\n"
 		printf "\n"
 		exit 1
 	fi
 
-	if [[ $1 == "install" ]]; then
+	# Set globals that depend on 'path' parameter.
+	PREFIX="$2"
+	BINDIR=${PREFIX}/bin
+	MANDIR=${PREFIX}/share/man
+	OCIDIR=${PREFIX}/share/oci-umount/oci-umount.d
+	BASHINSTALLDIR=${PREFIX}/share/bash-completion/completions
+	FISHINSTALLDIR=${PREFIX}/share/fish/completions
+	ZSHINSTALLDIR=${PREFIX}/share/zsh/site-functions
+
+	if [[ "$1" == "install" ]]; then
 		install_all
-	elif [[ $1 == "uninstall" ]]; then
+	elif [[ "$1" == "uninstall" ]]; then
 		uninstall_all
 	fi
 }
