@@ -42,25 +42,25 @@ function flatcar_distro() {
 	grep -q "^ID=flatcar" /etc/os-release
 }
 
-function uninstall_crio_deb() {
-	apt-get purge cri-o -y
-}
+function do_uninstall_crio() {
+	local path=$1
 
-function uninstall_crio_flatcar() {
-	chmod +x /opt/bin/crio-extractor.sh
-	/opt/bin/crio-extractor.sh uninstall
+	chmod +x "${path}"/crio-extractor.sh
+	local path_dir=$(dirname "$path")
+	"${path}"/crio-extractor.sh uninstall "$path_dir"
 }
 
 function uninstall_crio() {
 
 	echo "Uninstalling CRI-O ..."
 
+	systemctl stop crio
+	systemctl disable crio
+
 	if flatcar_distro; then
-		systemctl stop crio
-		systemctl disable crio
-		uninstall_crio_flatcar
+		do_uninstall_crio "/opt/local/bin"
 	else
-		uninstall_crio_deb
+		do_uninstall_crio "/usr/local/bin"
 	fi
 
 	sed -i '/containers:/d' /etc/subuid
@@ -80,7 +80,7 @@ function is_crio_running() {
 }
 
 function main() {
-
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"

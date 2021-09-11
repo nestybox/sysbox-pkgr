@@ -77,6 +77,8 @@ COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.
 # Load CRI-O installation artifacts
 #
 
+COPY bin/cri-o /opt/crio-deploy/bin
+
 COPY systemd/crio-installer.service /opt/crio-deploy/systemd/crio-installer.service
 COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
 
