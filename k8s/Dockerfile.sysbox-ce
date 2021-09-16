@@ -81,6 +81,7 @@ COPY bin/cri-o /opt/crio-deploy/bin
 
 COPY systemd/crio-installer.service /opt/crio-deploy/systemd/crio-installer.service
 COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
+COPY scripts/crio-extractor.sh /opt/crio-deploy/scripts/crio-extractor.sh
 
 COPY scripts/crio-installer.sh /opt/crio-deploy/scripts/crio-installer.sh
 COPY scripts/crio-removal.sh /opt/crio-deploy/scripts/crio-removal.sh
