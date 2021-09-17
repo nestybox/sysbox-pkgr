@@ -29,6 +29,7 @@ runtime=""
 
 kubelet_bin="/usr/bin/kubelet"
 crictl_bin="/usr/local/bin/sysbox-deploy-k8s-crictl"
+crio_conf_file="/etc/crio/crio.conf"
 
 # Container's default restart-policy mode (i.e. no restart).
 kubelet_ctr_restart_mode="no"
@@ -93,6 +94,22 @@ function get_kubelet_env_var() {
 
 	env_var=${env_var#"$"}
 	echo ${env_var}
+}
+
+function get_kubelet_env_var_all() {
+	systemctl show kubelet.service | egrep "ExecStart=" |
+		cut -d ";" -f2 | sed -e 's@argv\[\]=${kubelet_bin}@@g' |
+		sed 's/ /\n/g' | egrep "^\\$"
+}
+
+# Notice the contrast with the above function. Here we return ExecStart
+# 'attributes' (or parameters) and not 'env-vars' as it's the case above.
+function get_kubelet_exec_attrib_all() {
+	local attr=$1
+
+	systemctl show kubelet.service | egrep "ExecStart=" |
+		sed -e 's@argv\[\]=${kubelet_bin}@@g' | sed 's/ /\n/g' |
+		egrep "^--${attr}" | cut -d"=" -f2
 }
 
 function get_kubelet_service_file() {
@@ -312,6 +329,81 @@ function config_kubelet() {
 
 	# Ask systemd to reload it's config
 	systemctl daemon-reload
+}
+
+# Function iterates through all the kubelet environment-files and all the
+# environment-vars to search for the passed attribute and, if found, returns
+# its associated value.
+function get_crio_config_dependency() {
+	local exec_attr=$1
+
+	if [ -z "$exec_attr" ]; then
+		echo ""
+		return
+	fi
+
+	# Let's first look directly into the list of ExecStart attributes used
+	# within the kubelet service file.
+	local exec_val=$(get_kubelet_exec_attrib_all $exec_attr)
+	if [ ! -z "$exec_val" ]; then
+		echo "$exec_val"
+		return
+	fi
+
+	local env_files=$(get_kubelet_env_files)
+	local env_vars=$(get_kubelet_env_vars)
+
+	# Let's now iterate through the matrix formed by all env-files and env-vars
+	# to look for the exec attribute we are after. If found, return its value.
+	for file in $env_files; do
+		for var in $env_vars; do
+			if [ ! -f "$file" ]; then
+				continue
+			fi
+
+			var=${var#"$"}
+
+			if grep -q "$var" "$file"; then
+				local exec_val=$(sed 's/ /\n/g' "$file" | egrep "^--${exec_attr}" | cut -d"=" -f2)
+				echo "$exec_val"
+				return
+			fi
+		done
+	done
+}
+
+# Function takes care of reconciliating operational attributes that can
+# potentially overlap between 'kubelet' and 'crio' components. In this scenario
+# we want to translate kubelet's overlapping attribute to the one understood by
+# crio's config-parser, so that both components operate in-sync. For lack of a
+# better word, we refer to these potentially-overlapped attributes as crio's
+# 'config-dependencies'.
+#
+# The following config-dependencies have been identified so far:
+#
+# * --pod-infra-container-image: Initially conceived for dockershim consumption
+#   to allow user to define the "pause" image to utilize. This attribute's
+#   semantic has been expanded now to offer kubelet a mechanism to prevent this
+#   special image from being pruned by K8s GC. In CRI-O's case, there's an
+#   equivalent attribute for this purpose, which must reflect the value set by
+#   kubelet in dockershim scenarios.
+#
+# TODO: Review the list of kubelet attributes to identify other 'overlapping'
+# parameters (if any).
+function adjust_crio_config_dependencies() {
+	local crio_sighup=false
+
+	# If kubelet is currently running with an explicit "infra" (pause) image, then
+	# adjust crio.conf to honor that request.
+	local pause_image=$(get_crio_config_dependency "pod-infra-container-image")
+	if [ ! -z "$pause_image" ]; then
+		sed -i "s@pause_image =.*@pause_image = \"${pause_image}\"@" $crio_conf_file
+		crio_sighup=true
+	fi
+
+	if [[ "$crio_sighup" == "true" ]]; then
+		pkill -HUP crio
+	fi
 }
 
 function restart_kubelet() {
@@ -586,11 +678,13 @@ function do_config_kubelet() {
 		stop_kubelet
 		clean_runtime_state "$runtime" "$podUids"
 		config_kubelet
+		adjust_crio_config_dependencies
 		restart_kubelet
 	else
 		stop_kubelet
 		clean_runtime_state "$runtime"
 		config_kubelet
+		adjust_crio_config_dependencies
 		restart_kubelet
 	fi
 }
