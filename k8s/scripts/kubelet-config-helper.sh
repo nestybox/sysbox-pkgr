@@ -351,7 +351,7 @@ function get_crio_config_dependency() {
 	fi
 
 	local env_files=$(get_kubelet_env_files)
-	local env_vars=$(get_kubelet_env_vars)
+	local env_vars=$(get_kubelet_env_var_all)
 
 	# Let's now iterate through the matrix formed by all env-files and env-vars
 	# to look for the exec attribute we are after. If found, return its value.
@@ -786,7 +786,7 @@ function set_common_requirements() {
 }
 
 function main() {
-	set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"

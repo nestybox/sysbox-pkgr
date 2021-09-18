@@ -63,7 +63,6 @@ function do_install_crio() {
 		sed -i "/Type=notify/a Environment=PATH=${path}:/sbin:/bin:/usr/sbin:/usr/bin" /etc/systemd/system/crio.service
 		sed -i "s@/usr/local/bin/crio@${path}/crio@" /etc/systemd/system/crio.service
 	fi
-
 }
 
 function install_crio() {
@@ -90,7 +89,7 @@ function restart_crio() {
 }
 
 function main() {
-	set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"

@@ -811,7 +811,7 @@ function do_distro_adjustments() {
 #
 
 function main() {
-	set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
