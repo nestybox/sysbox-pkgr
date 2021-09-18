@@ -80,7 +80,7 @@ function is_crio_running() {
 }
 
 function main() {
-	set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
