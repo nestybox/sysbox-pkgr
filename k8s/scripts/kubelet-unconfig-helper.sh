@@ -151,7 +151,7 @@ function stop_kubelet_rke() {
 
 function get_runtime() {
 	set +e
-	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | tail -1 | cut -d '=' -f2)
 	set -e
 
 	# If runtime is unknown, assume it's Docker
