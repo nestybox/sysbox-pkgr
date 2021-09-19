@@ -25,11 +25,10 @@ set -o pipefail
 set -o nounset
 
 var_lib_sysbox_deploy_k8s="/var/lib/sysbox-deploy-k8s"
-runtime=""
-
-kubelet_bin="/usr/bin/kubelet"
 crictl_bin="/usr/local/bin/sysbox-deploy-k8s-crictl"
 crio_conf_file="/etc/crio/crio.conf"
+kubelet_bin=""
+runtime=""
 
 # Container's default restart-policy mode (i.e. no restart).
 kubelet_ctr_restart_mode="no"
@@ -42,8 +41,8 @@ function die() {
 
 function get_kubelet_bin() {
 	local tmp=$(systemctl show kubelet | grep "ExecStart=" | cut -d ";" -f1)
-	kubelet_bin=${tmp#"ExecStart={ path="}
-	kubelet_bin=$(echo $kubelet_bin | xargs)
+	tmp=${tmp#"ExecStart={ path="}
+	echo "$tmp" | xargs
 }
 
 function replace_cmd_option {
@@ -652,7 +651,6 @@ function get_pods_uids() {
 
 function do_config_kubelet() {
 
-	get_kubelet_bin
 	get_runtime
 
 	if [[ ${runtime} =~ "crio" ]]; then
@@ -777,22 +775,24 @@ function kubelet_rke_deployment() {
 		egrep -q "rke.container.name:kubelet"
 }
 
-# Enforce the common requirements needed for Sysbox + CRI-O's proper operation.
-function set_common_requirements() {
+function main() {
+	set -x
+
+	euid=$(id -u)
+	if [[ $euid -ne 0 ]]; then
+		die "This script must be run as root."
+	fi
+
+	# Obtain kubelet path.
+	kubelet_bin=$(get_kubelet_bin)
+	if [ -z "$kubelet_bin" ]; then
+		die "Kubelet binary not identified."
+	fi
+
 	# Verify that /sys is mounted as read-write; otherwise remount it.
 	if mount | grep -q "/sys .*ro,"; then
 		mount -o rw,remount /sys
 	fi
-}
-
-function main() {
-
-	euid=$(id -u)
-	if [[ $euid -ne 0 ]]; then
-		die "This script must be run as root"
-	fi
-
-	set_common_requirements
 
 	#
 	# The following kubelet deployment scenarios are currently supported:

@@ -788,9 +788,7 @@ function do_distro_adjustments() {
 	# Adjust kubelet helper scripts and services.
 	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@' ${crio_artifacts}/systemd/kubelet-config-helper.service
 	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@' ${crio_artifacts}/systemd/kubelet-unconfig-helper.service
-	sed -i '/^kubelet_bin/ s@/usr/bin@/opt/local/bin@' ${crio_artifacts}/scripts/kubelet-config-helper.sh
 	sed -i '/^crictl_bin/ s@/usr/local/bin@/opt/local/bin@' ${crio_artifacts}/scripts/kubelet-config-helper.sh
-	sed -i '/^kubelet_bin/ s@/usr/bin@/opt/local/bin@' ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh
 	sed -i '/^crictl_bin/ s@/usr/local/bin@/opt/local/bin@' ${crio_artifacts}/scripts/kubelet-unconfig-helper.sh
 
 	# Adjust sysbox helper scripts and services.
