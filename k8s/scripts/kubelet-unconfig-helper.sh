@@ -77,7 +77,7 @@ function revert_kubelet_config() {
 	if [[ "$dropin_file" == "$kubelet_sysbox_systemd_dropin" ]]; then
 		rm -r "$dropin_file"
 		systemctl daemon-reload
-	elif [[ "$dropin_file" != "" ]]; then
+	elif [[ "$dropin_file" != "" ]] && [ -f "$kubelet_systemd_dropin" ]; then
 		cp "$kubelet_systemd_dropin" "$dropin_file"
 		systemctl daemon-reload
 	fi
