@@ -236,7 +236,7 @@ function replace_kubelet_env_var() {
 			if [[ "$line" == "$line_prefix=\""* ]]; then
 				line_opts=$(echo $line | cut -d'"' -f2)
 			else
-				line_opts=${line#"$line_prefix"}
+				line_opts=${line#"$line_prefix="}
 			fi
 
 			set +e
