@@ -86,7 +86,7 @@ function get_kubelet_env_files() {
 function get_kubelet_env_var() {
 	local env_var=$(systemctl show kubelet | grep ExecStart= | cut -d ";" -f2 | sed -e 's@argv\[\]=${kubelet_bin}@@g' | awk '{print $NF}')
 
-	if ! echo ${env_var} | grep -q "^$"; then
+	if ! echo ${env_var} | grep -q "^\\$"; then
 		echo ""
 		return
 	fi
