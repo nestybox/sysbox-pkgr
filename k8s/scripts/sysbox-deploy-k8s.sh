@@ -221,6 +221,7 @@ function is_supported_distro() {
 	# TODO: add sysbox binaries for all supported distros.
 	if [[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
+		[[ "$distro" =~ "debian" ]] ||
 		[[ "$distro" =~ "flatcar" ]]; then
 		return
 	fi
