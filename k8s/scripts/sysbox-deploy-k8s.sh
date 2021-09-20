@@ -374,7 +374,16 @@ function install_sysbox_deps_flatcar() {
 	local artifacts_dir=$(get_artifacts_dir)
 	local distro_release=$(echo ${artifacts_dir} | cut -d"/" -f5)
 
-	echo "Fetching / copying shiftfs module and sysbox dependencies to host"
+	# Let's try to install from local store first.
+	if [ -d "$artifacts_dir" ]; then
+		echo "Copying shiftfs module and sysbox dependencies to host ..."
+		cp ${artifacts_dir}/shiftfs.ko ${host_lib_mod}/shiftfs.ko
+		cp ${artifacts_dir}/fusermount ${host_bin}/fusermount
+		return
+	fi
+
+	# Otherwise fetch the binaries/dependencies from an external location.
+	echo "Fetching / copying shiftfs module and sysbox dependencies to host ..."
 	mkdir -p ${artifacts_dir}
 	pushd ${artifacts_dir}/..
 	curl -LJOSs https://github.com/nestybox/sysbox-flatcar-preview/releases/download/${distro_release}/${distro_release}.tar.gz
@@ -404,7 +413,7 @@ function install_sysbox_deps() {
 	# Flatcar, we carry a pre-built shiftfs binary as we can't easily build it
 	# on the Flatcar host.
 
-	echo "Installing Sysbox dependencies on host"
+	echo "Installing Sysbox dependencies on host ..."
 
 	local version=$(get_host_kernel)
 	if semver_lt $version 5.4; then
@@ -415,7 +424,7 @@ function install_sysbox_deps() {
 	if host_flatcar_distro; then
 		install_sysbox_deps_flatcar
 	else
-		echo "Copying shiftfs sources to host"
+		echo "Copying shiftfs sources to host ..."
 		if semver_ge $version 5.4 && semver_lt $version 5.8; then
 			echo "Kernel version $version is >= 5.4 and < 5.8"
 			cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
@@ -433,7 +442,7 @@ function install_sysbox_deps() {
 }
 
 function remove_sysbox_deps() {
-	echo "Removing sysbox dependencies from host"
+	echo "Removing sysbox dependencies from host ..."
 
 	deploy_sysbox_removal_helper
 	remove_sysbox_removal_helper
@@ -536,7 +545,7 @@ function config_subid_range() {
 }
 
 function config_crio_for_sysbox() {
-	echo "Adding Sysbox to CRI-O config"
+	echo "Adding Sysbox to CRI-O config ..."
 
 	if [ ! -f ${host_crio_conf_file_backup} ]; then
 		cp ${host_crio_conf_file} ${host_crio_conf_file_backup}
@@ -562,7 +571,7 @@ function config_crio_for_sysbox() {
 }
 
 function unconfig_crio_for_sysbox() {
-	echo "Removing Sysbox from CRI-O config"
+	echo "Removing Sysbox from CRI-O config ..."
 
 	# Note: dasel does not yet have a proper delete command, so we need the "sed" below.
 	dasel put document -f "${host_crio_conf_file}" -p toml '.crio.runtime.runtimes.sysbox-runc' ''
@@ -634,13 +643,13 @@ function is_host_upgraded() {
 
 function add_label_to_node() {
 	label=$1
-	echo "Adding K8s label \"$label\" to node"
+	echo "Adding K8s label \"$label\" to node ..."
 	kubectl label node "$NODE_NAME" --overwrite "${label}"
 }
 
 function rm_label_from_node() {
 	label=$1
-	echo "Removing K8s label \"$label\" from node"
+	echo "Removing K8s label \"$label\" from node ..."
 	kubectl label node "$NODE_NAME" "${label}-"
 }
 
