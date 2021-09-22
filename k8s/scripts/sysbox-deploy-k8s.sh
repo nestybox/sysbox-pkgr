@@ -386,7 +386,7 @@ function install_sysbox_deps_flatcar() {
 	echo "Fetching / copying shiftfs module and sysbox dependencies to host ..."
 	mkdir -p ${artifacts_dir}
 	pushd ${artifacts_dir}/..
-	curl -LJOSs https://github.com/nestybox/sysbox-flatcar-preview/releases/download/${distro_release}/${distro_release}.tar.gz
+	curl -LJOSs https://github.com/nestybox/sysbox-flatcar-preview/releases/download/Sysbox-${distro_release}/${distro_release}.tar.gz
 	if [ $? -ne 0 ]; then
 		die "Unable to fetch Sysbox dependencies for ${distro_release} distribution. Exiting ..."
 	fi
