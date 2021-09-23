@@ -651,8 +651,14 @@ function get_pods_uids() {
 
 function do_config_kubelet() {
 
-	get_runtime
+	# Obtain kubelet path.
+	kubelet_bin=$(get_kubelet_bin)
+	if [ -z "$kubelet_bin" ]; then
+		die "Kubelet binary not identified."
+	fi
 
+	# Obtain current runtime.
+	get_runtime
 	if [[ ${runtime} =~ "crio" ]]; then
 		echo "Kubelet is already using CRI-O; no action will be taken."
 		return
@@ -716,8 +722,14 @@ function do_config_kubelet_snap() {
 function do_config_kubelet_rke() {
 	echo "Detected kubelet RKE deployment on host."
 
-	get_runtime_rke
+	# Obtain kubelet path.
+	kubelet_bin=$(get_kubelet_bin)
+	if [ -z "$kubelet_bin" ]; then
+		die "Kubelet binary not identified."
+	fi
 
+	# Obtain current runtime.
+	get_runtime_rke
 	if [[ ${runtime} =~ "crio" ]]; then
 		echo "Kubelet is already using CRI-O; no action will be taken."
 		return
@@ -780,12 +792,6 @@ function main() {
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root."
-	fi
-
-	# Obtain kubelet path.
-	kubelet_bin=$(get_kubelet_bin)
-	if [ -z "$kubelet_bin" ]; then
-		die "Kubelet binary not identified."
 	fi
 
 	# Verify that /sys is mounted as read-write; otherwise remount it.
