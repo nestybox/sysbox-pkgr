@@ -230,8 +230,13 @@ function clean_runtime_state() {
 
 function do_unconfig_kubelet() {
 
-	get_runtime
+	# Obtain kubelet path.
+	kubelet_bin=$(get_kubelet_bin)
+	if [ -z "$kubelet_bin" ]; then
+		die "Kubelet binary not identified."
+	fi
 
+	get_runtime
 	if [[ ! ${runtime} =~ "crio" ]]; then
 		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
 		return
@@ -298,8 +303,14 @@ function revert_kubelet_ctr_restart_policy() {
 }
 
 function do_unconfig_kubelet_rke() {
-	get_runtime_rke
 
+	# Obtain kubelet path.
+	kubelet_bin=$(get_kubelet_bin)
+	if [ -z "$kubelet_bin" ]; then
+		die "Kubelet binary not identified."
+	fi
+
+	get_runtime_rke
 	if [[ ! ${runtime} =~ "crio" ]]; then
 		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
 		return
@@ -345,12 +356,6 @@ function main() {
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
-	fi
-
-	# Obtain kubelet path.
-	kubelet_bin=$(get_kubelet_bin)
-	if [ -z "$kubelet_bin" ]; then
-		die "Kubelet binary not identified."
 	fi
 
 	#
