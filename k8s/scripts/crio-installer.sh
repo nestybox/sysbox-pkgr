@@ -63,18 +63,6 @@ function do_install_crio() {
 		sed -i "/Type=notify/a Environment=PATH=${path}:/sbin:/bin:/usr/sbin:/usr/bin" /etc/systemd/system/crio.service
 		sed -i "s@/usr/local/bin/crio@${path}/crio@" /etc/systemd/system/crio.service
 	fi
-
-	# Create a default system-wide registries.conf file and associated drop-in
-	# dir if not already present. These instructions are typically executed as
-	# part of the containers-common's deb-pkg installation (which is a dependency
-	# of the cri-o pkg); however, these config files are not part of the cri-o
-	# tar file that we're relying on in this installation process.
-	local reg_file="/etc/containers/registries.conf"
-	local reg_dropin_dir="/etc/containers/registries.conf.d"
-	mkdir -p "$reg_dropin_dir"
-	if [ ! -f "$reg_file" ]; then
-		echo "unqualified-search-registries = [\"docker.io\", \"quay.io\"]" >"$reg_file"
-	fi
 }
 
 function install_crio() {
@@ -100,6 +88,78 @@ function restart_crio() {
 	echo "CRI-O restart done."
 }
 
+# The instructions in this function are typically executed as part of the
+# containers-common's deb-pkg installation (which is a dependency of the cri-o
+# pkg) by creating the default config files required for cri-o operations.
+# However, these config files are not part of the cri-o tar file that
+# we're relying on in this installation process, so we must explicitly create
+# this configuration state as part of the installation process.
+function config_containers_common() {
+
+	local containers_dir="/etc/containers"
+	mkdir -p "$containers_dir"
+
+	# Create a default system-wide registries.conf file and associated drop-in
+	# dir if not already present.
+	local reg_file="${containers_dir}/registries.conf"
+	local reg_dropin_dir="${containers_dir}/registries.conf.d"
+	mkdir -p "$reg_dropin_dir"
+	if [ ! -f "$reg_file" ]; then
+		echo "unqualified-search-registries = [\"docker.io\", \"quay.io\"]" >"$reg_file"
+	fi
+
+	# Create a default registry-configuration file if not already present.
+	local reg_conf_dir="${containers_dir}/registries.d"
+	local reg_conf_file="${reg_conf_dir}/default.yaml"
+	mkdir -p "$reg_conf_dir"
+	if [ ! -f "$reg_conf_file" ]; then
+		cat >"$reg_conf_file" <<EOF
+# This is the default signature write location for docker registries.
+default-docker:
+  sigstore-staging: file:///var/lib/containers/sigstore
+EOF
+	fi
+
+	# Create a default storage.conf file if not already present.
+	local storage_conf_file="${containers_dir}/storage.conf"
+	if [ ! -f "$storage_conf_file" ]; then
+		cat >"$storage_conf_file" <<EOF
+# This file is is the configuration file for all tools
+# that use the containers/storage library.
+[storage]
+driver = "overlay"
+runroot = "/run/containers/storage"
+graphroot = "/var/lib/containers/storage"
+[storage.options]
+additionalimagestores = []
+[storage.options.overlay]
+mountopt = "nodev,metacopy=on"
+[storage.options.thinpool]
+EOF
+	fi
+
+	# Create a default policy.json file if not already present.
+	local policy_file="${containers_dir}/policy.json"
+	if [ ! -f "$policy_file" ]; then
+		cat >"$policy_file" <<EOF
+{
+    "default": [
+        {
+            "type": "insecureAcceptAnything"
+        }
+    ],
+    "transports":
+        {
+            "docker-daemon":
+                {
+                    "": [{"type":"insecureAcceptAnything"}]
+                }
+        }
+}
+EOF
+	fi
+}
+
 function main() {
 
 	euid=$(id -u)
@@ -114,6 +174,7 @@ function main() {
 
 	backup_crictl_config
 	install_crio
+	config_containers_common
 }
 
 main "$@"
