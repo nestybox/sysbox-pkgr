@@ -63,6 +63,18 @@ function do_install_crio() {
 		sed -i "/Type=notify/a Environment=PATH=${path}:/sbin:/bin:/usr/sbin:/usr/bin" /etc/systemd/system/crio.service
 		sed -i "s@/usr/local/bin/crio@${path}/crio@" /etc/systemd/system/crio.service
 	fi
+
+	# Create a default system-wide registries.conf file and associated drop-in
+	# dir if not already present. These instructions are typically executed as
+	# part of the containers-common's deb-pkg installation (which is a dependency
+	# of the cri-o pkg); however, these config files are not part of the cri-o
+	# tar file that we're relying on in this installation process.
+	local reg_file="/etc/containers/registries.conf"
+	local reg_dropin_dir="/etc/containers/registries.conf.d"
+	mkdir -p "$reg_dropin_dir"
+	if [ ! -f "$reg_file" ]; then
+		echo "unqualified-search-registries = [\"docker.io\", \"quay.io\"]" >"$reg_file"
+	fi
 }
 
 function install_crio() {
