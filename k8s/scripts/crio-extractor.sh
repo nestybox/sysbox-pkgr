@@ -112,7 +112,6 @@ function uninstall_crio() {
 	rm ${BASHINSTALLDIR}/crio
 	rm ${FISHINSTALLDIR}/crio.fish
 	rm ${ZSHINSTALLDIR}/_crio
-	rm ${CONTAINERS_DIR}/policy.json
 	rm ${SYSTEMDDIR}/crio.service
 }
 
