@@ -87,6 +87,14 @@ function deploy_crio_installer_service() {
 	cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_local_bin}/crio-extractor.sh
 	cp ${crio_artifacts}/systemd/crio-installer.service ${host_systemd}/crio-installer.service
 
+	mkdir -p ${host_var_lib_sysbox_deploy_k8s}
+	cp ${crio_artifacts}/config/etc_cni_net.d_200-loopback.conf ${host_var_lib_sysbox_deploy_k8s}/etc_cni_net.d_200-loopback.conf
+	cp ${crio_artifacts}/config/etc_containers_registries.conf.d_000-shortnames.conf ${host_var_lib_sysbox_deploy_k8s}/etc_containers_registries.conf.d_000-shortnames.conf
+	cp ${crio_artifacts}/config/etc_containers_storage.conf ${host_var_lib_sysbox_deploy_k8s}/etc_containers_storage.conf
+	cp ${crio_artifacts}/config/etc_containers_registries.conf ${host_var_lib_sysbox_deploy_k8s}/etc_containers_registries.conf
+	cp ${crio_artifacts}/config/etc_containers_registries.d_default.yaml ${host_var_lib_sysbox_deploy_k8s}/etc_containers_registries.d_default.yaml
+	cp ${crio_artifacts}/config/etc_containers_policy.json ${host_var_lib_sysbox_deploy_k8s}/etc_containers_policy.json
+
 	systemctl daemon-reload
 	echo "Running CRI-O installer agent on the host (may take several seconds) ..."
 	systemctl restart crio-installer.service
@@ -130,6 +138,7 @@ function deploy_kubelet_config_service() {
 	cp ${crio_artifacts}/scripts/kubelet-config-helper.sh ${host_local_bin}/kubelet-config-helper.sh
 	cp ${crio_artifacts}/systemd/kubelet-config-helper.service ${host_systemd}/kubelet-config-helper.service
 	cp ${crio_artifacts}/config/crio-kubelet-options ${host_var_lib_sysbox_deploy_k8s}/crio-kubelet-options
+
 	cp /usr/local/bin/crictl ${host_local_bin}/sysbox-deploy-k8s-crictl
 
 	echo "Running Kubelet config agent on the host (will restart Kubelet and temporary bring down all pods on this node for ~1 min) ..."
