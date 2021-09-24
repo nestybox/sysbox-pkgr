@@ -96,67 +96,54 @@ function restart_crio() {
 # this configuration state as part of the installation process.
 function config_containers_common() {
 
+	local config_files="/var/lib/sysbox-deploy-k8s"
 	local containers_dir="/etc/containers"
 	mkdir -p "$containers_dir"
 
 	# Create a default system-wide registries.conf file and associated drop-in
 	# dir if not already present.
 	local reg_file="${containers_dir}/registries.conf"
+	if [ ! -f "$reg_file" ]; then
+		cp "${config_files}/etc_containers_registries.conf" "${reg_file}"
+	fi
+
 	local reg_dropin_dir="${containers_dir}/registries.conf.d"
 	mkdir -p "$reg_dropin_dir"
-	if [ ! -f "$reg_file" ]; then
-		echo "unqualified-search-registries = [\"docker.io\", \"quay.io\"]" >"$reg_file"
+
+	# Copy registry shortname config
+	local shortnames_conf_file="${reg_dropin_dir}/000-shortnames.conf"
+	if [ ! -f "$shortnames_conf_file" ]; then
+		cp "${config_files}/etc_containers_registries.conf.d_000-shortnames.conf" "${shortnames_conf_file}"
 	fi
 
 	# Create a default registry-configuration file if not already present.
-	local reg_conf_dir="${containers_dir}/registries.d"
-	local reg_conf_file="${reg_conf_dir}/default.yaml"
-	mkdir -p "$reg_conf_dir"
-	if [ ! -f "$reg_conf_file" ]; then
-		cat >"$reg_conf_file" <<EOF
-# This is the default signature write location for docker registries.
-default-docker:
-  sigstore-staging: file:///var/lib/containers/sigstore
-EOF
+	local reg_dir="${containers_dir}/registries.d"
+	mkdir -p "$reg_dir"
+
+	local reg_def_file="${reg_dir}/default.yaml"
+	if [ ! -f "$reg_def_file" ]; then
+		cp "${config_files}/etc_containers_registries.d_default.yaml" "${reg_def_file}"
 	fi
 
 	# Create a default storage.conf file if not already present.
 	local storage_conf_file="${containers_dir}/storage.conf"
 	if [ ! -f "$storage_conf_file" ]; then
-		cat >"$storage_conf_file" <<EOF
-# This file is is the configuration file for all tools
-# that use the containers/storage library.
-[storage]
-driver = "overlay"
-runroot = "/run/containers/storage"
-graphroot = "/var/lib/containers/storage"
-[storage.options]
-additionalimagestores = []
-[storage.options.overlay]
-mountopt = "nodev,metacopy=on"
-[storage.options.thinpool]
-EOF
+		cp "${config_files}/etc_containers_storage.conf" "${storage_conf_file}"
 	fi
 
 	# Create a default policy.json file if not already present.
 	local policy_file="${containers_dir}/policy.json"
 	if [ ! -f "$policy_file" ]; then
-		cat >"$policy_file" <<EOF
-{
-    "default": [
-        {
-            "type": "insecureAcceptAnything"
-        }
-    ],
-    "transports":
-        {
-            "docker-daemon":
-                {
-                    "": [{"type":"insecureAcceptAnything"}]
-                }
-        }
-}
-EOF
+		cp "${config_files}/etc_containers_policy.json" "${policy_file}"
+	fi
+
+	# Copy the default loopback CNI config file
+	local cni_dir="/etc/cni/net.d"
+	mkdir -p "$cni_dir"
+
+	local lb_file="${cni_dir}/200-loopback.conf"
+	if [ ! -f "$lb_file" ]; then
+		cp "${config_files}/etc_cni_net.d_200-loopback.conf" "${lb_file}"
 	fi
 }
 
@@ -173,8 +160,8 @@ function main() {
 	fi
 
 	backup_crictl_config
-	install_crio
 	config_containers_common
+	install_crio
 }
 
 main "$@"

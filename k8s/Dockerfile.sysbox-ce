@@ -93,3 +93,9 @@ COPY systemd/kubelet-unconfig-helper.service /opt/crio-deploy/systemd/kubelet-un
 COPY scripts/kubelet-unconfig-helper.sh /opt/crio-deploy/scripts/kubelet-unconfig-helper.sh
 
 COPY config/crio-kubelet-options /opt/crio-deploy/config/crio-kubelet-options
+COPY config/etc_cni_net.d_200-loopback.conf /opt/crio-deploy/config/etc_cni_net.d_200-loopback.conf
+COPY config/etc_containers_registries.conf.d_000-shortnames.conf /opt/crio-deploy/config/etc_containers_registries.conf.d_000-shortnames.conf
+COPY config/etc_containers_storage.conf /opt/crio-deploy/config/etc_containers_storage.conf
+COPY config/etc_containers_registries.conf /opt/crio-deploy/config/etc_containers_registries.conf
+COPY config/etc_containers_policy.json /opt/crio-deploy/config/etc_containers_policy.json
+COPY config/etc_containers_registries.d_default.yaml /opt/crio-deploy/config/etc_containers_registries.d_default.yaml
