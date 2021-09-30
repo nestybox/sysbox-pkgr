@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 
 #
 # Copyright 2019-2021 Nestybox, Inc.
@@ -330,6 +330,198 @@ function config_kubelet() {
 	systemctl daemon-reload
 }
 
+function get_flat_file() {
+	local file=$1
+
+	local flat_file=$(sed ':x; /\\$/ { N; s/\\\n//; tx }' $file | tr -s ' ')
+	echo "$flat_file"
+}
+
+function get_kubelet_exec_line_docker() {
+
+	local execstart_pre_line=$(systemctl show kubelet.service -p ExecStartPre --no-pager | egrep "docker run.*--name=kubelet" | cut -d";" -f2 | sed 's@argv\[\]=@@' | sed 's@^ @@' | xargs)
+	if [ ! -z "$execstart_pre_line" ]; then
+		echo "$execstart_pre_line"
+		return
+	fi
+
+	local execstart_line=$(systemctl show kubelet.service -p ExecStart --no-pager | egrep "docker run.*--name=kubelet" | cut -d";" -f2 | sed 's@argv\[\]=@@' | sed 's@^ @@' | xargs)
+	if [ ! -z "$execstart_line" ]; then
+		echo "$execstart_line"
+		return
+	fi
+}
+
+function get_kubelet_exec_line_regular() {
+
+	local execstart_pre_line=$(systemctl show kubelet.service -p ExecStartPre --no-pager | egrep "$kubelet_bin" | cut -d";" -f2 | sed 's@argv\[\]=@@' | sed 's@^ @@' | xargs)
+	if [ ! -z "$execstart_pre_line" ]; then
+		echo "$execstart_pre_line"
+		return
+	fi
+
+	local execstart_line=$(systemctl show kubelet.service -p ExecStart --no-pager | egrep "$kubelet_bin" | cut -d";" -f2 | sed 's@argv\[\]=@@' | sed 's@^ @@' | xargs)
+	if [ ! -z "$execstart_line" ]; then
+		echo "$execstart_line"
+		return
+	fi
+}
+
+function get_kubelet_exec_line() {
+
+	local execstart_line=$(get_kubelet_exec_line_docker)
+	if [ ! -z "$execstart_line" ]; then
+		echo "$execstart_line"
+		return
+	fi
+
+	local execstart_line=$(get_kubelet_exec_line_regular)
+	if [ ! -z "$execstart_line" ]; then
+		echo "$execstart_line"
+		return
+	fi
+}
+
+# Identify the systemd file where the passed exec-line is defined.
+function get_kubelet_systemd_file_per_exec() {
+	local exec_line=$1
+
+	# Let's try the drop-in file first as it has more preference.
+	#
+	# TODO: What about scenarios with multiple dropin-files?
+	#
+	local dropin_file=$(get_kubelet_service_dropin_file)
+	if [ ! -z "$dropin_file" ]; then
+		local flat_dropin_str=$(sed ':x; /\\$/ { N; s/\\\n//; tx }' $dropin_file | tr -s ' ')
+		if [[ "$flat_dropin_str" =~ "$exec_line" ]]; then
+			echo "$dropin_file"
+			return
+		fi
+	fi
+
+	local service_file=$(get_kubelet_service_file)
+	if [ ! -z "$service_file" ]; then
+		local flat_service_str=$(sed ':x; /\\$/ { N; s/\\\n//; tx }' $service_file | tr -s ' ')
+		if [[ "$flat_service_str" =~ "$exec_line" ]]; then
+			echo "$service_file"
+			return
+		fi
+	fi
+}
+
+function add_kubelet_exec_instruction() {
+	local systemd_file=$1
+	local env_var=$2
+
+	local search_mode="on"
+	local new_line
+
+	# Let's make a backup copy of the original file.
+	backup_config "$systemd_file" "kubelet_systemd_file"
+
+	touch tmp.txt
+
+	IFS=''
+
+	while read -r line; do
+		new_line=$line
+
+		if [[ "$search_mode" == "on" ]]; then
+			if echo "$new_line" | egrep -q "^ExecStart.*=\S*kubelet " ||
+				echo "$new_line" | egrep -q "^ExecStart.*=docker run"; then
+				search_mode="found"
+			fi
+		fi
+
+		# If the search pattern was already found, check if we have reached the
+		# last line in the (potentially multi-line) 'ExecStart' instruction, and
+		# if so, disable 'search-mode' to avoid this logic in subsequent lines.
+		if [[ "$search_mode" == "found" ]]; then
+			if ! echo "$new_line" | egrep -q "\\\\ *$"; then
+				new_line="$new_line \$$env_var"
+				search_mode="off"
+			fi
+		fi
+
+		echo $new_line >>tmp.txt
+
+	done <"$systemd_file"
+
+	mv tmp.txt "$systemd_file"
+
+	echo "Appended var \"$env_var\" to kubelet service file \"$systemd_file\"."
+}
+
+function backup_config() {
+	local file=$1
+	local type=$2
+
+	local config_file="${var_lib_sysbox_deploy_k8s}/config"
+
+	mkdir -p "$var_lib_sysbox_deploy_k8s"
+
+	if [ ! -f "$file" ]; then
+		return
+	fi
+
+	if [[ "$type" == "kubelet_systemd_file" ]]; then
+		echo "kubelet_systemd_file=${file}" >>"$config_file"
+	elif [[ "$type" == "kubelet_env_file" ]]; then
+		echo "kubelet_env_file=${file}" >>"$config_file"
+	else
+		return
+	fi
+
+	cp "$file" "${var_lib_sysbox_deploy_k8s}"/"${type}.orig"
+}
+
+# Configures the kubelet to use CRI-O, by modifying the systemd unit files that
+# contain the arguments passed to kubelet.
+function config_kubelet_docker_systemd() {
+
+	local kubelet_env_var="KUBELET_CRIO_ARGS"
+
+	# Identify the exec-line.
+	local exec_line=$(get_kubelet_exec_line)
+	if [ -z "$exec_line" ]; then
+		die "No Kubelet execution instruction could be identified."
+	fi
+
+	# Identify the systemd file where the exec-line lives.
+	local systemd_file=$(get_kubelet_systemd_file_per_exec "$exec_line")
+	if [ -z "$systemd_file" ]; then
+		die "No Kubelet systemd file could be identified for exec-line."
+	fi
+
+	# Verify that the new env-var is not already referenced in the systemd file.
+
+	# Also, verify that the new var is not already present in none of the env-files.
+
+	# Append the new env-var content to one of the env-files (e.g. last one).
+
+	# Append the new env-var name to the ExecStart line of the existing kubelet
+	# service file.
+	add_kubelet_exec_instruction "$systemd_file" "$kubelet_env_var"
+
+	# If systemd shows no kubelet environment files, let's create one.
+	local kubelet_env_files=$(get_kubelet_env_files)
+	local kubelet_env_file
+
+	if [[ "$kubelet_env_files" == "" ]]; then
+		kubelet_env_file="/etc/default/kubelet"
+		touch "$kubelet_env_file"
+	else
+		kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
+	fi
+
+	backup_config "$kubelet_env_file" "kubelet_env_file"
+
+	add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
+
+	# Ask systemd to reload it's config.
+	systemctl daemon-reload
+}
+
 # Function iterates through all the kubelet environment-files and all the
 # environment-vars to search for the passed attribute and, if found, returns
 # its associated value.
@@ -403,6 +595,11 @@ function adjust_crio_config_dependencies() {
 	if [[ "$crio_sighup" == "true" ]]; then
 		pkill -HUP crio
 	fi
+}
+
+function start_kubelet() {
+	echo "Starting Kubelet ..."
+	systemctl start kubelet
 }
 
 function restart_kubelet() {
@@ -505,17 +702,17 @@ function config_kubelet_rke() {
 	rm -rf "$kubelet_tmp_file"
 }
 
-function restart_kubelet_rke() {
+function restart_kubelet_container() {
 	docker restart kubelet
 }
 
-function stop_kubelet_rke() {
+function stop_kubelet_container() {
 	docker stop kubelet
 }
 
-function get_runtime() {
+function get_runtime_kubelet_systemctl {
 	set +e
-	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
 	set -e
 
 	# If runtime is unknown, assume it's Docker
@@ -537,9 +734,9 @@ function get_runtime_kubelet_snap() {
 	fi
 }
 
-function get_runtime_rke() {
+function get_runtime_kubelet_docker() {
 	set +e
-	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
+	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
 	set -e
 
 	# If runtime is unknown, assume it's Docker
@@ -552,7 +749,7 @@ function clean_runtime_state_containerd() {
 	local runtime=$1
 
 	# Collect all the existing podIds as seen by crictl.
-	podList=$($crictl_bin --runtime-endpoint ${runtime} ps | awk 'NR>1 {print $NF}')
+	podList=$($crictl_bin --runtime-endpoint "$runtime" ps | awk 'NR>1 {print $NF}')
 
 	# Cleanup the pods; turn off errexit in these steps as we don't want to
 	# interrupt the process if any of the instructions fail for a particular
@@ -560,12 +757,12 @@ function clean_runtime_state_containerd() {
 	set +e
 
 	for pod in ${podList}; do
-		ret=$($crictl_bin --runtime-endpoint "${runtime}" stopp ${pod})
+		ret=$($crictl_bin --runtime-endpoint "$runtime" stopp "$pod")
 		if [ $? -ne 0 ]; then
 			echo "Failed to stop pod ${pod}: $ret"
 		fi
 
-		ret=$($crictl_bin --runtime-endpoint "${runtime}" rmp ${pod})
+		ret=$($crictl_bin --runtime-endpoint "$runtime" rmp "$pod")
 		if [ $? -ne 0 ]; then
 			echo "Failed to remove pod ${pod}: $ret"
 		fi
@@ -584,8 +781,9 @@ function clean_runtime_state_containerd() {
 
 function clean_runtime_state_dockershim() {
 	local runtime=$1
-	shift
-	local podUids=("$@")
+	#shift
+	#local podUids=("$@")
+	local podUids=$2
 
 	# Collect all the existing containers as seen by docker.
 	local cntrList=$(docker ps | awk 'NR>1 {print $1}')
@@ -597,7 +795,7 @@ function clean_runtime_state_dockershim() {
 
 	for podUid in ${podUids}; do
 		for cntr in ${cntrList}; do
-			ret=$(docker inspect --format='{{index .Config.Labels "io.kubernetes.pod.uid"}}' $cntr 2>/dev/null | grep -q $podUid)
+			ret=$(docker inspect --format='{{index .Config.Labels "io.kubernetes.pod.uid"}}' $cntr 2>/dev/null | grep -q ${podUid})
 			if [ $? -ne 0 ]; then
 				continue
 			fi
@@ -626,8 +824,9 @@ function clean_runtime_state_dockershim() {
 # Wipe out all the pods managed by the given container runtime (dockershim, containerd, etc.)
 function clean_runtime_state() {
 	local runtime=$1
-	shift
-	local podUids=("$@")
+	#shift
+	#local podUids=("$@")
+	local podUids=$2
 
 	if [[ "$runtime" =~ "containerd" ]]; then
 		clean_runtime_state_containerd "$runtime"
@@ -658,7 +857,7 @@ function do_config_kubelet() {
 	fi
 
 	# Obtain current runtime.
-	get_runtime
+	get_runtime_kubelet_systemctl
 	if [[ ${runtime} =~ "crio" ]]; then
 		echo "Kubelet is already using CRI-O; no action will be taken."
 		return
@@ -719,17 +918,17 @@ function do_config_kubelet_snap() {
 	fi
 }
 
-function do_config_kubelet_rke() {
-	echo "Detected kubelet RKE deployment on host."
+function do_config_kubelet_docker_rke() {
+	echo "Detected kubelet in docker RKE deployment on host."
 
 	# Obtain current runtime.
-	get_runtime_rke
+	get_runtime_kubelet_docker
 	if [[ ${runtime} =~ "crio" ]]; then
 		echo "Kubelet is already using CRI-O; no action will be taken."
 		return
 	fi
 
-	# No runtime other than dockershim, and obviously crio, are expected in an
+	# No runtime other than dockershim, and obviously crio, is expected in an
 	# rke deployment.
 	if [[ ! ${runtime} =~ "dockershim" ]]; then
 		echo "Unsupported runtime for RKE scenario: $runtime"
@@ -759,17 +958,62 @@ function do_config_kubelet_rke() {
 	set_kubelet_ctr_restart_policy "no"
 	config_kubelet_rke
 	local podUids=$(get_pods_uids)
-	stop_kubelet_rke
+	stop_kubelet_container
 	clean_runtime_state "$runtime" "$podUids"
-	restart_kubelet_rke
+	restart_kubelet_container
 	revert_kubelet_ctr_restart_policy
+}
+
+function do_config_kubelet_docker_systemd() {
+	echo "Detected kubelet in docker + systemd deployment on host."
+
+	# Obtain current runtime.
+	get_runtime_kubelet_systemctl
+	if [[ ${runtime} =~ "crio" ]]; then
+		echo "Kubelet is already using CRI-O; no action will be taken."
+		return
+	fi
+
+	# No runtime other than dockershim, and obviously crio, is expected in an
+	# systemd-managed docker-based deployment.
+	if [[ ! ${runtime} =~ "dockershim" ]]; then
+		echo "Unsupported runtime for docker-based scenario: $runtime"
+		return
+	fi
+
+	# RKE bind-mounts /sys into its kubelet container to be able to write directly
+	# into the hosts /sys/fs/cgroup path. With that goal in mind, RKE's kubelet
+	# container entrypoint does a RW remount of /sys/fs/cgroup mountpoint. However,
+	# this doesn't help host-based processes that require RW access to the cgroups
+	# path (such as cri-o), that's why here we explicitly remount /sys/fs/cgroup as
+	# RW within the init mount-ns.
+	if mount | grep -q "/sys/fs/cgroup .*ro,"; then
+		mount -o rw,remount /sys/fs/cgroup
+	fi
+
+	# In RKE's case we must add a few steps to the typical logic utilized in other
+	# dockershim setups. In this case, as kubelet executes as the 'init' process
+	# of a docker container, we must do the following:
+	#
+	# * Modify kubelet's container restart-policy to prevent this one from being
+	#   re-spawned by docker once that we temporarily shut it down.
+	# * Configurate the kubelet's container entrypoint to meet cri-o requirements.
+	# * Once the usual kubelet's "stop + clean + restart" cycle is completed, we
+	#   must revert the changes made to the kubelet's container restart-policy.
+
+	config_kubelet_docker_systemd
+	local podUids=$(get_pods_uids)
+	stop_kubelet
+	clean_runtime_state "$runtime" "$podUids"
+	start_kubelet
 }
 
 function kubelet_snap_deployment() {
 	snap list 2>&1 | grep -q kubelet
 }
 
-function kubelet_rke_deployment() {
+function kubelet_docker_rke_deployment() {
+
 	# Docker presence is a must-have in rke setups. As we are enforcing this
 	# requirement at the very beginning of the execution path, no other rke
 	# related routine will check for docker's presence.
@@ -781,8 +1025,31 @@ function kubelet_rke_deployment() {
 		egrep -q "rke.container.name:kubelet"
 }
 
-function main() {
+function kubelet_docker_systemd_deployment() {
 
+	# Docker presence is a must-have requirement in these setups (obviously). As
+	# we are enforcing this requirement at the very beginning of the execution
+	# path, no other systemd-docker related routine will check for docker's
+	# presence.
+	if ! command -v docker >/dev/null 2>&1; then
+		return 1
+	fi
+
+	# Ensure that a container named 'kubelet' exists (typical de-facto standard).
+	if ! systemctl show kubelet.service | egrep -q "^ExecStart.*=docker run"; then
+		return 1
+	fi
+
+	# Ensure that the entrypoint of this kubelet container is executing 'kubelet'
+	# itself.
+	if ! docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet |
+		awk -F "/" '{print $NF}' | egrep -q "kubelet"; then
+		return 1
+	fi
+}
+
+function main() {
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root."
@@ -802,8 +1069,10 @@ function main() {
 	#
 	if kubelet_snap_deployment; then
 		do_config_kubelet_snap
-	elif kubelet_rke_deployment; then
-		do_config_kubelet_rke
+	elif kubelet_docker_rke_deployment; then
+		do_config_kubelet_docker_rke
+	elif kubelet_docker_systemd_deployment; then
+		do_config_kubelet_docker_systemd
 	else
 		do_config_kubelet
 	fi
