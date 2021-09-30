@@ -65,29 +65,57 @@ function revert_kubelet_config() {
 		return
 	fi
 
-	# If a kubelet drop-in file is identified in systemd, we must act depending
-	# on how/who created this drop-in file in the first place:
+	# # If a kubelet drop-in file is identified in systemd, we must act depending
+	# # on how/who created this drop-in file in the first place:
+	# #
+	# # 1) If the drop-in file was created by the Sysbox installer, then we must
+	# #    simply eliminate this file.
+	# # 2) If the drop-in file was already present and was modified by the Sysbox
+	# #    installer, then we must copy the original file back to its prior
+	# #    location.
+	# local dropin_file=$(get_kubelet_service_dropin_file)
+	# if [[ "$dropin_file" == "$kubelet_sysbox_systemd_dropin" ]]; then
+	# 	rm -r "$dropin_file"
+	# 	systemctl daemon-reload
+	# elif [[ "$dropin_file" != "" ]] && [ -f "$kubelet_systemd_dropin" ]; then
+	# 	cp "$kubelet_systemd_dropin" "$dropin_file"
+	# 	systemctl daemon-reload
+	# fi
+
+	# The config file will have these entries:
 	#
-	# 1) If the drop-in file was created by the Sysbox installer, then we must
-	#    simply eliminate this file.
-	# 2) If the drop-in file was already present and was modified by the Sysbox
-	#    installer, then we must copy the original file back to its prior
-	#    location.
-	local dropin_file=$(get_kubelet_service_dropin_file)
-	if [[ "$dropin_file" == "$kubelet_sysbox_systemd_dropin" ]]; then
-		rm -r "$dropin_file"
-		systemctl daemon-reload
-	elif [[ "$dropin_file" != "" ]] && [ -f "$kubelet_systemd_dropin" ]; then
-		cp "$kubelet_systemd_dropin" "$dropin_file"
+	# * kubelet_env_file=/path/to/file
+	# * kubelet_systemd_file=/path/to/file
+	#
+	# Below, we copy these original files back to their original locations.
+
+	local target=$(grep "kubelet_env_file" "$config_file" | cut -d "=" -f2)
+	if [ ! -z "$target" ]; then
+		cp "${var_lib_sysbox_deploy_k8s}/kubelet_env_file.orig" "$target"
+		rm "${var_lib_sysbox_deploy_k8s}/kubelet_env_file.orig"
+	fi
+
+	local target=$(grep "kubelet_systemd_file" "$config_file" | cut -d "=" -f2)
+	if [ ! -z "$target" ]; then
+		# If the primary kubelet systemd file was one artificially introduced by
+		# Sysbox during installation, we simply want to remove it here. In the
+		# other scenarios we must copy the original file to its former location.
+		if [[ "$target" == "$kubelet_sysbox_systemd_dropin" ]]; then
+			rm -r "$target"
+		else
+			cp "${var_lib_sysbox_deploy_k8s}/kubelet_systemd_file.orig" "$target"
+			rm -r "${var_lib_sysbox_deploy_k8s}/kubelet_systemd_file.orig"
+		fi
+
 		systemctl daemon-reload
 	fi
 
-	# The config file will have this: kubelet_env_file=/path/to/file
-	# Here, we copy the orig config file to the target "/path/to/file".
-	local target=$(grep "kubelet_env_file" "$config_file" | cut -d "=" -f2)
-	cp "${var_lib_sysbox_deploy_k8s}/kubelet.orig" "$target"
-	rm "${var_lib_sysbox_deploy_k8s}/kubelet.orig"
 	rm "$config_file"
+}
+
+function start_kubelet() {
+	echo "Starting Kubelet ..."
+	systemctl start kubelet
 }
 
 function restart_kubelet() {
@@ -149,12 +177,12 @@ function stop_kubelet_rke() {
 	docker stop kubelet
 }
 
-function get_runtime() {
+function get_runtime_kubelet_systemctl {
 	set +e
-	runtime=$(systemctl status kubelet | egrep ${kubelet_bin} | egrep -o "container-runtime-endpoint=\S*" | tail -1 | cut -d '=' -f2)
+	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
 	set -e
 
-	# If runtime is unknown, assume it's Docker
+	# If runtime is unknown, assume it's Docker.
 	if [[ ${runtime} == "" ]]; then
 		runtime="unix:///var/run/dockershim.sock"
 	fi
@@ -162,7 +190,7 @@ function get_runtime() {
 
 function get_runtime_kubelet_snap() {
 
-	# If runtime is unknown, assume it's Docker
+	# If runtime is unknown, assume it's Docker.
 	if [[ ${runtime} == "" ]]; then
 		runtime="unix:///var/run/dockershim.sock"
 	fi
@@ -173,12 +201,12 @@ function get_runtime_kubelet_snap() {
 	fi
 }
 
-function get_runtime_rke() {
+function get_runtime_kubelet_docker() {
 	set +e
 	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
 	set -e
 
-	# If runtime is unknown, assume it's Docker
+	# If runtime is unknown, assume it's Docker.
 	if [[ ${runtime} == "" ]]; then
 		runtime="unix:///var/run/dockershim.sock"
 	fi
@@ -188,19 +216,19 @@ function get_runtime_rke() {
 function clean_runtime_state() {
 
 	# Collect all the existing podIds as seen by crictl.
-	podList=$($crictl_bin --runtime-endpoint ${runtime} ps | awk 'NR>1 {print $NF}')
+	podList=$($crictl_bin --runtime-endpoint "$runtime" ps | awk 'NR>1 {print $NF}')
 
 	# Cleanup the pods; turn off errexit in these steps as we don't want to
 	# interrupt the process if any of the instructions fail for a particular
 	# pod.
 	set +e
 	for pod in ${podList}; do
-		ret=$($crictl_bin --runtime-endpoint "${runtime}" stopp ${pod})
+		ret=$($crictl_bin --runtime-endpoint "$runtime" stopp ${pod})
 		if [ $? -ne 0 ]; then
 			echo "Failed to stop pod ${pod}: $ret"
 		fi
 
-		ret=$($crictl_bin --runtime-endpoint "${runtime}" rmp ${pod})
+		ret=$($crictl_bin --runtime-endpoint "$runtime" rmp ${pod})
 		if [ $? -ne 0 ]; then
 			echo "Failed to remove pod ${pod}: $ret"
 		fi
@@ -236,7 +264,7 @@ function do_unconfig_kubelet() {
 		die "Kubelet binary not identified."
 	fi
 
-	get_runtime
+	get_runtime_kubelet_systemctl
 	if [[ ! ${runtime} =~ "crio" ]]; then
 		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
 		return
@@ -345,8 +373,45 @@ function kubelet_rke_deployment() {
 		egrep -q "rke.container.name:kubelet"
 }
 
-function main() {
+function do_unconfig_kubelet_docker_systemd() {
 
+	get_runtime_kubelet_systemctl
+	if [[ ! ${runtime} =~ "crio" ]]; then
+		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
+		return
+	fi
+
+	stop_kubelet
+	clean_runtime_state
+	revert_kubelet_config
+	start_kubelet
+}
+
+function kubelet_docker_systemd_deployment() {
+
+	# Docker presence is a must-have requirement in these setups (obviously). As
+	# we are enforcing this requirement at the very beginning of the execution
+	# path, no other systemd-docker related routine will check for docker's
+	# presence.
+	if ! command -v docker >/dev/null 2>&1; then
+		return 1
+	fi
+
+	# Ensure that a container named 'kubelet' exists (typical de-facto standard).
+	if ! systemctl show kubelet.service | egrep -q "^ExecStart.*=docker run"; then
+		return 1
+	fi
+
+	# Ensure that the entrypoint of this kubelet container is executing 'kubelet'
+	# itself.
+	if ! docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet |
+		awk -F "/" '{print $NF}' | egrep -q "kubelet"; then
+		return 1
+	fi
+}
+
+function main() {
+	set -x
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
@@ -363,6 +428,8 @@ function main() {
 		do_unconfig_kubelet_snap
 	elif kubelet_rke_deployment; then
 		do_unconfig_kubelet_rke
+	elif kubelet_docker_systemd_deployment; then
+		do_unconfig_kubelet_docker_systemd
 	else
 		do_unconfig_kubelet
 	fi
