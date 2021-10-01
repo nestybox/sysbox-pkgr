@@ -722,12 +722,6 @@ function do_config_kubelet_snap() {
 function do_config_kubelet_rke() {
 	echo "Detected kubelet RKE deployment on host."
 
-	# Obtain kubelet path.
-	kubelet_bin=$(get_kubelet_bin)
-	if [ -z "$kubelet_bin" ]; then
-		die "Kubelet binary not identified."
-	fi
-
 	# Obtain current runtime.
 	get_runtime_rke
 	if [[ ${runtime} =~ "crio" ]]; then

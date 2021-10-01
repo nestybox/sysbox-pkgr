@@ -304,12 +304,6 @@ function revert_kubelet_ctr_restart_policy() {
 
 function do_unconfig_kubelet_rke() {
 
-	# Obtain kubelet path.
-	kubelet_bin=$(get_kubelet_bin)
-	if [ -z "$kubelet_bin" ]; then
-		die "Kubelet binary not identified."
-	fi
-
 	get_runtime_rke
 	if [[ ! ${runtime} =~ "crio" ]]; then
 		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
