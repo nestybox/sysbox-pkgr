@@ -33,6 +33,10 @@ function die() {
 }
 
 function install_package_deps() {
+
+	# Certificates package is required prior to running apt-update.
+	apt-get -y install ca-certificates
+	apt-get update
 	apt-get install -y rsync fuse iptables
 }
 
@@ -109,7 +113,6 @@ function main() {
 		return
 	fi
 
-	apt-get update
 	install_package_deps
 	install_shiftfs
 	probe_kernel_mods
