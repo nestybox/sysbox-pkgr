@@ -103,12 +103,26 @@ function get_kubelet_env_var_all() {
 
 # Notice the contrast with the above function. Here we return ExecStart
 # 'attributes' (or parameters) and not 'env-vars' as it's the case above.
+#
+# TODO: Fix this function: description doesn't match implementation. Also,
+# it's not being used.
 function get_kubelet_exec_attrib_all() {
 	local attr=$1
 
 	systemctl show kubelet.service | egrep "ExecStart=" |
 		sed -e 's@argv\[\]=${kubelet_bin}@@g' | sed 's/ /\n/g' |
 		egrep "^--${attr}" | cut -d"=" -f2
+}
+
+function get_kubelet_exec_attr_val() {
+	local attr=$1
+
+	local exec_line=$(get_kubelet_exec_line)
+	if [ -z "$exec_line" ]; then
+		return
+	fi
+
+	echo "$exec_line" | sed 's/ /\n/g' | egrep "^--${attr}" | cut -d"=" -f2
 }
 
 function get_kubelet_service_file() {
@@ -382,17 +396,27 @@ function get_kubelet_exec_line() {
 	fi
 }
 
-# Identify the systemd file where the passed exec-line is defined.
+# Our purpose in this function is to identify the kubelet systemd file that
+# contains the ExecStart line matching the "exec_line" parameter being passed
+# by the caller.
+#
+# Note that for this comparison logic to succeed we must take into account
+# that the attributes displayed by "systemctl show" command, which serve to
+# extract the "exec_line", are massaged by systemd and shown attending to this:
+#
+#  * Duplicated space characters are eliminated. That is, a single space char is
+#    displayed between the ExecStart attributes.
+#  * Single and double quote characters are also eliminated.
+#
 function get_kubelet_systemd_file_per_exec() {
 	local exec_line=$1
 
-	# Let's try the drop-in file first as it has more preference.
+	# Let's look first at the drop-in file first as it has more preference.
 	#
 	# TODO: What about scenarios with multiple dropin-files?
-	#
 	local dropin_file=$(get_kubelet_service_dropin_file)
 	if [ ! -z "$dropin_file" ]; then
-		local flat_dropin_str=$(sed ':x; /\\$/ { N; s/\\\n//; tx }' $dropin_file | tr -s ' ')
+		local flat_dropin_str=$(sed ':x; /\\$/ { N; s/\\\n//; tx }' $dropin_file | tr -s ' ' | tr -d \'\")
 		if [[ "$flat_dropin_str" =~ "$exec_line" ]]; then
 			echo "$dropin_file"
 			return
@@ -401,7 +425,7 @@ function get_kubelet_systemd_file_per_exec() {
 
 	local service_file=$(get_kubelet_service_file)
 	if [ ! -z "$service_file" ]; then
-		local flat_service_str=$(sed ':x; /\\$/ { N; s/\\\n//; tx }' $service_file | tr -s ' ')
+		local flat_service_str=$(sed ':x; /\\$/ { N; s/\\\n//; tx }' $service_file | tr -s ' ' | tr -d \'\")
 		if [[ "$flat_service_str" =~ "$exec_line" ]]; then
 			echo "$service_file"
 			return
@@ -535,9 +559,9 @@ function get_crio_config_dependency() {
 
 	# Let's first look directly into the list of ExecStart attributes used
 	# within the kubelet service file.
-	local exec_val=$(get_kubelet_exec_attrib_all $exec_attr)
-	if [ ! -z "$exec_val" ]; then
-		echo "$exec_val"
+	local exec_attr_val=$(get_kubelet_exec_attr_val "$exec_attr")
+	if [ ! -z "$exec_attr_val" ]; then
+		echo "$exec_attr_val"
 		return
 	fi
 
@@ -555,8 +579,8 @@ function get_crio_config_dependency() {
 			var=${var#"$"}
 
 			if grep -q "$var" "$file"; then
-				local exec_val=$(sed 's/ /\n/g' "$file" | egrep "^--${exec_attr}" | cut -d"=" -f2)
-				echo "$exec_val"
+				local exec_attr_val=$(sed 's/ /\n/g' "$file" | egrep "^--${exec_attr}" | cut -d"=" -f2)
+				echo "$exec_attr_val"
 				return
 			fi
 		done
@@ -1002,6 +1026,7 @@ function do_config_kubelet_docker_systemd() {
 	#   must revert the changes made to the kubelet's container restart-policy.
 
 	config_kubelet_docker_systemd
+	adjust_crio_config_dependencies
 	local podUids=$(get_pods_uids)
 	stop_kubelet
 	clean_runtime_state "$runtime" "$podUids"
