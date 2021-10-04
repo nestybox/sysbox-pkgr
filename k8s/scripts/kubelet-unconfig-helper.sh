@@ -65,23 +65,6 @@ function revert_kubelet_config() {
 		return
 	fi
 
-	# # If a kubelet drop-in file is identified in systemd, we must act depending
-	# # on how/who created this drop-in file in the first place:
-	# #
-	# # 1) If the drop-in file was created by the Sysbox installer, then we must
-	# #    simply eliminate this file.
-	# # 2) If the drop-in file was already present and was modified by the Sysbox
-	# #    installer, then we must copy the original file back to its prior
-	# #    location.
-	# local dropin_file=$(get_kubelet_service_dropin_file)
-	# if [[ "$dropin_file" == "$kubelet_sysbox_systemd_dropin" ]]; then
-	# 	rm -r "$dropin_file"
-	# 	systemctl daemon-reload
-	# elif [[ "$dropin_file" != "" ]] && [ -f "$kubelet_systemd_dropin" ]; then
-	# 	cp "$kubelet_systemd_dropin" "$dropin_file"
-	# 	systemctl daemon-reload
-	# fi
-
 	# The config file will have these entries:
 	#
 	# * kubelet_env_file=/path/to/file
@@ -332,7 +315,7 @@ function revert_kubelet_ctr_restart_policy() {
 
 function do_unconfig_kubelet_rke() {
 
-	get_runtime_rke
+	get_runtime_kubelet_docker
 	if [[ ! ${runtime} =~ "crio" ]]; then
 		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
 		return
