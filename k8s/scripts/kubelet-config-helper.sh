@@ -433,7 +433,19 @@ function get_kubelet_systemd_file_per_exec() {
 	fi
 }
 
-function add_kubelet_exec_instruction() {
+# Function adjusts the kubelet configuration to satisfy the demands of a docker
+# based kubelet container managed by a systemd service.
+#
+# Two changes are needed in the exec instruction:
+#
+# * We must add /var/lib/containers bind-mount as kubelet interacts with files
+#   in this path. For doing this we rely on the presence of /var/lib/docker as
+#   a reference to the location where the /var/lib/containers mount must be
+#   appended.
+# * Also, We must append the passed env-var to the end of the exec instruction.
+#   This env-var is epxected to hold all the crio-specific config parameters.
+#
+function adjust_kubelet_exec_docker_systemd() {
 	local systemd_file=$1
 	local env_var=$2
 
@@ -445,6 +457,8 @@ function add_kubelet_exec_instruction() {
 
 	touch tmp.txt
 
+	# Set IFS to nil to prevent file lines from being split (by default IFS is
+	# set to \sp\t\n).
 	IFS=''
 
 	while read -r line; do
@@ -457,12 +471,22 @@ function add_kubelet_exec_instruction() {
 			fi
 		fi
 
-		# If the search pattern was already found, check if we have reached the
-		# last line in the (potentially multi-line) 'ExecStart' instruction, and
-		# if so, disable 'search-mode' to avoid this logic in subsequent lines.
+		# If the search pattern was already found, look for the different sections
+		# of the exec instruction that we want to edit:
+		#
+		# * Multi-line /var/lib/docker: Append /var/lib/containers bind-mount.
+		# * Single-line /var/lib/docker: Append /var/lib/containers bind-mount.
+		# * Exec's last line: Append crio's env-var.
 		if [[ "$search_mode" == "found" ]]; then
-			if ! echo "$new_line" | egrep -q "\\\\ *$"; then
-				new_line="$new_line \$$env_var"
+
+			if echo "$new_line" | egrep -q "\-v /var/lib/docker:/var/lib/docker:rw.*\\\\ *$"; then
+				new_line=$(printf '%s\n  -v /var/lib/containers:/var/lib/containers:rw \\\n' "$new_line")
+
+			elif echo "$new_line" | egrep -q "\-v /var/lib/docker:/var/lib/docker:rw.*$"; then
+				new_line=$(echo $new_line | sed 's@-v /var/lib/docker:/var/lib/docker:rw@& -v /var/lib/containers:/var/lib/containers:rw@')
+
+			elif ! echo "$new_line" | egrep -q "\\\\ *$"; then
+				new_line=$(printf '%s \\\n  $%s' $new_line $env_var)
 				search_mode="off"
 			fi
 		fi
@@ -471,9 +495,12 @@ function add_kubelet_exec_instruction() {
 
 	done <"$systemd_file"
 
+	# Remember to unset IFS to avoid headaches down the road.
+	unset IFS
+
 	mv tmp.txt "$systemd_file"
 
-	echo "Appended var \"$env_var\" to kubelet service file \"$systemd_file\"."
+	echo "Adjusted exec instruction in kubelet's service file \"$systemd_file\"."
 }
 
 function backup_config() {
@@ -517,15 +544,8 @@ function config_kubelet_docker_systemd() {
 		die "No Kubelet systemd file could be identified for exec-line."
 	fi
 
-	# Verify that the new env-var is not already referenced in the systemd file.
-
-	# Also, verify that the new var is not already present in none of the env-files.
-
-	# Append the new env-var content to one of the env-files (e.g. last one).
-
-	# Append the new env-var name to the ExecStart line of the existing kubelet
-	# service file.
-	add_kubelet_exec_instruction "$systemd_file" "$kubelet_env_var"
+	# Adjust the ExecStart instruction to satisfy this setup.
+	adjust_kubelet_exec_docker_systemd "$systemd_file" "$kubelet_env_var"
 
 	# If systemd shows no kubelet environment files, let's create one.
 	local kubelet_env_files=$(get_kubelet_env_files)
@@ -540,6 +560,7 @@ function config_kubelet_docker_systemd() {
 
 	backup_config "$kubelet_env_file" "kubelet_env_file"
 
+	# Append the new env-var content to one of the env-files.
 	add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
 
 	# Ask systemd to reload it's config.
@@ -760,7 +781,7 @@ function get_runtime_kubelet_snap() {
 
 function get_runtime_kubelet_docker() {
 	set +e
-	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
+	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
 	set -e
 
 	# If runtime is unknown, assume it's Docker
@@ -804,10 +825,25 @@ function clean_runtime_state_containerd() {
 }
 
 function clean_runtime_state_dockershim() {
+
+	set +e
+	docker stop -t0 $(docker ps -a -q)
+	docker rm $(docker ps -a -q)
+	set -e
+
+	echo "Done eliminating all existing docker containers."
+
+	# Create a soft link from the dockershim socket to the crio socket
+	# (some pods are designed to talk to dockershim (e.g., aws-node)).
+	echo "Soft-linking dockershim socket to CRI-O socket on the host ..."
+	rm -f /var/run/dockershim.sock
+	ln -s /var/run/crio/crio.sock /var/run/dockershim.sock
+}
+
+function clean_runtime_state_dockershim_old() {
 	local runtime=$1
-	#shift
-	#local podUids=("$@")
-	local podUids=$2
+	shift
+	local podUids=("$@")
 
 	# Collect all the existing containers as seen by docker.
 	local cntrList=$(docker ps | awk 'NR>1 {print $1}')
@@ -819,19 +855,19 @@ function clean_runtime_state_dockershim() {
 
 	for podUid in ${podUids}; do
 		for cntr in ${cntrList}; do
-			ret=$(docker inspect --format='{{index .Config.Labels "io.kubernetes.pod.uid"}}' $cntr 2>/dev/null | grep -q ${podUid})
+			ret=$(docker inspect --format='{{index .Config.Labels "io.kubernetes.pod.uid"}}' $cntr 2>/dev/null | grep -q $podUid)
 			if [ $? -ne 0 ]; then
 				continue
 			fi
 
 			ret=$(docker stop -t0 $cntr)
 			if [ $? -ne 0 ]; then
-				echo "Failed to stop cntr ${cntr} from pod ${podUid}: $ret"
+				echo "Failed to stop cntr $cntr from pod $podUid: $ret"
 			fi
 
 			ret=$(docker rm $cntr)
 			if [ $? -ne 0 ]; then
-				echo "Failed to remove cntr ${cntr} from pod ${podUid}: $ret"
+				echo "Failed to remove cntr $cntr from pod $podUid: $ret"
 			fi
 		done
 	done
@@ -848,14 +884,14 @@ function clean_runtime_state_dockershim() {
 # Wipe out all the pods managed by the given container runtime (dockershim, containerd, etc.)
 function clean_runtime_state() {
 	local runtime=$1
-	#shift
-	#local podUids=("$@")
-	local podUids=$2
+	shift
+	local podUids=("$@")
 
 	if [[ "$runtime" =~ "containerd" ]]; then
 		clean_runtime_state_containerd "$runtime"
 	elif [[ "$runtime" =~ "dockershim" ]]; then
-		clean_runtime_state_dockershim "$runtime" "$podUids"
+		#clean_runtime_state_dockershim_old "$runtime" "$podUids"
+		clean_runtime_state_dockershim
 	else
 		echo "Container runtime not supported: ${runtime}"
 		return
