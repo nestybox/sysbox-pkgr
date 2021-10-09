@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 #
 # Copyright 2019-2021 Nestybox, Inc.
@@ -628,6 +628,7 @@ function get_crio_config_dependency() {
 # parameters (if any).
 function adjust_crio_config_dependencies() {
 	local crio_sighup=false
+	local crio_restart=false
 
 	# If kubelet is currently running with an explicit "infra" (pause) image, then
 	# adjust crio.conf to honor that request.
@@ -637,8 +638,19 @@ function adjust_crio_config_dependencies() {
 		crio_sighup=true
 	fi
 
+	local cni_conf_dir=$(get_crio_config_dependency "cni-conf-dir")
+	if [ ! -z "$cni_conf_dir" ] && [[ $cni_conf_dir != "/etc/cni/net.d" ]]; then
+		sed -i "s@network_dir =.*@network_dir = \"${cni_conf_dir}\"@" $crio_conf_file
+		crio_restart=true
+	fi
+
 	if [[ "$crio_sighup" == "true" ]]; then
 		pkill -HUP crio
+	fi
+
+	if [[ "$crio_restart" == "true" ]]; then
+		echo "Restarting CRI-O due to unmet Kubelet's config dependencies ..."
+		systemctl restart crio
 	fi
 }
 
@@ -1110,7 +1122,7 @@ function kubelet_docker_systemd_deployment() {
 }
 
 function main() {
-	set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root."
