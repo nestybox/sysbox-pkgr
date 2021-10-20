@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright 2019-2020 Nestybox, Inc.
+# Copyright 2019-2021 Nestybox, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -80,9 +80,11 @@ do_crio_install="true"
 #
 
 function deploy_crio_installer_service() {
-	echo "Deploying CRI-O installer agent on the host ..."
+	echo "Deploying CRI-O installer agent on the host ($k8s_version) ..."
 
-	cp ${crio_artifacts}/bin/cri-o* ${host_local_bin}/
+	cp ${crio_artifacts}/bin/${k8s_version}/cri-o.amd64.tar.gz ${host_local_bin}/cri-o.amd64.tar.gz
+	cp ${crio_artifacts}/bin/${k8s_version}/crio-patched ${host_local_bin}/crio-patched
+
 	cp ${crio_artifacts}/scripts/crio-installer.sh ${host_local_bin}/crio-installer.sh
 	cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_local_bin}/crio-extractor.sh
 	cp ${crio_artifacts}/systemd/crio-installer.service ${host_systemd}/crio-installer.service
@@ -222,21 +224,6 @@ function restart_crio() {
 #
 # Sysbox Installation Functions
 #
-
-function is_supported_distro() {
-
-	local distro=$os_distro_release
-
-	# TODO: add sysbox binaries for all supported distros.
-	if [[ "$distro" == "ubuntu-20.04" ]] ||
-		[[ "$distro" == "ubuntu-18.04" ]] ||
-		[[ "$distro" =~ "debian" ]] ||
-		[[ "$distro" =~ "flatcar" ]]; then
-		return
-	fi
-
-	false
-}
 
 function get_artifacts_dir() {
 
@@ -601,6 +588,16 @@ function print_usage() {
 	echo "Usage: $0 [ce|ee] [install|cleanup]"
 }
 
+function get_k8s_version() {
+	local version=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.kubeletVersion}' | awk -F "." '{print $1 "." $2}')
+
+	if [ "$?" -ne 0 ]; then
+		die "invalid Kubernetes version"
+	fi
+
+  echo "$version"
+}
+
 function get_container_runtime() {
 	local runtime=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}')
 
@@ -631,6 +628,33 @@ function host_flatcar_distro() {
 
 function get_host_kernel() {
 	cat /proc/version | cut -d" " -f3 | cut -d "." -f1-2
+}
+
+function is_supported_distro() {
+
+	local distro=$os_distro_release
+
+	# TODO: add sysbox binaries for all supported distros.
+	if [[ "$distro" == "ubuntu-20.04" ]] ||
+		[[ "$distro" == "ubuntu-18.04" ]] ||
+		[[ "$distro" =~ "debian" ]] ||
+		[[ "$distro" =~ "flatcar" ]]; then
+		return
+	fi
+
+	false
+}
+
+function is_supported_k8s_version() {
+
+	local ver=$k8s_version
+
+	if [[ "$ver" == "v1.20" ]] ||
+		[[ "$ver" == "v1.21" ]]; then
+		return
+	fi
+
+	false
 }
 
 function is_host_upgraded() {
@@ -839,12 +863,19 @@ function main() {
 		die "Sysbox is not supported on this host's distro ($os_distro_release)".
 	fi
 
+	k8s_version=$(get_k8s_version)
+	if ! is_supported_k8s_version; then
+		die "Sysbox is not supported on this Kubernetes version ($k8s_version)".
+	fi
+
 	k8s_runtime=$(get_container_runtime)
 	if [[ $k8s_runtime == "" ]]; then
 		die "Failed to detect K8s node runtime."
 	elif [ "$k8s_runtime" == "cri-o" ]; then
 		k8s_runtime="crio"
 	fi
+
+	echo "Detected Kubernetes version $k8s_version"
 
 	local edition_tag=${1:-}
 	if [ -z "$edition_tag" ]; then
