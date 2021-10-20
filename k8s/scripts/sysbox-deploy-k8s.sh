@@ -610,7 +610,7 @@ function get_k8s_version() {
 		die "invalid Kubernetes version"
 	fi
 
-  echo "$version"
+	echo "$version"
 }
 
 function get_container_runtime() {
