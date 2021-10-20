@@ -52,7 +52,7 @@ function replace_cmd_option {
 	opt=$2
 	want_val=$3
 
-	read -a curr_args <<<${cmd_opts}
+	read -a curr_args <<<${cmd_opts}3
 	declare -a new_args
 
 	found_opt=false
@@ -294,58 +294,6 @@ function backup_orig_config() {
 	fi
 }
 
-# Configures the kubelet to use CRI-O, by modifying the systemd unit files that
-# contain the arguments passed to kubelet.
-function config_kubelet() {
-
-	local kubelet_env_files=$(get_kubelet_env_files)
-
-	# If systemd shows no kubelet environment files, let's create one.
-	if [[ "$kubelet_env_files" == "" ]]; then
-		local kubelet_env_file="/etc/default/kubelet"
-		local kubelet_env_var="KUBELET_EXTRA_ARGS"
-		backup_orig_config "$kubelet_env_file"
-		add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
-		add_systemd_dropin_file "$kubelet_env_file" "$kubelet_env_var"
-		return
-	fi
-
-	# If no kubelet env var was found, let's use our default one.
-	local kubelet_env_var=$(get_kubelet_env_var)
-	if [[ "$kubelet_env_var" == "" ]]; then
-		kubelet_env_var="KUBELET_EXTRA_ARGS"
-		local kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
-		add_systemd_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
-	fi
-
-	# If systemd shows kubelet environment files, let's check if they exist and
-	# if so replace the env variable ($kubelet_env_var).
-	for kubelet_env_file in $kubelet_env_files; do
-		if [ -f "$kubelet_env_file" ]; then
-			if grep -q "$kubelet_env_var" "$kubelet_env_file"; then
-				backup_orig_config "$kubelet_env_file"
-				replace_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
-				return
-			fi
-		fi
-	done
-
-	# Either the kubelet env file does not exist, or it exists but does not
-	# contain the $kubelet_env_var; lets create the file and/or add the
-	# $kubelet_env_var to it.
-	local kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
-
-	if [ ! -f "$kubelet_env_file" ]; then
-		touch "$kubelet_env_file"
-	fi
-
-	backup_orig_config "$kubelet_env_file"
-	add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
-
-	# Ask systemd to reload it's config
-	systemctl daemon-reload
-}
-
 function get_flat_file() {
 	local file=$1
 
@@ -528,47 +476,6 @@ function backup_config() {
 	cp "$file" "${var_lib_sysbox_deploy_k8s}"/"${type}.orig"
 }
 
-# Configures the kubelet to use CRI-O, by modifying the systemd unit files that
-# contain the arguments passed to kubelet.
-function config_kubelet_docker_systemd() {
-
-	local kubelet_env_var="KUBELET_CRIO_ARGS"
-
-	# Identify the exec-line.
-	local exec_line=$(get_kubelet_exec_line)
-	if [ -z "$exec_line" ]; then
-		die "No Kubelet execution instruction could be identified."
-	fi
-
-	# Identify the systemd file where the exec-line lives.
-	local systemd_file=$(get_kubelet_systemd_file_per_exec "$exec_line")
-	if [ -z "$systemd_file" ]; then
-		die "No Kubelet systemd file could be identified for exec-line."
-	fi
-
-	# Adjust the ExecStart instruction to satisfy this setup.
-	adjust_kubelet_exec_docker_systemd "$systemd_file" "$kubelet_env_var"
-
-	# If systemd shows no kubelet environment files, let's create one.
-	local kubelet_env_files=$(get_kubelet_env_files)
-	local kubelet_env_file
-
-	if [[ "$kubelet_env_files" == "" ]]; then
-		kubelet_env_file="/etc/default/kubelet"
-		touch "$kubelet_env_file"
-	else
-		kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
-	fi
-
-	backup_config "$kubelet_env_file" "kubelet_env_file"
-
-	# Append the new env-var content to one of the env-files.
-	add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
-
-	# Ask systemd to reload it's config.
-	systemctl daemon-reload
-}
-
 # Function iterates through all the kubelet environment-files and all the
 # environment-vars to search for the passed attribute and, if found, returns
 # its associated value.
@@ -681,19 +588,6 @@ function stop_containerd() {
 	systemctl stop containerd.service
 }
 
-function config_kubelet_snap() {
-	snap set $kubelet_snap container-runtime=remote
-	snap set $kubelet_snap container-runtime-endpoint=unix:///var/run/crio/crio.sock
-}
-
-function restart_kubelet_snap() {
-	snap restart $kubelet_snap
-}
-
-function stop_kubelet_snap() {
-	snap stop $kubelet_snap
-}
-
 # Sets the restart-policy mode for any given docker container.
 function set_ctr_restart_policy() {
 	local cntr=$1
@@ -728,47 +622,6 @@ function set_kubelet_ctr_restart_policy() {
 # Reverts the restart-policy mode previously stored in a global-variable.
 function revert_kubelet_ctr_restart_policy() {
 	set_ctr_restart_policy "kubelet" $kubelet_ctr_restart_mode
-}
-
-# Updates the entrypoint script corresponding to the kubelet container present
-# in rke setups.
-function config_kubelet_rke_update() {
-	local env_file=$1
-
-	local kubelet_entrypoint=$(docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet)
-
-	# Backup original entrypoint file -- to be utilized by kubelet-unconfig-helper
-	# script to revert configuration.
-	docker exec kubelet bash -c "cp ${kubelet_entrypoint} ${kubelet_entrypoint}.orig"
-
-	# Extract the kubelet attributes to execute with.
-	local kubelet_attribs=$(cat $env_file | cut -d'"' -f 2)
-
-	# Adjust kubelet's container entrypoint to incorporate the new exec attributes.
-	docker exec kubelet bash -c "sed -i 's@exec .*@exec kubelet ${kubelet_attribs}@' ${kubelet_entrypoint}"
-
-	echo "Kubelet config updated within container's entrypoint: ${kubelet_entrypoint}"
-}
-
-# Configures the kubelet to use cri-o in rke setups.
-function config_kubelet_rke() {
-
-	# Temp variables to hold kubelet's config file and its config attributes.
-	local kubelet_tmp_file="/etc/default/kubelet-rke"
-	local kubelet_tmp_var="KUBELET_EXTRA_ARGS"
-
-	# Extract kubelet's current execution attributes and store them in a temp file.
-	local cur_kubelet_attr=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | cut -d\" \" -f2-")
-	echo "${kubelet_tmp_var}=\"${cur_kubelet_attr}\"" >"${kubelet_tmp_file}"
-
-	# Add crio-specific config attributes to the temporary kubelet config file.
-	replace_kubelet_env_var "$kubelet_tmp_file" "$kubelet_tmp_var"
-
-	# Modify the actual kubelet's config file (container entrypoint) to reflect
-	# the new attributes obtained above.
-	config_kubelet_rke_update "$kubelet_tmp_file"
-
-	rm -rf "$kubelet_tmp_file"
 }
 
 function restart_kubelet_container() {
@@ -887,48 +740,21 @@ function get_pods_uids() {
 	$crictl_bin --runtime-endpoint ${runtime} pods -v | egrep ^UID | cut -d" " -f2
 }
 
-function do_config_kubelet() {
+###############################################################################
+# Scenario 1: Snap setup -- Snap-based kubelet
+###############################################################################
 
-	# Obtain kubelet path.
-	kubelet_bin=$(get_kubelet_bin)
-	if [ -z "$kubelet_bin" ]; then
-		die "Kubelet binary not identified."
-	fi
+function restart_kubelet_snap() {
+	snap restart $kubelet_snap
+}
 
-	# Obtain current runtime.
-	get_runtime_kubelet_systemctl
-	if [[ ${runtime} =~ "crio" ]]; then
-		echo "Kubelet is already using CRI-O; no action will be taken."
-		return
-	fi
+function stop_kubelet_snap() {
+	snap stop $kubelet_snap
+}
 
-	# The ideal sequence is to stop the kubelet, cleanup all pods with the
-	# existing runtime, reconfig the kubelet, and restart it. But if the runtime
-	# is dockershim this logic does not work well by itself, because after stopping
-	# the kubelet the dockershim also stops. Thus, for dockershim we must complement
-	# this logic with an extra step: we obtain all the existing pods before
-	# stopping kubelet (A), and later on, once that kubelet is stopped (B), we
-	# eliminate these pods through the docker-cli interface (C). Technically,
-	# there's room for a race-condition scenario in which new pods could be deployed
-	# right between (A) and (B), but being the time-window so small, we can safely
-	# ignore this case in most setups; in the worst case scenario we would simply
-	# end up with a duplicated/stale ("non-ready") pod instantiation, but this
-	# wouldn't affect the proper operation of the primary ("ready") one.
-
-	if [[ ${runtime} =~ "dockershim" ]]; then
-		stop_kubelet
-		clean_runtime_state "$runtime"
-		config_kubelet
-		adjust_crio_config_dependencies
-		restart_kubelet
-	else
-		stop_kubelet
-		clean_runtime_state "$runtime"
-		stop_containerd
-		config_kubelet
-		adjust_crio_config_dependencies
-		restart_kubelet
-	fi
+function config_kubelet_snap() {
+	snap set $kubelet_snap container-runtime=remote
+	snap set $kubelet_snap container-runtime-endpoint=unix:///var/run/crio/crio.sock
 }
 
 function do_config_kubelet_snap() {
@@ -955,6 +781,55 @@ function do_config_kubelet_snap() {
 		config_kubelet_snap
 		restart_kubelet_snap
 	fi
+}
+
+function kubelet_snap_deployment() {
+	snap list 2>&1 | grep -q kubelet
+}
+
+###############################################################################
+# Scenario 2: RKE setup -- Docker-based kubelet created as a static-pod
+###############################################################################
+
+# Updates the entrypoint script corresponding to the kubelet container present
+# in rke setups.
+function config_kubelet_rke_update() {
+	local env_file=$1
+
+	local kubelet_entrypoint=$(docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet)
+
+	# Backup original entrypoint file -- to be utilized by kubelet-unconfig-helper
+	# script to revert configuration.
+	docker exec kubelet bash -c "cp ${kubelet_entrypoint} ${kubelet_entrypoint}.orig"
+
+	# Extract the kubelet attributes to execute with.
+	local kubelet_attribs=$(cat $env_file | cut -d'"' -f 2)
+
+	# Adjust kubelet's container entrypoint to incorporate the new exec attributes.
+	docker exec kubelet bash -c "sed -i 's@exec .*@exec kubelet ${kubelet_attribs}@' ${kubelet_entrypoint}"
+
+	echo "Kubelet config updated within container's entrypoint: ${kubelet_entrypoint}"
+}
+
+# Configures the kubelet to use cri-o in rke setups.
+function config_kubelet_rke() {
+
+	# Temp variables to hold kubelet's config file and its config attributes.
+	local kubelet_tmp_file="/etc/default/kubelet-rke"
+	local kubelet_tmp_var="KUBELET_EXTRA_ARGS"
+
+	# Extract kubelet's current execution attributes and store them in a temp file.
+	local cur_kubelet_attr=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | cut -d\" \" -f2-")
+	echo "${kubelet_tmp_var}=\"${cur_kubelet_attr}\"" >"${kubelet_tmp_file}"
+
+	# Add crio-specific config attributes to the temporary kubelet config file.
+	replace_kubelet_env_var "$kubelet_tmp_file" "$kubelet_tmp_var"
+
+	# Modify the actual kubelet's config file (container entrypoint) to reflect
+	# the new attributes obtained above.
+	config_kubelet_rke_update "$kubelet_tmp_file"
+
+	rm -rf "$kubelet_tmp_file"
 }
 
 function do_config_kubelet_rke() {
@@ -1002,16 +877,23 @@ function do_config_kubelet_rke() {
 	revert_kubelet_ctr_restart_policy
 }
 
-function get_runtime_kubelet_rke2() {
-	set +e
-	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
-	set -e
+function kubelet_rke_deployment() {
 
-	# If runtime is unknown, assume it's Docker
-	if [[ ${runtime} == "" ]]; then
-		runtime="unix:///var/run/dockershim.sock"
+	# Docker presence is a must-have in rke setups. As we are enforcing this
+	# requirement at the very beginning of the execution path, no other rke
+	# related routine will check for docker's presence.
+	if ! command -v docker >/dev/null 2>&1; then
+		return 1
 	fi
+
+	docker inspect --format='{{.Config.Labels}}' kubelet |
+		egrep -q "rke.container.name:kubelet"
 }
+
+###############################################################################
+# Scenario 3: RKE2 setup -- Host-based kubelet managed by rke2-agent's systemd
+# service
+###############################################################################
 
 function start_rke2() {
 	echo "Starting RKE2 agent ..."
@@ -1021,6 +903,17 @@ function start_rke2() {
 function stop_rke2() {
 	echo "Stopping RKE2 agent ..."
 	systemctl stop rke2-agent
+}
+
+function get_runtime_kubelet_rke2() {
+	set +e
+	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	set -e
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
 }
 
 function config_kubelet_rke2() {
@@ -1060,6 +953,61 @@ function do_config_kubelet_rke2() {
 	stop_rke2
 	config_kubelet_rke2
 	start_rke2
+}
+
+function kubelet_rke2_deployment() {
+
+	# Worker nodes in RKE2 setups rely on rke2-agent's systemd service.
+	if systemctl is-active --quiet rke2-agent; then
+		return
+	fi
+
+	false
+}
+
+###############################################################################
+# Scenario 4: Docker-based kubelet managed through a systemd service
+###############################################################################
+
+# Configures the kubelet to use CRI-O, by modifying the systemd unit files that
+# contain the arguments passed to kubelet.
+function config_kubelet_docker_systemd() {
+
+	local kubelet_env_var="KUBELET_CRIO_ARGS"
+
+	# Identify the exec-line.
+	local exec_line=$(get_kubelet_exec_line)
+	if [ -z "$exec_line" ]; then
+		die "No Kubelet execution instruction could be identified."
+	fi
+
+	# Identify the systemd file where the exec-line lives.
+	local systemd_file=$(get_kubelet_systemd_file_per_exec "$exec_line")
+	if [ -z "$systemd_file" ]; then
+		die "No Kubelet systemd file could be identified for exec-line."
+	fi
+
+	# Adjust the ExecStart instruction to satisfy this setup.
+	adjust_kubelet_exec_docker_systemd "$systemd_file" "$kubelet_env_var"
+
+	# If systemd shows no kubelet environment files, let's create one.
+	local kubelet_env_files=$(get_kubelet_env_files)
+	local kubelet_env_file
+
+	if [[ "$kubelet_env_files" == "" ]]; then
+		kubelet_env_file="/etc/default/kubelet"
+		touch "$kubelet_env_file"
+	else
+		kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
+	fi
+
+	backup_config "$kubelet_env_file" "kubelet_env_file"
+
+	# Append the new env-var content to one of the env-files.
+	add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
+
+	# Ask systemd to reload it's config.
+	systemctl daemon-reload
 }
 
 function do_config_kubelet_docker_systemd() {
@@ -1106,33 +1054,6 @@ function do_config_kubelet_docker_systemd() {
 	start_kubelet
 }
 
-function kubelet_snap_deployment() {
-	snap list 2>&1 | grep -q kubelet
-}
-
-function kubelet_rke_deployment() {
-
-	# Docker presence is a must-have in rke setups. As we are enforcing this
-	# requirement at the very beginning of the execution path, no other rke
-	# related routine will check for docker's presence.
-	if ! command -v docker >/dev/null 2>&1; then
-		return 1
-	fi
-
-	docker inspect --format='{{.Config.Labels}}' kubelet |
-		egrep -q "rke.container.name:kubelet"
-}
-
-function kubelet_rke2_deployment() {
-
-	# Worker nodes in RKE2 setups rely on rke2-agent's systemd service.
-	if systemctl is-active --quiet rke2-agent; then
-		return
-	fi
-
-	false
-}
-
 function kubelet_docker_systemd_deployment() {
 
 	# Docker presence is a must-have requirement in these setups (obviously). As
@@ -1156,6 +1077,106 @@ function kubelet_docker_systemd_deployment() {
 	fi
 }
 
+###############################################################################
+# Scenario 5: Host-based kubelet managed through a systemd service
+###############################################################################
+
+# Configures the kubelet to use CRI-O, by modifying the systemd unit files that
+# contain the arguments passed to kubelet.
+function config_kubelet() {
+
+	local kubelet_env_files=$(get_kubelet_env_files)
+
+	# If systemd shows no kubelet environment files, let's create one.
+	if [[ "$kubelet_env_files" == "" ]]; then
+		local kubelet_env_file="/etc/default/kubelet"
+		local kubelet_env_var="KUBELET_EXTRA_ARGS"
+		backup_orig_config "$kubelet_env_file"
+		add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
+		add_systemd_dropin_file "$kubelet_env_file" "$kubelet_env_var"
+		return
+	fi
+
+	# If no kubelet env var was found, let's use our default one.
+	local kubelet_env_var=$(get_kubelet_env_var)
+	if [[ "$kubelet_env_var" == "" ]]; then
+		kubelet_env_var="KUBELET_EXTRA_ARGS"
+		local kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
+		add_systemd_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
+	fi
+
+	# If systemd shows kubelet environment files, let's check if they exist and
+	# if so replace the env variable ($kubelet_env_var).
+	for kubelet_env_file in $kubelet_env_files; do
+		if [ -f "$kubelet_env_file" ]; then
+			if grep -q "$kubelet_env_var" "$kubelet_env_file"; then
+				backup_orig_config "$kubelet_env_file"
+				replace_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
+				return
+			fi
+		fi
+	done
+
+	# Either the kubelet env file does not exist, or it exists but does not
+	# contain the $kubelet_env_var; lets create the file and/or add the
+	# $kubelet_env_var to it.
+	local kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
+
+	if [ ! -f "$kubelet_env_file" ]; then
+		touch "$kubelet_env_file"
+	fi
+
+	backup_orig_config "$kubelet_env_file"
+	add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
+
+	# Ask systemd to reload it's config
+	systemctl daemon-reload
+}
+
+function do_config_kubelet() {
+
+	# Obtain kubelet path.
+	kubelet_bin=$(get_kubelet_bin)
+	if [ -z "$kubelet_bin" ]; then
+		die "Kubelet binary not identified."
+	fi
+
+	# Obtain current runtime.
+	get_runtime_kubelet_systemctl
+	if [[ ${runtime} =~ "crio" ]]; then
+		echo "Kubelet is already using CRI-O; no action will be taken."
+		return
+	fi
+
+	# The ideal sequence is to stop the kubelet, cleanup all pods with the
+	# existing runtime, reconfig the kubelet, and restart it. But if the runtime
+	# is dockershim this logic does not work well by itself, because after stopping
+	# the kubelet the dockershim also stops. Thus, for dockershim we must complement
+	# this logic with an extra step: we obtain all the existing pods before
+	# stopping kubelet (A), and later on, once that kubelet is stopped (B), we
+	# eliminate these pods through the docker-cli interface (C). Technically,
+	# there's room for a race-condition scenario in which new pods could be deployed
+	# right between (A) and (B), but being the time-window so small, we can safely
+	# ignore this case in most setups; in the worst case scenario we would simply
+	# end up with a duplicated/stale ("non-ready") pod instantiation, but this
+	# wouldn't affect the proper operation of the primary ("ready") one.
+
+	if [[ ${runtime} =~ "dockershim" ]]; then
+		stop_kubelet
+		clean_runtime_state "$runtime"
+		config_kubelet
+		adjust_crio_config_dependencies
+		restart_kubelet
+	else
+		stop_kubelet
+		clean_runtime_state "$runtime"
+		stop_containerd
+		config_kubelet
+		adjust_crio_config_dependencies
+		restart_kubelet
+	fi
+}
+
 function main() {
 
 	euid=$(id -u)
@@ -1171,11 +1192,11 @@ function main() {
 	#
 	# The following kubelet deployment scenarios are currently supported:
 	#
-	# * Snap: Kubelet deployed via a snap service (as in Ubuntu-based AWS EKS nodes).
-	# * RKE: Kubelet deployed as part of a docker container (Rancher's RKE approach).
-	# * RKE2: Kubelet deployed as part of containerd container and managed through
-	#         rke2-agent's systemd service (Rancher's RKE2 approach).
-	# * Systemd: Kubelet deployed via a systemd service (most common approach).
+	# * Snap: Snap-based kubelet (as in Ubuntu-based AWS EKS nodes).
+	# * RKE: Docker-based kubelet created as a static-pod (Rancher's RKE approach).
+	# * RKE2: Host-based kubelet managed by rke2-agent's systemd service (Rancher's RKE2 approach).
+	# * Systemd+Docker: Docker-based kubelet managed by a systemd service (Lokomotive's approach).
+	# * Systemd: Host-based kubelet managed by a systemd service (most common approach).
 	#
 	if kubelet_snap_deployment; then
 		do_config_kubelet_snap
