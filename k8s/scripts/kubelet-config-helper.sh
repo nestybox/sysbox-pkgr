@@ -852,57 +852,13 @@ function clean_runtime_state_dockershim() {
 	ln -s /var/run/crio/crio.sock /var/run/dockershim.sock
 }
 
-function clean_runtime_state_dockershim_old() {
-	local runtime=$1
-	shift
-	local podUids=("$@")
-
-	# Collect all the existing containers as seen by docker.
-	local cntrList=$(docker ps | awk 'NR>1 {print $1}')
-
-	# Cleanup the pods; turn off errexit in these steps as we don't want to
-	# interrupt the process if any of the instructions fail for a particular
-	# pod / container.
-	set +e
-
-	for podUid in ${podUids}; do
-		for cntr in ${cntrList}; do
-			ret=$(docker inspect --format='{{index .Config.Labels "io.kubernetes.pod.uid"}}' $cntr 2>/dev/null | grep -q $podUid)
-			if [ $? -ne 0 ]; then
-				continue
-			fi
-
-			ret=$(docker stop -t0 $cntr)
-			if [ $? -ne 0 ]; then
-				echo "Failed to stop cntr $cntr from pod $podUid: $ret"
-			fi
-
-			ret=$(docker rm $cntr)
-			if [ $? -ne 0 ]; then
-				echo "Failed to remove cntr $cntr from pod $podUid: $ret"
-			fi
-		done
-	done
-
-	set -e
-
-	# Create a soft link from the dockershim socket to the crio socket
-	# (some pods are designed to talk to dockershim (e.g., aws-node)).
-	echo "Soft-linking dockershim socket to CRI-O socket on the host ..."
-	rm -f /var/run/dockershim.sock
-	ln -s /var/run/crio/crio.sock /var/run/dockershim.sock
-}
-
 # Wipe out all the pods managed by the given container runtime (dockershim, containerd, etc.)
 function clean_runtime_state() {
 	local runtime=$1
-	shift
-	local podUids=("$@")
 
 	if [[ "$runtime" =~ "containerd" ]]; then
 		clean_runtime_state_containerd "$runtime"
 	elif [[ "$runtime" =~ "dockershim" ]]; then
-		#clean_runtime_state_dockershim_old "$runtime" "$podUids"
 		clean_runtime_state_dockershim
 	else
 		echo "Container runtime not supported: ${runtime}"
@@ -949,15 +905,15 @@ function do_config_kubelet() {
 	# wouldn't affect the proper operation of the primary ("ready") one.
 
 	if [[ ${runtime} =~ "dockershim" ]]; then
-		local podUids=$(get_pods_uids)
 		stop_kubelet
-		clean_runtime_state "$runtime" "$podUids"
+		clean_runtime_state "$runtime"
 		config_kubelet
 		adjust_crio_config_dependencies
 		restart_kubelet
 	else
 		stop_kubelet
 		clean_runtime_state "$runtime"
+		stop_containerd
 		config_kubelet
 		adjust_crio_config_dependencies
 		restart_kubelet
@@ -977,20 +933,20 @@ function do_config_kubelet_snap() {
 	fi
 
 	if [[ ${runtime} =~ "dockershim" ]]; then
-		local podUids=$(get_pods_uids)
 		stop_kubelet_snap
-		clean_runtime_state "$runtime" "$podUids"
+		clean_runtime_state "$runtime"
 		config_kubelet_snap
 		restart_kubelet_snap
 	else
 		stop_kubelet_snap
 		clean_runtime_state "$runtime"
+		stop_containerd
 		config_kubelet_snap
 		restart_kubelet_snap
 	fi
 }
 
-function do_config_kubelet_docker_rke() {
+function do_config_kubelet_rke() {
 	echo "Detected kubelet in docker RKE deployment on host."
 
 	# Obtain current runtime.
@@ -1075,9 +1031,8 @@ function do_config_kubelet_docker_systemd() {
 
 	config_kubelet_docker_systemd
 	adjust_crio_config_dependencies
-	local podUids=$(get_pods_uids)
 	stop_kubelet
-	clean_runtime_state "$runtime" "$podUids"
+	clean_runtime_state "$runtime"
 	start_kubelet
 }
 
