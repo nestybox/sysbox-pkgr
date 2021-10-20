@@ -3,3 +3,4 @@
 --image-service-endpoint=unix:///var/run/crio/crio.sock
 --runtime-cgroups=/system.slice/crio.service
 --cgroup-driver=cgroupfs
+--runtime-request-timeout=6m
