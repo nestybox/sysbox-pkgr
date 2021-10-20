@@ -24,7 +24,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-crio_tar_file_name="cri-o.amd64.v1.20.3.tar.gz"
+crio_tar_file_name="cri-o.amd64.tar.gz"
 
 function die() {
 	msg="$*"
@@ -47,6 +47,7 @@ function do_install_crio() {
 	local path=$1
 	local crio_tar_file_path="${path}/${crio_tar_file_name}"
 
+	# Extract and install the CRI-O (and related dependencies) binaries
 	pushd "$path"
 	tar -xvf "$crio_tar_file_path"
 	rm -r "$crio_tar_file_path"
@@ -56,6 +57,10 @@ function do_install_crio() {
 	local path_dir=$(dirname "$path")
 	"${path}"/crio-extractor.sh install "$path_dir"
 	rm -r ${path}/cri-o
+
+	# Replace the stock CRI-O binary with the one that has the uid mapping patch
+	# required by Sysbox.
+	mv ${path}/crio-patched ${path}/crio
 
 	# Adjust PATH env-var and crio's binary location if it doesn't match the default
 	# location.

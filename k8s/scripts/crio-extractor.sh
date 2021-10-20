@@ -134,6 +134,7 @@ function main() {
 	# Two parameters are expected:
 	# * Action: install / uinstall
 	# * Path: Top location where to install (uninstall) crio to (from).
+
 	if [ "$#" -ne 2 ]; then
 		printf "\n"
 		printf "Usage: crio-extractor.sh [install | uninstall] path\n"
