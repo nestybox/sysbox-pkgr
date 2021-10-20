@@ -220,11 +220,17 @@ function clean_runtime_state() {
 
 	# Restart prior runtime
 	local prior_runtime=$(cat ${var_lib_sysbox_deploy_k8s}/prior_runtime)
+	local prior_runtime_path=$(echo $prior_runtime | sed 's@unix://@@' | cut -d" " -f1)
 
-	if [[ "$prior_runtime" =~ "containerd" ]]; then
+	if echo "$prior_runtime" | egrep -q "k3s.*containerd"; then
+		# This is a softlink created by kubelet-config-helper; remove it.
+		rm -f "$prior_runtime_path"
+
+	elif [[ "$prior_runtime" =~ "containerd" ]]; then
 
 		# This is a softlink created by kubelet-config-helper; remove it.
-		rm -f /var/run/containerd/containerd.sock
+		#rm -f /var/run/containerd/containerd.sock
+		rm -f "$prior_runtime_path"
 
 		echo "Re-starting containerd on the host ..."
 		systemctl restart containerd
@@ -393,6 +399,67 @@ function kubelet_docker_systemd_deployment() {
 	fi
 }
 
+function kubelet_rke2_deployment() {
+	echo "RKE2 deployment ..."
+}
+
+function start_rke2() {
+	echo "Starting RKE2 agent ..."
+	systemctl start rke2-agent
+}
+
+function stop_rke2() {
+	echo "Stopping RKE2 agent ..."
+	systemctl stop rke2-agent
+}
+
+function revert_kubelet_config_rke2() {
+
+	echo "Executing RKE2's Kubelet revert configuration function ..."
+
+	local rancher_config="/etc/rancher/rke2/config.yaml"
+
+	if egrep -q "container-runtime-endpoint:.*crio.sock" "$rancher_config"; then
+		sed -i '/container-runtime-endpoint:/d' "$rancher_config"
+	fi
+}
+
+function get_runtime_kubelet_rke2() {
+	set +e
+	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	set -e
+
+	# If runtime is unknown, assume it's Docker.
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
+}
+
+function do_unconfig_kubelet_rke2() {
+
+	get_runtime_kubelet_rke2
+	if [[ ! ${runtime} =~ "crio" ]]; then
+		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
+		return
+	fi
+
+	# In RKE's case we must add a few steps to the typical logic utilized in other
+	# setups. In this case, as kubelet executes as the 'init' process of a docker
+	# container, we must do the following:
+	#
+	# * Modify kubelet's container restart-policy to prevent this one from being
+	#   re-spawned by docker once that we temporarily shut it down.
+	# * Revert the kubelet's container entrypoint to honor its original
+	#   initialization attributes.
+	# * Once the usual kubelet's "stop + clean + restart" cycle is completed, we
+	#   must revert the changes made to the kubelet's container restart-policy.
+
+	stop_rke2
+	clean_runtime_state
+	revert_kubelet_config_rke2
+	start_rke2
+}
+
 function main() {
 	set -x
 	euid=$(id -u)
@@ -405,12 +472,16 @@ function main() {
 	#
 	# * Snap: Kubelet deployed via a snap service (as in Ubuntu-based AWS EKS nodes).
 	# * RKE: Kubelet deployed as part of a docker container (Rancher's RKE approach).
+	# * RKE2: Kubelet deployed as part of containerd container and managed through
+	#         rke2-agent's systemd service (Rancher's RKE2 approach).
 	# * Systemd: Kubelet deployed via a systemd service (most common approach).
 	#
 	if kubelet_snap_deployment; then
 		do_unconfig_kubelet_snap
 	elif kubelet_rke_deployment; then
 		do_unconfig_kubelet_rke
+	elif kubelet_rke2_deployment; then
+		do_unconfig_kubelet_rke2
 	elif kubelet_docker_systemd_deployment; then
 		do_unconfig_kubelet_docker_systemd
 	else

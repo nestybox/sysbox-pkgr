@@ -27,6 +27,8 @@ set -o nounset
 var_lib_sysbox_deploy_k8s="/var/lib/sysbox-deploy-k8s"
 crictl_bin="/usr/local/bin/sysbox-deploy-k8s-crictl"
 crio_conf_file="/etc/crio/crio.conf"
+crio_socket="/var/run/crio/crio.sock"
+crio_runtime="unix://${crio_socket}"
 kubelet_bin=""
 runtime=""
 
@@ -669,6 +671,16 @@ function stop_kubelet() {
 	systemctl stop kubelet
 }
 
+function start_containerd() {
+	echo "Starting containerd on the host ..."
+	systemctl start containerd.service
+}
+
+function stop_containerd() {
+	echo "Stopping containerd on the host ..."
+	systemctl stop containerd.service
+}
+
 function config_kubelet_snap() {
 	snap set $kubelet_snap container-runtime=remote
 	snap set $kubelet_snap container-runtime-endpoint=unix:///var/run/crio/crio.sock
@@ -804,6 +816,7 @@ function get_runtime_kubelet_docker() {
 
 function clean_runtime_state_containerd() {
 	local runtime=$1
+	local runtime_path=$(echo $runtime | sed 's@unix://@@' | cut -d" " -f1)
 
 	# Collect all the existing podIds as seen by crictl.
 	podList=$($crictl_bin --runtime-endpoint "$runtime" ps | awk 'NR>1 {print $NF}')
@@ -819,21 +832,19 @@ function clean_runtime_state_containerd() {
 			echo "Failed to stop pod ${pod}: $ret"
 		fi
 
-		ret=$($crictl_bin --runtime-endpoint "$runtime" rmp "$pod")
+		ret=$($crictl_bin --runtime-endpoint "$runtime" rmp --force "$pod")
 		if [ $? -ne 0 ]; then
 			echo "Failed to remove pod ${pod}: $ret"
 		fi
 	done
-	set -e
 
-	echo "Stopping containerd on the host ..."
-	systemctl stop containerd.service
+	set -e
 
 	# Create a soft link from the containerd socket to the crio socket
 	# (some pods are designed to talk to containerd (e.g., gke-metadata-server)).
 	echo "Soft-linking containerd socket to CRI-O socket on the host ..."
-	rm -f /var/run/containerd/containerd.sock
-	ln -s /var/run/crio/crio.sock /var/run/containerd/containerd.sock
+	rm -rf "$runtime_path"
+	ln -s "$crio_socket" "$runtime_path"
 }
 
 function clean_runtime_state_dockershim() {
@@ -985,11 +996,70 @@ function do_config_kubelet_rke() {
 
 	set_kubelet_ctr_restart_policy "no"
 	config_kubelet_rke
-	local podUids=$(get_pods_uids)
 	stop_kubelet_container
-	clean_runtime_state "$runtime" "$podUids"
+	clean_runtime_state "$runtime"
 	restart_kubelet_container
 	revert_kubelet_ctr_restart_policy
+}
+
+function get_runtime_kubelet_rke2() {
+	set +e
+	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	set -e
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
+}
+
+function start_rke2() {
+	echo "Starting RKE2 agent ..."
+	systemctl start rke2-agent
+}
+
+function stop_rke2() {
+	echo "Stopping RKE2 agent ..."
+	systemctl stop rke2-agent
+}
+
+function config_kubelet_rke2() {
+	echo "Executing Kubelet RKE2 configuration function ..."
+
+	local rancher_config="/etc/rancher/rke2/config.yaml"
+
+	if egrep -q "container-runtime-endpoint:.*crio.sock" "$rancher_config"; then
+		echo "RKE2's kubelet is already using CRI-O; no action will be taken."
+		return
+	fi
+
+	if egrep -q "container-runtime-endpoint:" "$rancher_config"; then
+		sed -i "s@container-runtime-endpoint:.*@container-runtime-endpoint: /var/run/crio/crio.sock@" "$rancher_config"
+	else
+		echo "container-runtime-endpoint: /var/run/crio/crio.sock" >>"$rancher_config"
+	fi
+}
+
+function do_config_kubelet_rke2() {
+
+	# Obtain current runtime.
+	get_runtime_kubelet_rke2
+	if [[ ${runtime} =~ "crio" ]]; then
+		echo "Kubelet is already using CRI-O; no action will be taken."
+		return
+	fi
+
+	# No runtime other than containerd, and obviously crio, is expected in an
+	# rke2 deployment.
+	if [[ ! ${runtime} =~ "containerd" ]]; then
+		echo "Unsupported runtime for RKE2 scenario: $runtime"
+		return
+	fi
+
+	clean_runtime_state "$runtime"
+	stop_rke2
+	config_kubelet_rke2
+	start_rke2
 }
 
 function do_config_kubelet_docker_systemd() {
@@ -1040,7 +1110,7 @@ function kubelet_snap_deployment() {
 	snap list 2>&1 | grep -q kubelet
 }
 
-function kubelet_docker_rke_deployment() {
+function kubelet_rke_deployment() {
 
 	# Docker presence is a must-have in rke setups. As we are enforcing this
 	# requirement at the very beginning of the execution path, no other rke
@@ -1051,6 +1121,16 @@ function kubelet_docker_rke_deployment() {
 
 	docker inspect --format='{{.Config.Labels}}' kubelet |
 		egrep -q "rke.container.name:kubelet"
+}
+
+function kubelet_rke2_deployment() {
+
+	# Worker nodes in RKE2 setups rely on rke2-agent's systemd service.
+	if systemctl is-active --quiet rke2-agent; then
+		return
+	fi
+
+	false
 }
 
 function kubelet_docker_systemd_deployment() {
@@ -1093,12 +1173,16 @@ function main() {
 	#
 	# * Snap: Kubelet deployed via a snap service (as in Ubuntu-based AWS EKS nodes).
 	# * RKE: Kubelet deployed as part of a docker container (Rancher's RKE approach).
+	# * RKE2: Kubelet deployed as part of containerd container and managed through
+	#         rke2-agent's systemd service (Rancher's RKE2 approach).
 	# * Systemd: Kubelet deployed via a systemd service (most common approach).
 	#
 	if kubelet_snap_deployment; then
 		do_config_kubelet_snap
-	elif kubelet_docker_rke_deployment; then
-		do_config_kubelet_docker_rke
+	elif kubelet_rke_deployment; then
+		do_config_kubelet_rke
+	elif kubelet_rke2_deployment; then
+		do_config_kubelet_rke2
 	elif kubelet_docker_systemd_deployment; then
 		do_config_kubelet_docker_systemd
 	else
