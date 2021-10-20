@@ -48,153 +48,6 @@ function get_kubelet_service_dropin_file() {
 	systemctl show kubelet | grep "^DropInPaths" | cut -d "=" -f2
 }
 
-function revert_kubelet_config() {
-	local config_file="${var_lib_sysbox_deploy_k8s}/config"
-	local kubelet_systemd_dropin="${var_lib_sysbox_deploy_k8s}/kubelet_systemd_dropin"
-	local kubelet_sysbox_systemd_dropin="/etc/systemd/system/kubelet.service.d/01-kubelet-sysbox-dropin.conf"
-
-	echo "Reverting kubelet config (from $config_file)"
-
-	if [ ! -f "$config_file" ]; then
-		echo "Failed to revert kubelet config; file $config_file not found."
-		return
-	fi
-
-	if ! grep "kubelet_env_file" "$config_file"; then
-		echo "Failed to revert kubelet config; config not found in $config_file"
-		return
-	fi
-
-	# The config file will have these entries:
-	#
-	# * kubelet_env_file=/path/to/file
-	# * kubelet_systemd_file=/path/to/file
-	#
-	# Below, we copy these original files back to their original locations.
-
-	local target=$(grep "kubelet_env_file" "$config_file" | cut -d "=" -f2)
-	if [ ! -z "$target" ]; then
-		cp "${var_lib_sysbox_deploy_k8s}/kubelet_env_file.orig" "$target"
-		rm "${var_lib_sysbox_deploy_k8s}/kubelet_env_file.orig"
-	fi
-
-	local target=$(grep "kubelet_systemd_file" "$config_file" | cut -d "=" -f2)
-	if [ ! -z "$target" ]; then
-		# If the primary kubelet systemd file was one artificially introduced by
-		# Sysbox during installation, we simply want to remove it here. In the
-		# other scenarios we must copy the original file to its former location.
-		if [[ "$target" == "$kubelet_sysbox_systemd_dropin" ]]; then
-			rm -r "$target"
-		else
-			cp "${var_lib_sysbox_deploy_k8s}/kubelet_systemd_file.orig" "$target"
-			rm -r "${var_lib_sysbox_deploy_k8s}/kubelet_systemd_file.orig"
-		fi
-
-		systemctl daemon-reload
-	fi
-
-	rm "$config_file"
-}
-
-function start_kubelet() {
-	echo "Starting Kubelet ..."
-	systemctl start kubelet
-}
-
-function restart_kubelet() {
-	echo "Restarting Kubelet ..."
-	systemctl restart kubelet
-}
-
-function stop_kubelet() {
-	echo "Stopping Kubelet ..."
-	systemctl stop kubelet
-}
-
-function revert_kubelet_config_snap() {
-	local prior_runtime=$(cat ${var_lib_sysbox_deploy_k8s}/prior_runtime)
-
-	echo "Reverting kubelet snap config"
-
-	# If runtime is unknown, assume it's Docker
-	if [[ ${prior_runtime} == "" ]] || [[ ${prior_runtime} =~ "docker" ]]; then
-		echo "Reverting runtime to Docker"
-		snap unset $kubelet_snap container-runtime-endpoint
-		snap set $kubelet_snap container-runtime=docker
-	else
-		echo "Reverting runtime to $prior_runtime"
-		snap set $kubelet_snap container-runtime-endpoint=${prior_runtime}
-	fi
-}
-
-function restart_kubelet_snap() {
-	snap restart $kubelet_snap
-}
-
-function stop_kubelet_snap() {
-	snap stop $kubelet_snap
-}
-
-function revert_kubelet_config_rke() {
-
-	# Obtain kubelet's container entrypoint.
-	local kubelet_entrypoint=$(docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet)
-
-	if [ -z ${kubelet_entrypoint} ] ||
-		! docker exec kubelet bash -c "test -f ${kubelet_entrypoint}.orig"; then
-		echo "Failed to revert kubelet config; original entrypoint not found: ${kubelet_entrypoint}.orig"
-		return
-	fi
-
-	echo "Reverting kubelet's RKE config"
-
-	# Revert to original entrypoint.
-	docker exec kubelet bash -c "mv ${kubelet_entrypoint}.orig ${kubelet_entrypoint}"
-}
-
-function restart_kubelet_rke() {
-	docker restart kubelet
-}
-
-function stop_kubelet_rke() {
-	docker stop kubelet
-}
-
-function get_runtime_kubelet_systemctl {
-	set +e
-	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
-	set -e
-
-	# If runtime is unknown, assume it's Docker.
-	if [[ ${runtime} == "" ]]; then
-		runtime="unix:///var/run/dockershim.sock"
-	fi
-}
-
-function get_runtime_kubelet_snap() {
-
-	# If runtime is unknown, assume it's Docker.
-	if [[ ${runtime} == "" ]]; then
-		runtime="unix:///var/run/dockershim.sock"
-	fi
-
-	local ctr_runtime_type=$(snap get $kubelet_snap container-runtime)
-	if [[ "$ctr_runtime_type" == "remote" ]]; then
-		runtime=$(snap get $kubelet_snap container-runtime-endpoint)
-	fi
-}
-
-function get_runtime_kubelet_docker() {
-	set +e
-	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
-	set -e
-
-	# If runtime is unknown, assume it's Docker.
-	if [[ ${runtime} == "" ]]; then
-		runtime="unix:///var/run/dockershim.sock"
-	fi
-}
-
 # Wipe out all the pods previously created by the current runtime (i.e., CRI-O)
 function clean_runtime_state() {
 
@@ -245,44 +98,6 @@ function clean_runtime_state() {
 	fi
 }
 
-function do_unconfig_kubelet() {
-
-	# Obtain kubelet path.
-	kubelet_bin=$(get_kubelet_bin)
-	if [ -z "$kubelet_bin" ]; then
-		die "Kubelet binary not identified."
-	fi
-
-	get_runtime_kubelet_systemctl
-	if [[ ! ${runtime} =~ "crio" ]]; then
-		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
-		return
-	fi
-
-	stop_kubelet
-	clean_runtime_state
-	revert_kubelet_config
-	restart_kubelet
-}
-
-function do_unconfig_kubelet_snap() {
-	echo "Detected kubelet snap package on host."
-
-	kubelet_snap=$(snap list | grep kubelet | awk '{print $1}')
-
-	get_runtime_kubelet_snap
-
-	if [[ ! ${runtime} =~ "crio" ]]; then
-		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
-		return
-	fi
-
-	stop_kubelet_snap
-	clean_runtime_state
-	revert_kubelet_config_snap
-	restart_kubelet_snap
-}
-
 # Sets the restart-policy mode for any given docker container.
 function set_ctr_restart_policy() {
 	local cntr=$1
@@ -319,6 +134,109 @@ function revert_kubelet_ctr_restart_policy() {
 	set_ctr_restart_policy "kubelet" $kubelet_ctr_restart_mode
 }
 
+###############################################################################
+# Scenario 1: Snap setup -- Snap-based kubelet
+###############################################################################
+
+function restart_kubelet_snap() {
+	snap restart $kubelet_snap
+}
+
+function stop_kubelet_snap() {
+	snap stop $kubelet_snap
+}
+
+function revert_kubelet_config_snap() {
+	local prior_runtime=$(cat ${var_lib_sysbox_deploy_k8s}/prior_runtime)
+
+	echo "Reverting kubelet snap config"
+
+	# If runtime is unknown, assume it's Docker
+	if [[ ${prior_runtime} == "" ]] || [[ ${prior_runtime} =~ "docker" ]]; then
+		echo "Reverting runtime to Docker"
+		snap unset $kubelet_snap container-runtime-endpoint
+		snap set $kubelet_snap container-runtime=docker
+	else
+		echo "Reverting runtime to $prior_runtime"
+		snap set $kubelet_snap container-runtime-endpoint=${prior_runtime}
+	fi
+}
+
+function get_runtime_kubelet_snap() {
+
+	# If runtime is unknown, assume it's Docker.
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
+
+	local ctr_runtime_type=$(snap get $kubelet_snap container-runtime)
+	if [[ "$ctr_runtime_type" == "remote" ]]; then
+		runtime=$(snap get $kubelet_snap container-runtime-endpoint)
+	fi
+}
+
+function do_unconfig_kubelet_snap() {
+	echo "Detected kubelet snap package on host."
+
+	kubelet_snap=$(snap list | grep kubelet | awk '{print $1}')
+
+	get_runtime_kubelet_snap
+
+	if [[ ! ${runtime} =~ "crio" ]]; then
+		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
+		return
+	fi
+
+	stop_kubelet_snap
+	clean_runtime_state
+	revert_kubelet_config_snap
+	restart_kubelet_snap
+}
+
+function kubelet_snap_deployment() {
+	snap list 2>&1 | grep -q kubelet
+}
+
+###############################################################################
+# Scenario 2: RKE setup -- Docker-based kubelet created as a static-pod
+###############################################################################
+
+function restart_kubelet_rke() {
+	docker restart kubelet
+}
+
+function stop_kubelet_rke() {
+	docker stop kubelet
+}
+
+function get_runtime_kubelet_docker() {
+	set +e
+	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
+	set -e
+
+	# If runtime is unknown, assume it's Docker.
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
+}
+
+function revert_kubelet_config_rke() {
+
+	# Obtain kubelet's container entrypoint.
+	local kubelet_entrypoint=$(docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet)
+
+	if [ -z ${kubelet_entrypoint} ] ||
+		! docker exec kubelet bash -c "test -f ${kubelet_entrypoint}.orig"; then
+		echo "Failed to revert kubelet config; original entrypoint not found: ${kubelet_entrypoint}.orig"
+		return
+	fi
+
+	echo "Reverting kubelet's RKE config"
+
+	# Revert to original entrypoint.
+	docker exec kubelet bash -c "mv ${kubelet_entrypoint}.orig ${kubelet_entrypoint}"
+}
+
 function do_unconfig_kubelet_rke() {
 
 	get_runtime_kubelet_docker
@@ -346,10 +264,6 @@ function do_unconfig_kubelet_rke() {
 	revert_kubelet_ctr_restart_policy
 }
 
-function kubelet_snap_deployment() {
-	snap list 2>&1 | grep -q kubelet
-}
-
 function kubelet_rke_deployment() {
 	# Docker presence is a must-have in rke setups. As we are enforcing this
 	# requirement at the very beginning of the execution path, no other rke
@@ -362,42 +276,10 @@ function kubelet_rke_deployment() {
 		egrep -q "rke.container.name:kubelet"
 }
 
-function do_unconfig_kubelet_docker_systemd() {
-
-	get_runtime_kubelet_systemctl
-	if [[ ! ${runtime} =~ "crio" ]]; then
-		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
-		return
-	fi
-
-	stop_kubelet
-	clean_runtime_state
-	revert_kubelet_config
-	start_kubelet
-}
-
-function kubelet_docker_systemd_deployment() {
-
-	# Docker presence is a must-have requirement in these setups (obviously). As
-	# we are enforcing this requirement at the very beginning of the execution
-	# path, no other systemd-docker related routine will check for docker's
-	# presence.
-	if ! command -v docker >/dev/null 2>&1; then
-		return 1
-	fi
-
-	# Ensure that a container named 'kubelet' exists (typical de-facto standard).
-	if ! systemctl show kubelet.service | egrep -q "^ExecStart.*=docker run"; then
-		return 1
-	fi
-
-	# Ensure that the entrypoint of this kubelet container is executing 'kubelet'
-	# itself.
-	if ! docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet |
-		awk -F "/" '{print $NF}' | egrep -q "kubelet"; then
-		return 1
-	fi
-}
+###############################################################################
+# Scenario 3: RKE2 setup -- Host-based kubelet managed by rke2-agent's systemd
+# service
+###############################################################################
 
 function kubelet_rke2_deployment() {
 	echo "RKE2 deployment ..."
@@ -460,6 +342,145 @@ function do_unconfig_kubelet_rke2() {
 	start_rke2
 }
 
+###############################################################################
+# Scenario 4: Docker-based kubelet managed through a systemd service
+###############################################################################
+
+function get_runtime_kubelet_systemctl {
+	set +e
+	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	set -e
+
+	# If runtime is unknown, assume it's Docker.
+	if [[ ${runtime} == "" ]]; then
+		runtime="unix:///var/run/dockershim.sock"
+	fi
+}
+
+function do_unconfig_kubelet_docker_systemd() {
+
+	get_runtime_kubelet_systemctl
+	if [[ ! ${runtime} =~ "crio" ]]; then
+		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
+		return
+	fi
+
+	stop_kubelet
+	clean_runtime_state
+	revert_kubelet_config
+	start_kubelet
+}
+
+function kubelet_docker_systemd_deployment() {
+
+	# Docker presence is a must-have requirement in these setups (obviously). As
+	# we are enforcing this requirement at the very beginning of the execution
+	# path, no other systemd-docker related routine will check for docker's
+	# presence.
+	if ! command -v docker >/dev/null 2>&1; then
+		return 1
+	fi
+
+	# Ensure that a container named 'kubelet' exists (typical de-facto standard).
+	if ! systemctl show kubelet.service | egrep -q "^ExecStart.*=docker run"; then
+		return 1
+	fi
+
+	# Ensure that the entrypoint of this kubelet container is executing 'kubelet'
+	# itself.
+	if ! docker inspect --format='{{index .Config.Entrypoint 0}}' kubelet |
+		awk -F "/" '{print $NF}' | egrep -q "kubelet"; then
+		return 1
+	fi
+}
+
+###############################################################################
+# Scenario 5: Host-based kubelet managed through a systemd service
+###############################################################################
+
+function start_kubelet() {
+	echo "Starting Kubelet ..."
+	systemctl start kubelet
+}
+
+function restart_kubelet() {
+	echo "Restarting Kubelet ..."
+	systemctl restart kubelet
+}
+
+function stop_kubelet() {
+	echo "Stopping Kubelet ..."
+	systemctl stop kubelet
+}
+
+function revert_kubelet_config() {
+	local config_file="${var_lib_sysbox_deploy_k8s}/config"
+	local kubelet_systemd_dropin="${var_lib_sysbox_deploy_k8s}/kubelet_systemd_dropin"
+	local kubelet_sysbox_systemd_dropin="/etc/systemd/system/kubelet.service.d/01-kubelet-sysbox-dropin.conf"
+
+	echo "Reverting kubelet config (from $config_file)"
+
+	if [ ! -f "$config_file" ]; then
+		echo "Failed to revert kubelet config; file $config_file not found."
+		return
+	fi
+
+	if ! grep "kubelet_env_file" "$config_file"; then
+		echo "Failed to revert kubelet config; config not found in $config_file"
+		return
+	fi
+
+	# The config file will have these entries:
+	#
+	# * kubelet_env_file=/path/to/file
+	# * kubelet_systemd_file=/path/to/file
+	#
+	# Below, we copy these original files back to their original locations.
+
+	local target=$(grep "kubelet_env_file" "$config_file" | cut -d "=" -f2)
+	if [ ! -z "$target" ]; then
+		cp "${var_lib_sysbox_deploy_k8s}/kubelet_env_file.orig" "$target"
+		rm "${var_lib_sysbox_deploy_k8s}/kubelet_env_file.orig"
+	fi
+
+	local target=$(grep "kubelet_systemd_file" "$config_file" | cut -d "=" -f2)
+	if [ ! -z "$target" ]; then
+		# If the primary kubelet systemd file was one artificially introduced by
+		# Sysbox during installation, we simply want to remove it here. In the
+		# other scenarios we must copy the original file to its former location.
+		if [[ "$target" == "$kubelet_sysbox_systemd_dropin" ]]; then
+			rm -r "$target"
+		else
+			cp "${var_lib_sysbox_deploy_k8s}/kubelet_systemd_file.orig" "$target"
+			rm -r "${var_lib_sysbox_deploy_k8s}/kubelet_systemd_file.orig"
+		fi
+
+		systemctl daemon-reload
+	fi
+
+	rm "$config_file"
+}
+
+function do_unconfig_kubelet() {
+
+	# Obtain kubelet path.
+	kubelet_bin=$(get_kubelet_bin)
+	if [ -z "$kubelet_bin" ]; then
+		die "Kubelet binary not identified."
+	fi
+
+	get_runtime_kubelet_systemctl
+	if [[ ! ${runtime} =~ "crio" ]]; then
+		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
+		return
+	fi
+
+	stop_kubelet
+	clean_runtime_state
+	revert_kubelet_config
+	restart_kubelet
+}
+
 function main() {
 	set -x
 	euid=$(id -u)
@@ -470,11 +491,11 @@ function main() {
 	#
 	# The following kubelet deployment scenarios are currently supported:
 	#
-	# * Snap: Kubelet deployed via a snap service (as in Ubuntu-based AWS EKS nodes).
-	# * RKE: Kubelet deployed as part of a docker container (Rancher's RKE approach).
-	# * RKE2: Kubelet deployed as part of containerd container and managed through
-	#         rke2-agent's systemd service (Rancher's RKE2 approach).
-	# * Systemd: Kubelet deployed via a systemd service (most common approach).
+	# * Snap: Snap-based kubelet (as in Ubuntu-based AWS EKS nodes).
+	# * RKE: Docker-based kubelet created as a static-pod (Rancher's RKE approach).
+	# * RKE2: Host-based kubelet managed by rke2-agent's systemd service (Rancher's RKE2 approach).
+	# * Systemd+Docker: Docker-based kubelet managed by a systemd service (Lokomotive's approach).
+	# * Systemd: Host-based kubelet managed by a systemd service (most common approach).
 	#
 	if kubelet_snap_deployment; then
 		do_unconfig_kubelet_snap
