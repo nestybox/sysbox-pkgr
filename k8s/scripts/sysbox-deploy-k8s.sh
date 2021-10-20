@@ -222,10 +222,12 @@ function config_crio() {
 
 	# CRI-O puts a default limit of 1024 processes per pod; this is too small for
 	# Sysbox pods, since these run sometimes complex software such as Docker,
-	# K8s, etc. Thus we increase this to 64K processes per pod. Since the max
-	# limit for Linux is 2^22 (see /proc/sys/kernel/pid_max), this allows up to
-	# ~256 Sysbox containers each consuming 64K processes on a given host.
-	dasel put int -f ${host_crio_conf_file} -p toml -m "crio.runtime.pids_limit" 65536
+	# K8s, etc. Thus we increase this to 16K processes per pod. Since the max
+	# limit for Linux is 4M (see /proc/sys/kernel/pid_max), this allows up to
+	# ~256 Sysbox containers each consuming 16K processes on a given host. It
+	# also constraints a malicious container executing a fork bomb to 16K
+	# processes, well below the kernel's max pid limit.
+	dasel put int -f ${host_crio_conf_file} -p toml -m "crio.runtime.pids_limit" 16384
 }
 
 function restart_crio() {
