@@ -204,16 +204,21 @@ function config_crio() {
 	config_subid_range "$subuid_file" "$subid_alloc_min_range" "$subuid_min" "$subuid_max"
 	config_subid_range "$subgid_file" "$subid_alloc_min_range" "$subgid_min" "$subgid_max"
 
-	# If the prior runtime was Dockershim, configure the CRI-O default
-	# capabilities assigned to pods to match those of Docker (otherwise some pods
-	# that rely on these capabilities may fail (e.g., aws-node in EKS)).
-	if [[ $k8s_runtime =~ "docker" ]]; then
-		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "AUDIT_WRITE"
-		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "NET_RAW"
-		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SETFCAP"
-		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SYS_CHROOT"
-		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "MKNOD"
-	fi
+	# Set capabilities to match default caps in containerd/docker
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "CHOWN"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "DAC_OVERRIDE"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "FSETID"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "FOWNER"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SETUID"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SETGID"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SETPCAP"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SETFCAP"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "NET_BIND_SERVICE"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "KILL"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "AUDIT_WRITE"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "NET_RAW"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SYS_CHROOT"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "MKNOD"
 
 	# CRI-O puts a default limit of 1024 processes per pod; this is too small for
 	# Sysbox pods, since these run sometimes complex software such as Docker,
