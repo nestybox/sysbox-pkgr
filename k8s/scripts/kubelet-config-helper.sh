@@ -52,7 +52,7 @@ function replace_cmd_option {
 	opt=$2
 	want_val=$3
 
-	read -a curr_args <<<${cmd_opts}3
+	read -a curr_args <<<${cmd_opts}
 	declare -a new_args
 
 	found_opt=false
@@ -624,14 +624,6 @@ function revert_kubelet_ctr_restart_policy() {
 	set_ctr_restart_policy "kubelet" $kubelet_ctr_restart_mode
 }
 
-function restart_kubelet_container() {
-	docker restart kubelet
-}
-
-function stop_kubelet_container() {
-	docker stop kubelet
-}
-
 function get_runtime_kubelet_systemctl {
 	set +e
 	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
@@ -718,10 +710,45 @@ function clean_runtime_state_containerd() {
 }
 
 function clean_runtime_state_dockershim() {
+	local runtime=$1
+	shift
+	local podUids=("$@")
 
+	# Cleanup the pods; turn off errexit in these steps as we don't want to
+	# interrupt the process if any of the instructions fail for a particular
+	# pod / container.
 	set +e
-	docker stop -t0 $(docker ps -a -q)
-	docker rm $(docker ps -a -q)
+
+	# If no list of pre-existing pods is provided then proceed to eliminate all
+	# the present containers. Otherwise, eliminate only the containers associated
+	# with the provided pods.
+	if [ -z "$podUids" ]; then
+		docker stop -t0 $(docker ps -a -q)
+		docker rm $(docker ps -a -q)
+	else
+		# Collect all the existing containers as seen by docker.
+		local cntrList=$(docker ps | awk 'NR>1 {print $1}')
+
+		for podUid in ${podUids}; do
+			for cntr in ${cntrList}; do
+				ret=$(docker inspect --format='{{index .Config.Labels "io.kubernetes.pod.uid"}}' $cntr 2>/dev/null | grep -q $podUid)
+				if [ $? -ne 0 ]; then
+					continue
+				fi
+
+				ret=$(docker stop -t0 $cntr)
+				if [ $? -ne 0 ]; then
+					echo "Failed to stop cntr $cntr from pod $podUid: $ret"
+				fi
+
+				ret=$(docker rm $cntr)
+				if [ $? -ne 0 ]; then
+					echo "Failed to remove cntr $cntr from pod $podUid: $ret"
+				fi
+			done
+		done
+	fi
+
 	set -e
 
 	echo "Done eliminating all existing docker containers."
@@ -736,11 +763,13 @@ function clean_runtime_state_dockershim() {
 # Wipe out all the pods managed by the given container runtime (dockershim, containerd, etc.)
 function clean_runtime_state() {
 	local runtime=$1
+	shift
+	local podUids=("$@")
 
 	if [[ "$runtime" =~ "containerd" ]]; then
 		clean_runtime_state_containerd "$runtime"
 	elif [[ "$runtime" =~ "dockershim" ]]; then
-		clean_runtime_state_dockershim
+		clean_runtime_state_dockershim "$runtime" "$podUids"
 	else
 		echo "Container runtime not supported: ${runtime}"
 		return
@@ -807,6 +836,18 @@ function kubelet_snap_deployment() {
 ###############################################################################
 # Scenario 2: RKE setup -- Docker-based kubelet created as a static-pod
 ###############################################################################
+
+function start_kubelet_container() {
+	docker start kubelet
+}
+
+function restart_kubelet_container() {
+	docker restart kubelet
+}
+
+function stop_kubelet_container() {
+	docker stop kubelet
+}
 
 # Updates the entrypoint script corresponding to the kubelet container present
 # in rke setups.
@@ -883,14 +924,18 @@ function do_config_kubelet_rke() {
 	# * Modify kubelet's container restart-policy to prevent this one from being
 	#   re-spawned by docker once that we temporarily shut it down.
 	# * Configurate the kubelet's container entrypoint to meet cri-o requirements.
+	# * Obtain the list of pre-existing pods that need to be deleted during the
+	#   'cleanup' phase -- see that we must provide an explicit list as we want
+	#   to leave the 'kubelet' container untouched.
 	# * Once the usual kubelet's "stop + clean + restart" cycle is completed, we
 	#   must revert the changes made to the kubelet's container restart-policy.
 
 	set_kubelet_ctr_restart_policy "no"
 	config_kubelet_rke
+	local podUids=$(get_pods_uids)
 	stop_kubelet_container
-	clean_runtime_state "$runtime"
-	restart_kubelet_container
+	clean_runtime_state "$runtime" "$podUids"
+	start_kubelet_container
 	revert_kubelet_ctr_restart_policy
 }
 
