@@ -14,6 +14,7 @@ CNIDIR=${ETCDIR}/cni/net.d
 SYSTEMDDIR=${ETCDIR}/systemd/system
 SELINUX=$(selinuxenabled 2>/dev/null && echo -Z)
 OPT_CNI_BIN_DIR=/opt/cni/bin
+VAR_LIB_SYSBOX_DEPLOY_K8S=/var/lib/sysbox-deploy-k8s
 
 # TODO: Expand this script to support ARM too.
 ARCH=amd64
@@ -70,7 +71,22 @@ function install_pinns() {
 
 function install_runc() {
 	if [[ "${ARCH}" == "amd64" ]]; then
-		install ${SELINUX} -D -m 755 -t ${BINDIR} bin/runc
+
+		# If runc exists on the host, use it; otherwise install our own. This is
+		# needed to avoid breaking pods that rely on the existing runc version.
+
+		curr_runc=$(which runc)
+		if [ $? -eq 0 ]; then
+			if [[ "$curr_runc" != "${BINDIR}/bin/runc" ]]; then
+				echo "Using existing runc (soft-linking ${BINDIR}/runc -> $curr_runc)"
+				ln -s $curr_runc ${BINDIR}/runc
+				mkdir -p ${VAR_LIB_SYSBOX_DEPLOY_K8S} && touch ${VAR_LIB_SYSBOX_DEPLOY_K8S}/linked_runc
+			fi
+		else
+			echo "Installing runc at ${BINDIR}/bin/runc"
+			install ${SELINUX} -D -m 755 -t ${BINDIR} bin/runc
+			mkdir -p ${VAR_LIB_SYSBOX_DEPLOY_K8S} && touch ${VAR_LIB_SYSBOX_DEPLOY_K8S}/installed_runc
+		fi
 	fi
 }
 
@@ -120,9 +136,17 @@ function uninstall_pinns() {
 }
 
 function uninstall_runc() {
-	if [[ "${ARCH}" == "amd64" ]]; then
+
+	if [ -f ${VAR_LIB_SYSBOX_DEPLOY_K8S}/installed_runc ]; then
+		echo "Removing runc at ${BINDIR}/runc"
 		rm ${BINDIR}/runc
+		rm ${VAR_LIB_SYSBOX_DEPLOY_K8S}/installed_runc
+	elif [ -f ${VAR_LIB_SYSBOX_DEPLOY_K8S}/linked_runc ]; then
+		echo "Removing runc softlink at ${BINDIR}/runc"
+		rm ${BINDIR}/runc
+		rm ${VAR_LIB_SYSBOX_DEPLOY_K8S}/linked_runc
 	fi
+
 }
 
 function uninstall_crun() {
