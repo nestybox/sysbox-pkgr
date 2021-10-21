@@ -52,12 +52,13 @@ function get_kubelet_service_dropin_file() {
 function clean_runtime_state() {
 
 	# Collect all the existing podIds as seen by crictl.
-	podList=$($crictl_bin --runtime-endpoint "$runtime" ps | awk 'NR>1 {print $NF}')
+	podList=$($crictl_bin --runtime-endpoint "$runtime" pods | awk 'NR>1 {print $1}')
 
-	# Cleanup the pods; turn off errexit in these steps as we don't want to
-	# interrupt the process if any of the instructions fail for a particular
-	# pod.
+	# Turn off errexit in these steps as we don't want to interrupt the process
+	# if any of the instructions fail for a particular pod / container.
 	set +e
+
+	# Stop / remove all the existing pods.
 	for pod in ${podList}; do
 		ret=$($crictl_bin --runtime-endpoint "$runtime" stopp ${pod})
 		if [ $? -ne 0 ]; then
@@ -69,20 +70,39 @@ function clean_runtime_state() {
 			echo "Failed to remove pod ${pod}: $ret"
 		fi
 	done
+
+	# At this point all the pre-existing containers may be stopped and eliminated,
+	# but there may be inactive containers that we want to eliminate too.
+	cntrList=$($crictl_bin --runtime-endpoint "$runtime" ps -a | awk 'NR>1 {print $1}')
+
+	for cntr in ${cntrList}; do
+		ret=$($crictl_bin --runtime-endpoint "$runtime" stop --timeout 0 "$cntr")
+		if [ $? -ne 0 ]; then
+			echo "Failed to stop container ${cntr}: ${ret}"
+		fi
+
+		ret=$($crictl_bin --runtime-endpoint "$runtime" rm --force "$cntr")
+		if [ $? -ne 0 ]; then
+			echo "Failed to remove container ${cntr}: ${ret}"
+		fi
+	done
+
 	set -e
 
-	# Restart prior runtime
+	# Revert the runtime socket changes made during installation.
 	local prior_runtime=$(cat ${var_lib_sysbox_deploy_k8s}/prior_runtime)
 	local prior_runtime_path=$(echo $prior_runtime | sed 's@unix://@@' | cut -d" " -f1)
 
+	# We don't want to restart containerd in RKE2 scenarios as this one should
+	# be only managed by the rke2-agent.
+	#
+	# TODO: Do some refactoring to merge these two "containerd" scenarios by
+	# moving out the container-restart instruction to the caller.
 	if echo "$prior_runtime" | egrep -q "k3s.*containerd"; then
 		# This is a softlink created by kubelet-config-helper; remove it.
 		rm -f "$prior_runtime_path"
 
 	elif [[ "$prior_runtime" =~ "containerd" ]]; then
-
-		# This is a softlink created by kubelet-config-helper; remove it.
-		#rm -f /var/run/containerd/containerd.sock
 		rm -f "$prior_runtime_path"
 
 		echo "Re-starting containerd on the host ..."
@@ -90,7 +110,6 @@ function clean_runtime_state() {
 	fi
 
 	if [[ "$prior_runtime" =~ "dockershim" ]]; then
-		# This is a softlink created by kubelet-config-helper; remove it.
 		rm -f /var/run/dockershim.sock
 
 		echo "Re-starting docker on the host ..."
@@ -281,10 +300,6 @@ function kubelet_rke_deployment() {
 # service
 ###############################################################################
 
-function kubelet_rke2_deployment() {
-	echo "RKE2 deployment ..."
-}
-
 function start_rke2() {
 	echo "Starting RKE2 agent ..."
 	systemctl start rke2-agent
@@ -340,6 +355,16 @@ function do_unconfig_kubelet_rke2() {
 	clean_runtime_state
 	revert_kubelet_config_rke2
 	start_rke2
+}
+
+function kubelet_rke2_deployment() {
+
+	# Worker nodes in RKE2 setups rely on rke2-agent's systemd service.
+	if systemctl is-active --quiet rke2-agent; then
+		return
+	fi
+
+	false
 }
 
 ###############################################################################

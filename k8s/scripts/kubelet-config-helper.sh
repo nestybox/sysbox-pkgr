@@ -672,22 +672,39 @@ function clean_runtime_state_containerd() {
 	local runtime_path=$(echo $runtime | sed 's@unix://@@' | cut -d" " -f1)
 
 	# Collect all the existing podIds as seen by crictl.
-	podList=$($crictl_bin --runtime-endpoint "$runtime" ps | awk 'NR>1 {print $NF}')
+	podList=$($crictl_bin --runtime-endpoint "$runtime" pods | awk 'NR>1 {print $1}')
 
-	# Cleanup the pods; turn off errexit in these steps as we don't want to
-	# interrupt the process if any of the instructions fail for a particular
-	# pod.
+	# Turn off errexit in these steps as we don't want to interrupt the process
+	# if any of the instructions fail for a particular pod / container.
 	set +e
 
+	# Stop / remove all the existing pods.
 	for pod in ${podList}; do
 		ret=$($crictl_bin --runtime-endpoint "$runtime" stopp "$pod")
 		if [ $? -ne 0 ]; then
-			echo "Failed to stop pod ${pod}: $ret"
+			echo "Failed to stop pod ${pod}: ${ret}"
 		fi
 
 		ret=$($crictl_bin --runtime-endpoint "$runtime" rmp --force "$pod")
 		if [ $? -ne 0 ]; then
-			echo "Failed to remove pod ${pod}: $ret"
+			echo "Failed to remove pod ${pod}: ${ret}"
+		fi
+	done
+
+	# At this point all the pre-existing containers may be stopped and eliminated,
+	# but there may be inactive containers that we want to eliminate too as these may
+	# cause issues when flipping back to the original (non-crio) scenario.
+	cntrList=$($crictl_bin --runtime-endpoint "$runtime" ps -a | awk 'NR>1 {print $1}')
+
+	for cntr in ${cntrList}; do
+		ret=$($crictl_bin --runtime-endpoint "$runtime" stop --timeout 0 "$cntr")
+		if [ $? -ne 0 ]; then
+			echo "Failed to stop container ${cntr}: ${ret}"
+		fi
+
+		ret=$($crictl_bin --runtime-endpoint "$runtime" rm --force "$cntr")
+		if [ $? -ne 0 ]; then
+			echo "Failed to remove container ${cntr}: ${ret}"
 		fi
 	done
 
