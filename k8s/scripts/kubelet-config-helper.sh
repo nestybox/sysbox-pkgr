@@ -966,6 +966,14 @@ function do_config_kubelet_rke2() {
 		return
 	fi
 
+	# Ideally, we should stop containerd first and do the clean-up right after,
+	# but that's not an option in RKE2 setups as it directly manages the
+	# live-cycle of the K8s components through its rke2-agent daemon. That's
+	# why we must first clean all the state, and stop rke2-agent afterwards.
+	# This could theoretically open up the possibility for race-conditions, but
+	# that's something that we haven't observed yet given the short interval
+	# between the 'clean' and the 'stop' events.
+
 	clean_runtime_state "$runtime"
 	stop_rke2
 	config_kubelet_rke2
