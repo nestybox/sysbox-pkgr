@@ -364,7 +364,10 @@ function kubelet_rke2_deployment() {
 
 function get_runtime_kubelet_systemctl {
 	set +e
-	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	# Notice that in this scenario there may be more than one 'container-runtime'
+	# entry present in the kubelet's exec instruction, so we must only look at
+	# the latest (relevant) one.
+	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | tail -1 | cut -d '=' -f2)
 	set -e
 
 	# If runtime is unknown, assume it's Docker.
@@ -500,7 +503,7 @@ function do_unconfig_kubelet() {
 }
 
 function main() {
-	set -x
+
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
