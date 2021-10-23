@@ -217,7 +217,7 @@ function kubelet_snap_deployment() {
 }
 
 ###############################################################################
-# Scenario 2: RKE setup -- Docker-based kubelet created as a static-pod
+# Scenario 2: RKE setup -- Docker-based kubelet created by rke tool
 ###############################################################################
 
 function restart_kubelet_rke() {
@@ -257,6 +257,7 @@ function revert_kubelet_config_rke() {
 }
 
 function do_unconfig_kubelet_rke() {
+	echo "Detected RKE's docker-based kubelet deployment on host."
 
 	get_runtime_kubelet_docker
 	if [[ ! ${runtime} =~ "crio" ]]; then
@@ -333,23 +334,13 @@ function get_runtime_kubelet_rke2() {
 }
 
 function do_unconfig_kubelet_rke2() {
+	echo "Detected RKE2's host-based kubelet deployment on host."
 
 	get_runtime_kubelet_rke2
 	if [[ ! ${runtime} =~ "crio" ]]; then
 		echo "Expected kubelet to be using CRI-O, but it's using $runtime; no action will be taken."
 		return
 	fi
-
-	# In RKE's case we must add a few steps to the typical logic utilized in other
-	# setups. In this case, as kubelet executes as the 'init' process of a docker
-	# container, we must do the following:
-	#
-	# * Modify kubelet's container restart-policy to prevent this one from being
-	#   re-spawned by docker once that we temporarily shut it down.
-	# * Revert the kubelet's container entrypoint to honor its original
-	#   initialization attributes.
-	# * Once the usual kubelet's "stop + clean + restart" cycle is completed, we
-	#   must revert the changes made to the kubelet's container restart-policy.
 
 	stop_rke2
 	clean_runtime_state
@@ -383,6 +374,7 @@ function get_runtime_kubelet_systemctl {
 }
 
 function do_unconfig_kubelet_docker_systemd() {
+	echo "Detected systemd-managed docker-based kubelet deployment on host."
 
 	get_runtime_kubelet_systemctl
 	if [[ ! ${runtime} =~ "crio" ]]; then
@@ -487,6 +479,7 @@ function revert_kubelet_config() {
 }
 
 function do_unconfig_kubelet() {
+	echo "Detected systemd-managed host-based kubelet deployment on host."
 
 	# Obtain kubelet path.
 	kubelet_bin=$(get_kubelet_bin)
