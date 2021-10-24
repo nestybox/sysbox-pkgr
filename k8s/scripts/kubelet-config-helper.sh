@@ -456,8 +456,8 @@ function adjust_kubelet_exec_instruction() {
 #
 #  * Kubelet can be configured through a systemd service file or through an
 #    associated drop-in file.
-#  * Kubelet can be launched through either an 'ExStart' instruction or through
-#    any of the multiple instructions within a 'ExStartPre' clause.
+#  * Kubelet can be launched through either an 'ExecStart' instruction or through
+#    any of the multiple instructions within a 'ExecStartPre' clauses.
 #  * Kubelet can be directly managed through a systemd service, or indirectly
 #    through a systemd-managed docker container.
 #  * Kubelet can be instantiated through a single-line instruction or from a
@@ -967,6 +967,11 @@ function config_kubelet_rke2() {
 	echo "Executing Kubelet RKE2 configuration function ..."
 
 	local rancher_config="/etc/rancher/rke2/config.yaml"
+
+	# TODO: Currently we only support RKE2 setups that are configured through
+	# the default RKE2's config.yaml file; meaning that we are not looking at
+	# custom config attributes that could be potentially passed by the user
+	# through the rke2-agent cli.
 
 	if egrep -q "container-runtime-endpoint:.*crio.sock" "$rancher_config"; then
 		echo "RKE2's kubelet is already using CRI-O; no action will be taken."
