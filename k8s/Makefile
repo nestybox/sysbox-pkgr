@@ -105,10 +105,10 @@ check-crio-artifacts:
 all: sysbox-deploy-k8s-image sysbox-ee-deploy-k8s-image
 
 sysbox-deploy-k8s-image: check-crio-artifacts fetch_sysbox_ce_bins check-sysbox-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s -f Dockerfile.sysbox-ce .
+	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ce .
 
 sysbox-ee-deploy-k8s-image: check-crio-artifacts fetch_sysbox_ee_bins check-sysbox-ee-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s -f Dockerfile.sysbox-ee .
+	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ee .
 
 #
 # Cleanup targets
