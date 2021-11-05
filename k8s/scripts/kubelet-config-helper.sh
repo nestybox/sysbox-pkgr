@@ -752,8 +752,8 @@ function clean_runtime_state() {
 # Scenario 1: Snap setup -- Snap-based kubelet
 ###############################################################################
 
-function restart_kubelet_snap() {
-	snap restart $kubelet_snap
+function start_kubelet_snap() {
+	snap start $kubelet_snap
 }
 
 function stop_kubelet_snap() {
@@ -794,13 +794,13 @@ function do_config_kubelet_snap() {
 		stop_kubelet_snap
 		clean_runtime_state "$runtime"
 		config_kubelet_snap
-		restart_kubelet_snap
+		start_kubelet_snap
 	else
 		stop_kubelet_snap
 		clean_runtime_state "$runtime"
 		stop_containerd
 		config_kubelet_snap
-		restart_kubelet_snap
+		start_kubelet_snap
 	fi
 }
 
