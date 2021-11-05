@@ -157,8 +157,8 @@ function revert_kubelet_ctr_restart_policy() {
 # Scenario 1: Snap setup -- Snap-based kubelet
 ###############################################################################
 
-function restart_kubelet_snap() {
-	snap restart $kubelet_snap
+function start_kubelet_snap() {
+	snap start $kubelet_snap
 }
 
 function stop_kubelet_snap() {
@@ -209,7 +209,7 @@ function do_unconfig_kubelet_snap() {
 	stop_kubelet_snap
 	clean_runtime_state
 	revert_kubelet_config_snap
-	restart_kubelet_snap
+	start_kubelet_snap
 }
 
 function kubelet_snap_deployment() {
