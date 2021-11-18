@@ -31,22 +31,41 @@
 name: Manual Workflow
 
 # Runs on-demand
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      body:
+        default: ""
+      test:
+        default: "false"
 
-defaults:
-  run:
-    shell: bash
+#jobs:
+#  sysbox_pkg_test:
+#    runs-on: [self-hosted, Linux, X64, "${{ matrix.distro }}"]
+#    strategy:
+#      fail-fast: false
+#    steps:
+#      - name: precheckout-cleanup
+#        run: |
+#          sudo rm -rf *
+#      - name: checkout
+#        uses: actions/checkout@v2
 
 jobs:
-  sysbox_pkg_test:
-    runs-on: [self-hosted, Linux, X64, "${{ matrix.distro }}"]
-    strategy:
-      fail-fast: false
-      matrix:
-        distro: [ubuntu-focal]
+  docker:
+    runs-on: [self-hosted, Linux, X64, my-label]
     steps:
-      - name: precheckout-cleanup
-        run: |
-          sudo rm -rf *
-      - name: checkout
+      - name: Checkout
         uses: actions/checkout@v2
+        with:
+          repository: bbachi/dockerfile-examples
+          path: dockerfile-examples
+          ssh: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCzOM/+jcYNEtJohXUTTv055G9TnU9CBhxuARLT6ZrgBBG/I4jJT1JimJJcNvVEoCEhEqP3/r9diQyKlqNqi173hZTlOPIqxt3EmB0qCDSP0wjRNiFjpyP/jxxNgctgo0xlbsJDaFxsxnPcE7+dmXVVubA4JlaiE7F5RhTcK26JPvTjveTJdvAkUMR20bQ7trg/wXetzINyL2w2FqLBF/MKos/lHxcI2zn86dj56hnDD5me40m5v1PwcrU5HqsF8R65sZhReRH98IahRg1eVwz9/3s6ccg9j2OoRml336UvOCbu/7srHc0vcC1lPzIMetf4R3JltCaJKgziLONHd6y6S9gaBn/k8QG79NJBMpSPAZeEY47rNlk4OkDhGDJvAJPVO+z+lpBfRD6glGaWJfO+EeWgfp/VDd+O0WSQ8VFS6vV3PU5f5kRgAPBboXEBK47Lkw0AbL7a8Yjvp87/roZHQF1VVtpZtEt9AyS+ZVdWxIENtoP6P3NhOTqA7i7APfE= vagrant@ubuntu-focal-vm-2'
+
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: dockerfile-examples
+          file: dockerfile-examples/Dockerfile9
+          load: true
+          tags: nestybox/sysbox-runner-app-tester:latest
