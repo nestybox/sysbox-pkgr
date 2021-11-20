@@ -54,8 +54,9 @@ RUN wget https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL
 
 # shiftfs-dkms sources
 RUN git clone --branch k5.4 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.4 \
-    && git clone --branch k5.8 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.8 \
-    && git clone --branch k5.11 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.11
+    && git clone --branch k5.10 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.10 \
+    && git clone --branch k5.11 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.11 \
+    && git clone --branch k5.13 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.13
 
 #
 # Load Sysbox installation artifacts
