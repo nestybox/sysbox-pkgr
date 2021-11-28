@@ -8,12 +8,13 @@
 $ git clone git@github.com:nestybox/cri-o.git
 
 $ cd cri-o
+```
 
 2. Switch to a local branch based off of the desired CRI-O release (i.e. currently v1.20
    or v1.21):
 
 ```
-$ git checkout -b v1.21 remotes/origin/release-1.21
+$ git checkout -b v1.21-sysbox origin/v1.21-sysbox
 ```
 
 3. Build a 'static' version of the cri-o binary -- note that it takes a while, but it's
