@@ -21,6 +21,10 @@ SYSBOX_VER = 0.4.1
 CRIO_VERSIONS = v1.20 v1.21
 
 #
+# Sysbox artifacts
+#
+
+#
 # The fetch_* targets download the Sysbox binaries from the Sysbox repo and
 # place them in the "bin" sub-directory. The *_image targets then load those
 # binaries into the sysbox-deploy-k8s image. Variable SYSBOX_VER selects the
@@ -71,6 +75,23 @@ fetch_sysbox_ce_bins: fetch_sysbox_ce_bionic_bins fetch_sysbox_ce_focal_bins
 fetch_sysbox_ee_bins: fetch_sysbox_ee_bionic_bins fetch_sysbox_ee_focal_bins
 
 #
+# CRI-O artifacts
+#
+
+build_crio: $(CRIO_VERSIONS)
+
+$(CRIO_VERSIONS):
+	@printf "\n*** Building cri-o $@ ... ***\n\n"
+	$(eval TMPDIR := $(shell mktemp -d))
+	@chmod 755 $(TMPDIR)
+	@git clone git@github.com:nestybox/cri-o.git $(TMPDIR)/cri-o
+	@git -C $(TMPDIR)/cri-o checkout -b $@-sysbox origin/$@-sysbox
+	@cd $(TMPDIR)/cri-o && CONTAINER_RUNTIME=docker make build-static
+	@mkdir -p bin/crio/$@
+	@cp $(TMPDIR)/cri-o/bin/static/crio bin/crio/$@/
+	@chmod 755 -R $(TMPDIR) && rm -rf $(TMPDIR)
+
+#
 # The check-* targets verify that CRI-O and Sysbox binaries are in the "bin" directory:
 #
 # bin
@@ -104,10 +125,10 @@ check-crio-artifacts:
 
 all: sysbox-deploy-k8s-image sysbox-ee-deploy-k8s-image
 
-sysbox-deploy-k8s-image: check-crio-artifacts fetch_sysbox_ce_bins check-sysbox-artifacts
+sysbox-deploy-k8s-image: $(CRIO_VERSIONS) check-crio-artifacts fetch_sysbox_ce_bins check-sysbox-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ce .
 
-sysbox-ee-deploy-k8s-image: check-crio-artifacts fetch_sysbox_ee_bins check-sysbox-ee-artifacts
+sysbox-ee-deploy-k8s-image: $(CRIO_VERSIONS) check-crio-artifacts fetch_sysbox_ee_bins check-sysbox-ee-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ee .
 
 #
