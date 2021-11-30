@@ -4,6 +4,8 @@
 
 .PHONY: sysbox-deploy-k8s-image \
 	sysbox-ee-deploy-k8s-image \
+	sysbox-ee-deploy-k8s-image-artifacts \
+	sysbox-ee-deploy-k8s-image-flatcar-artifacts \
 	fetch_sysbox_ce_bionic_bins \
 	fetch_sysbox_ce_focal_bins \
 	fetch_sysbox_ee_bionic_bins \
@@ -19,17 +21,17 @@ SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_DISTRO = ubuntu-focal ubuntu-bionic
 SYSBOX_VER = 0.4.1
 CRIO_VERSIONS = v1.20 v1.21
+FLATCAR_VERSIONS = 2765.2.6 2905.2.3
 
 #
-# Sysbox artifacts
+# Sysbox artifacts for Ubuntu distro
 #
 
-#
 # The fetch_* targets download the Sysbox binaries from the Sysbox repo and
 # place them in the "bin" sub-directory. The *_image targets then load those
 # binaries into the sysbox-deploy-k8s image. Variable SYSBOX_VER selects the
 # version of the Sysbox binaries to download.
-#
+
 fetch_sysbox_ce_bionic_bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
@@ -73,6 +75,26 @@ fetch_sysbox_ee_focal_bins:
 fetch_sysbox_ce_bins: fetch_sysbox_ce_bionic_bins fetch_sysbox_ce_focal_bins
 
 fetch_sysbox_ee_bins: fetch_sysbox_ee_bionic_bins fetch_sysbox_ee_focal_bins
+
+#
+# Sysbox artifacts, and its dependencies, for Flatcar distro
+#
+
+build_flatcar_sysbox_ee_bins: $(FLATCAR_VERSIONS)
+
+2765.2.6:
+	@printf "\n*** Building Sysbox's flatcar-$@ binaries ... ***\n\n"
+	@make -C ../ sources/sysbox-internal
+	make -C ../sources/sysbox-internal/ FLATCAR_VERSION=$@ FLATCAR_KERNEL="5.10.43-flatcar" sysbox-flatcar
+	@mkdir -p bin/sysbox-ee/flatcar-$@
+	@cp ../sources/sysbox-internal/build/flatcar-$@/* bin/sysbox-ee/flatcar-$@/
+
+2905.2.3:
+	@printf "\n*** Building Sysbox's flatcar-$@ binaries ... ***\n\n"
+	@make -C ../ sources/sysbox-internal
+	make -C ../sources/sysbox-internal/ FLATCAR_VERSION=$@ FLATCAR_KERNEL="5.10.61-flatcar" sysbox-flatcar
+	@mkdir -p bin/sysbox-ee/flatcar-$@
+	@cp ../sources/sysbox-internal/build/flatcar-$@/* bin/sysbox-ee/flatcar-$@/
 
 #
 # CRI-O artifacts
@@ -125,11 +147,14 @@ check-crio-artifacts:
 
 all: sysbox-deploy-k8s-image sysbox-ee-deploy-k8s-image
 
-sysbox-deploy-k8s-image: $(CRIO_VERSIONS) check-crio-artifacts fetch_sysbox_ce_bins check-sysbox-artifacts
+sysbox-deploy-k8s-image: build_crio check-crio-artifacts fetch_sysbox_ce_bins check-sysbox-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ce .
 
-sysbox-ee-deploy-k8s-image: $(CRIO_VERSIONS) check-crio-artifacts fetch_sysbox_ee_bins check-sysbox-ee-artifacts
+sysbox-ee-deploy-k8s-image: sysbox-ee-deploy-k8s-artifacts sysbox-ee-deploy-k8s-flatcar-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ee .
+
+sysbox-ee-deploy-k8s-image-artifacts: build_crio check-crio-artifacts fetch_sysbox_ee_bins check-sysbox-ee-artifacts
+sysbox-ee-deploy-k8s-image-flatcar-artifacts: check-crio-artifacts build_flatcar_sysbox_ee_bins
 
 #
 # Cleanup targets
