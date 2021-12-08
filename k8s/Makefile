@@ -42,7 +42,7 @@ FLATCAR_DEV_ENVS := FLATCAR_DEV_ENV_2905.2.3 FLATCAR_DEV_ENV_2905.2.6
 # binaries into the sysbox-deploy-k8s image. Variable SYSBOX_VER selects the
 # version of the Sysbox binaries to download.
 
-fetch_sysbox_ce_bionic_bins:
+fetch-sysbox-ce-bionic-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
 	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ce_$(SYSBOX_VER)-0.ubuntu-bionic_amd64.deb -P $(TMPDIR)
@@ -52,7 +52,7 @@ fetch_sysbox_ce_bionic_bins:
 	cp $(TMPDIR)/sysbox-ce-ubuntu-bionic/usr/bin/sysbox-* bin/sysbox-ce/ubuntu-bionic/.
 	rm -rf $(TMPDIR)
 
-fetch_sysbox_ce_focal_bins:
+fetch-sysbox-ce-focal-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
 	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ce_$(SYSBOX_VER)-0.ubuntu-focal_amd64.deb -P $(TMPDIR)
@@ -62,7 +62,7 @@ fetch_sysbox_ce_focal_bins:
 	cp $(TMPDIR)/sysbox-ce-ubuntu-focal/usr/bin/sysbox-* bin/sysbox-ce/ubuntu-focal/.
 	rm -rf $(TMPDIR)
 
-fetch_sysbox_ee_bionic_bins:
+fetch-sysbox-ee-bionic-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
 	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ee_$(SYSBOX_VER)-0.ubuntu-bionic_amd64.deb -P $(TMPDIR)
@@ -72,7 +72,7 @@ fetch_sysbox_ee_bionic_bins:
 	cp $(TMPDIR)/sysbox-ee-ubuntu-bionic/usr/bin/sysbox-* bin/sysbox-ee/ubuntu-bionic/.
 	rm -rf $(TMPDIR)
 
-fetch_sysbox_ee_focal_bins:
+fetch-sysbox-ee-focal-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
 	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ee_$(SYSBOX_VER)-0.ubuntu-focal_amd64.deb -P $(TMPDIR)
@@ -82,17 +82,16 @@ fetch_sysbox_ee_focal_bins:
 	cp $(TMPDIR)/sysbox-ee-ubuntu-focal/usr/bin/sysbox-* bin/sysbox-ee/ubuntu-focal/.
 	rm -rf $(TMPDIR)
 
-fetch_sysbox_ce_bins: fetch_sysbox_ce_bionic_bins fetch_sysbox_ce_focal_bins
+fetch-sysbox-ce-bins: fetch-sysbox-ce-bionic-bins fetch-sysbox-ce-focal-bins
 
-fetch_sysbox_ee_bins: fetch_sysbox_ee_bionic_bins fetch_sysbox_ee_focal_bins
+fetch-sysbox-ee-bins: fetch-sysbox-ee-bionic-bins fetch-sysbox-ee-focal-bins
 
 #
 # Sysbox artifacts, and its dependencies, for Flatcar distro
 #
 
-build_flatcar_sysbox_ee_bins: $(FLATCAR_VERSIONS)
+build-flatcar-sysbox-ee-bins: $(FLATCAR_VERSIONS)
 
-#$(FLATCAR_VERSIONS): FLATCAR_DEV_ENVIRONMENTS_$(FLATCAR_VERSIONS)
 $(FLATCAR_VERSIONS): $(FLATCAR_DEV_ENVS)
 	@printf "\n*** Building Sysbox's flatcar-$@ binaries ... ***\n\n"
 	@make -C ../ sources/sysbox-internal
@@ -182,17 +181,17 @@ check-crio-artifacts:
 
 all: sysbox-deploy-k8s-image sysbox-ee-deploy-k8s-image
 
-sysbox-deploy-k8s-image: build_crio check-crio-artifacts fetch_sysbox_ce_bins check-sysbox-artifacts
+sysbox-deploy-k8s-image: build_crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ce .
 
 sysbox-ee-deploy-k8s-image: sysbox-ee-deploy-k8s-artifacts sysbox-ee-deploy-k8s-flatcar-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ee .
 
 #sysbox-ee-deploy-k8s-artifacts: build_crio check-crio-artifacts fetch_sysbox_ee_bins check-sysbox-ee-artifacts
-sysbox-ee-deploy-k8s-artifacts: check-crio-artifacts fetch_sysbox_ee_bins check-sysbox-ee-artifacts
+sysbox-ee-deploy-k8s-artifacts: check-crio-artifacts fetch-sysbox-ee-bins check-sysbox-ee-artifacts
 
 #sysbox-ee-deploy-k8s-flatcar-artifacts: build_crio check-crio-artifacts build_flatcar_sysbox_ee_bins
-sysbox-ee-deploy-k8s-flatcar-artifacts: check-crio-artifacts build_flatcar_sysbox_ee_bins
+sysbox-ee-deploy-k8s-flatcar-artifacts: check-crio-artifacts build-flatcar-sysbox-ee-bins check-sysbox-ee-flatcar-artifacts
 
 #
 # Cleanup targets
