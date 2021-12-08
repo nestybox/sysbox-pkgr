@@ -21,10 +21,10 @@
 SHELL := /bin/bash
 
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
+SYSBOX_FLATCAR_BINS = $(SYSBOX_BINS) fusermount shiftfs.ko
 SYSBOX_DISTRO = ubuntu-focal ubuntu-bionic
 SYSBOX_VER = 0.4.1
 CRIO_VERSIONS = v1.20 v1.21
-FLATCAR_VERSIONS = 2765.2.6 2905.2.3
 
 # Supported Flatcar versions
 FLATCAR_VERSIONS := 2905.2.3 2905.2.6
@@ -174,6 +174,9 @@ check-sysbox-ee-artifacts:
 
 check-crio-artifacts:
 	@$(foreach version,$(CRIO_VERSIONS),[ -f "bin/crio/$(version)/crio" ] || "missing CRI-O binary: bin/crio/$(version)/crio";)
+
+check-sysbox-ee-flatcar-artifacts:
+	@$(foreach version,$(FLATCAR_VERSIONS),$(foreach file,$(SYSBOX_FLATCAR_BINS),[ -f "bin/sysbox-ee/flatcar-$(version)/$(file)" ] || "missing sysbox-ee-flatcar binary: bin/sysbox-ee/flatcar-$(version)/$(file)";))
 
 #
 # These targets build the sysbox-deploy-k8s images (for sysbox-ce and sysbox-ee)
