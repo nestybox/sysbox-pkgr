@@ -147,7 +147,8 @@ $(CRIO_VERSIONS):
 	@chmod 755 -R $(TMPDIR) && rm -rf $(TMPDIR)
 
 #
-# The check-* targets verify that CRI-O and Sysbox binaries are in the "bin" directory:
+# The check-* targets verify that CRI-O, Sysbox binaries and its dependencies, are
+# all in the "bin" directory:
 #
 # bin
 # ├── crio
@@ -164,6 +165,28 @@ $(CRIO_VERSIONS):
 # │       ├── sysbox-fs
 # │       ├── sysbox-mgr
 # │       └── sysbox-runc
+# └── sysbox-ee
+#     ├── flatcar-2905.2.3
+#     │   ├── fusermount
+#     │   ├── shiftfs.ko
+#     │   ├── sysbox-fs
+#     │   ├── sysbox-mgr
+#     │   └── sysbox-runc
+#     ├── flatcar-2905.2.6
+#     │   ├── fusermount
+#     │   ├── shiftfs.ko
+#     │   ├── sysbox-fs
+#     │   ├── sysbox-mgr
+#     │   └── sysbox-runc
+#     ├── ubuntu-bionic
+#     │   ├── sysbox-fs
+#     │   ├── sysbox-mgr
+#     │   └── sysbox-runc
+#     └── ubuntu-focal
+#         ├── sysbox-fs
+#         ├── sysbox-mgr
+#         └── sysbox-runc
+#
 
 check-sysbox-artifacts:
 	@$(foreach distro,$(SYSBOX_DISTRO),$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ce/$(distro)/$(file)" ] || "missing sysbox-ce binary: bin/sysbox-ce/$(distro)/$(file)";))
