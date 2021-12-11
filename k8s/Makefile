@@ -87,7 +87,19 @@ fetch-sysbox-ce-bins: fetch-sysbox-ce-bionic-bins fetch-sysbox-ce-focal-bins
 fetch-sysbox-ee-bins: fetch-sysbox-ee-bionic-bins fetch-sysbox-ee-focal-bins
 
 #
-# Sysbox artifacts, and its dependencies, for Flatcar distro
+# Sysbox artifacts, and its dependencies, for Flatcar distro.
+#
+# Flatcar binaries are built in two stages:
+#
+# 1) We first build a flatcar dev-environment where sysbox binaries can be created.
+#    To do this we initially build a docker container by importing the official
+#    Flatcar dev container image. We rely on this official (original) image to build
+#    a secondary (enhanced) dev environment image where kernel and kernel-module
+#    resources are exposed.
+#
+# 2) This enhanced dev-environment image serves as the baseline over which we create
+#    a Flatcar's sysbox-test image. Finally, Sysbox artifacts are generated in this
+#    container.
 #
 
 build-flatcar-sysbox-ee-bins: $(FLATCAR_VERSIONS)
@@ -98,6 +110,7 @@ $(FLATCAR_VERSIONS): $(FLATCAR_DEV_ENVS)
 	@make -C ../sources/sysbox-internal/ FLATCAR_VERSION=$@ FLATCAR_KERNEL=$(FLATCAR_$@_KERNEL) sysbox-flatcar
 	@mkdir -p bin/sysbox-ee/flatcar-$@
 	cp ../sources/sysbox-internal/build/flatcar-$@/* bin/sysbox-ee/flatcar-$@/
+	@printf "\n*** Completed building Sysbox's flatcar-$@ binaries ... ***\n\n"
 
 $(FLATCAR_DEV_ENVS):
 	$(eval FLATCAR_VERSION := $(subst FLATCAR_DEV_ENV_,,$@))
