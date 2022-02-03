@@ -78,11 +78,10 @@ function enable_unprivileged_userns() {
 # Ensures that 'configfs' module is properly loaded.
 function check_configfs_loaded() {
 
-    # Return error if configfs module is not present or can't be loaded.
-    if ! modprobe "${configfs_module}" &> /dev/null ; then
-        echo -e "\nConfigfs kernel module could not be loaded. Configfs may be required"\
-                "by certain applications running inside a Sysbox container.\n"
-        exit 1
+    # Print a warning if configfs module is not present or can't be loaded.
+    if ! modprobe "${configfs_module}" &>/dev/null; then
+        echo -e "\nConfigfs kernel module could not be loaded. Configfs may be required" \
+            "by certain applications running inside a Sysbox container.\n"
     fi
 }
 
