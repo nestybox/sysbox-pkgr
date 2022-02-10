@@ -10,6 +10,7 @@
 	ubuntu             \
 	ubuntu-bionic      \
 	ubuntu-focal       \
+	ubuntu-impish      \
 	clean
 
 SHELL:=/bin/bash
@@ -139,7 +140,7 @@ debian-bullseye: $(SOURCES)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
 
 ubuntu: ## Build Ubuntu packages
-ubuntu: ubuntu-bionic ubuntu-focal
+ubuntu: ubuntu-bionic ubuntu-focal ubuntu-impish
 
 ubuntu-bionic: ## Build Ubuntu Bionic package
 ubuntu-bionic: $(SOURCES)
@@ -150,6 +151,13 @@ ubuntu-bionic: $(SOURCES)
 
 ubuntu-focal: ## Build Ubuntu Focal package
 ubuntu-focal: $(SOURCES)
+	@echo "== Building packages for $@ =="
+	$(DOCKER_BUILD)
+	$(DOCKER_RUN)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
+
+ubuntu-impish: ## Build Ubuntu Impish package
+ubuntu-impish: $(SOURCES)
 	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
