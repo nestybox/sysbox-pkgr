@@ -35,11 +35,7 @@ ARCH=$(shell uname -m)
 		clean-ce-deb        \
 		clean-ce-rpm        \
 		clean-ee-deb        \
-		clean-ee-rpm        \
-		ubuntu-bionic       \
-		ubuntu-focal        \
-		debian-buster       \
-		debian-bullseye
+		clean-ee-rpm
 
 
 # CE & EE git repository structures.
