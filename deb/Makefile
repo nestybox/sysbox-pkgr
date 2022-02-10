@@ -13,13 +13,25 @@
 	clean
 
 SHELL:=/bin/bash
-ARCH:=$(shell uname -m)
+
+# Obtain the current system architecture.
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_M),x86_64)
+	ARCH := amd64
+else ifeq ($(UNAME_M),aarch64)
+	ARCH := arm64
+else ifeq ($(UNAME_M),arm)
+	ARCH := armhf
+else ifeq ($(UNAME_M),armel)
+	ARCH := armel
+endif
+
 
 # Go version to utilize in slave containers for the building process.
 # We are temporarily skipping these settings as we are relying on Go's
 # top-of-tree (till 1.13 comes out).
 GO_BASE_IMAGE=golang
-GO_VERSION:=1.13
+GO_VERSION:=1.16
 GO_IMAGE=$(GO_BASE_IMAGE):$(GO_VERSION)
 
 # Sysbox source-code locations.
@@ -48,6 +60,7 @@ CHOWN:=docker run --rm -v $(CURDIR):/v -w /v alpine chown
 
 DOCKER_BUILD=docker build                                  \
 	--build-arg GO_IMAGE=$(GO_IMAGE)                   \
+	--build-arg arch=$(ARCH)                           \
 	--build-arg DEB_FILES=sysbox-${EDITION}            \
 	-t debbuild-$@/$(ARCH)                             \
 	-f $(CURDIR)/$@/Dockerfile .
