@@ -26,6 +26,8 @@ else ifeq ($(UNAME_M),armel)
 	ARCH := armel
 endif
 
+# Sysbox's default baseline image to build release binaries.
+RELEASE_BASELINE_IMAGE=ubuntu-focal
 
 # Go version to utilize in slave containers for the building process.
 # We are temporarily skipping these settings as we are relying on Go's
@@ -58,30 +60,53 @@ SOURCES=$(addprefix sources/, $(SOURCE_FILES))
 
 CHOWN:=docker run --rm -v $(CURDIR):/v -w /v alpine chown
 
-DOCKER_BUILD=docker build                                  \
+DOCKER_BUILD=docker build                              \
 	--build-arg GO_IMAGE=$(GO_IMAGE)                   \
 	--build-arg arch=$(ARCH)                           \
 	--build-arg DEB_FILES=sysbox-${EDITION}            \
-	-t debbuild-$@/$(ARCH)                             \
+	-t build-$@/$(ARCH)                                \
 	-f $(CURDIR)/$@/Dockerfile .
 
-DOCKER_RUN=docker run --privileged --rm -i       \
-	-e EDITION                               \
-	-e VERSION                               \
-	-e COMMIT_ID                             \
-	-e BUILT_BY                              \
-	-e HOSTNAME                              \
-	-v $(CURDIR)/debbuild/$@:/build          \
-	-v $(GOPATH)/pkg/mod:/go/pkg/mod         \
-	-v $(TEST_VOL1):/var/lib/docker          \
-	-v $(TEST_VOL2):/var/lib/sysbox          \
-	-v $(TEST_VOL3):/mnt/scratch             \
-	-v $(HOME)/.gitconfig:/root/.gitconfig:ro     \
+DOCKER_RUN=docker run --privileged --rm -i    \
+	-e EDITION                                \
+	-e VERSION                                \
+	-e COMMIT_ID                              \
+	-e BUILT_BY                               \
+	-e HOSTNAME                               \
+	-v $(CURDIR)/build/$(ARCH)/$@:/build      \
+	-v $(GOPATH)/pkg/mod:/go/pkg/mod          \
+	-v $(TEST_VOL1):/var/lib/docker           \
+	-v $(TEST_VOL2):/var/lib/sysbox           \
+	-v $(TEST_VOL3):/mnt/scratch              \
+	-v $(HOME)/.gitconfig:/root/.gitconfig:ro \
 	-v /lib/modules/$(KERNEL_REL):/lib/modules/$(KERNEL_REL):ro \
 	-v /usr/src/$(HEADERS):/usr/src/$(HEADERS):ro \
 	-v /usr/src/$(HEADERS_BASE):/usr/src/$(HEADERS_BASE):ro \
-	debbuild-$@/$(ARCH)
+	build-$@/$(ARCH)
 
+DOCKER_BUILD_RELEASE=docker build                                \
+	--build-arg GO_IMAGE=$(GO_IMAGE)                             \
+	--build-arg arch=$(ARCH)                                     \
+	--build-arg DEB_FILES=sysbox-${EDITION}                      \
+	-t build-$(RELEASE_BASELINE_IMAGE)/$(ARCH)                   \
+	-f $(CURDIR)/$(RELEASE_BASELINE_IMAGE)/Dockerfile .
+
+DOCKER_RUN_RELEASE=docker run --privileged --rm -i               \
+	-e EDITION                                                   \
+	-e VERSION                                                   \
+	-e COMMIT_ID                                                 \
+	-e BUILT_BY                                                  \
+	-e HOSTNAME                                                  \
+	-v $(CURDIR)/build/$(ARCH)/$(RELEASE_BASELINE_IMAGE):/build  \
+	-v $(GOPATH)/pkg/mod:/go/pkg/mod                             \
+	-v $(TEST_VOL1):/var/lib/docker                              \
+	-v $(TEST_VOL2):/var/lib/sysbox                              \
+	-v $(TEST_VOL3):/mnt/scratch                                 \
+	-v $(HOME)/.gitconfig:/root/.gitconfig:ro                    \
+	-v /lib/modules/$(KERNEL_REL):/lib/modules/$(KERNEL_REL):ro  \
+	-v /usr/src/$(HEADERS):/usr/src/$(HEADERS):ro                \
+	-v /usr/src/$(HEADERS_BASE):/usr/src/$(HEADERS_BASE):ro      \
+	build-$(RELEASE_BASELINE_IMAGE)/$(ARCH)
 
 .DEFAULT := help
 
@@ -104,14 +129,14 @@ debian-buster: $(SOURCES)
 	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
-	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
+	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
 
 debian-bullseye: ## Build Debian Bullseye package
 debian-bullseye: $(SOURCES)
 	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
-	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
+	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
 
 ubuntu: ## Build Ubuntu packages
 ubuntu: ubuntu-bionic ubuntu-focal
@@ -121,32 +146,39 @@ ubuntu-bionic: $(SOURCES)
 	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
-	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
+	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
 
 ubuntu-focal: ## Build Ubuntu Focal package
 ubuntu-focal: $(SOURCES)
 	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
-	$(CHOWN) -R $(shell id -u):$(shell id -g) debbuild/$@
+	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
+
+generic: ## Build generic deb package (release purposes)
+generic: $(SOURCES)
+	@echo "== Building generic release package"
+	$(DOCKER_BUILD_RELEASE)
+	$(DOCKER_RUN_RELEASE)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$(RELEASE_BASELINE_IMAGE)
 
 clean: ## Remove all DEB packages
 ifeq ($(EDITION),ce)
-	@[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
-	@$(RM) -r debbuild/*/sysbox-ce*
+	@[ ! -d build ] || $(CHOWN) -R $(shell id -u):$(shell id -g) build
+	@$(RM) -r build/$(ARCH)/*/sysbox-ce*
 else ifeq ($(EDITION),ee)
-	@[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
-	@$(RM) -r debbuild/*/sysbox-ee*
+	@[ ! -d build ] || $(CHOWN) -R $(shell id -u):$(shell id -g) build
+	@$(RM) -r build/$(ARCH)/*/sysbox-ee*
 else
-	@[ ! -d debbuild ] || $(CHOWN) -R $(shell id -u):$(shell id -g) debbuild
-	@$(RM) -r debbuild/*
+	@[ ! -d build ] || $(CHOWN) -R $(shell id -u):$(shell id -g) build
+	@$(RM) -r build/$(ARCH)/*
 endif
 	@[ ! -d sources ] || $(CHOWN) -R $(shell id -u):$(shell id -g) sources
 	@$(RM) -r sources
 
 sources/sysbox.tgz:
 	mkdir -p $(@D)
-	docker run --rm -i -w /v                                         \
+	docker run --rm -i -w /v                                     \
 		-v $(SYSBOX_DIR):/sysbox                                 \
 		-v $(CURDIR)/$(@D):/v                                    \
 		alpine                                                   \
