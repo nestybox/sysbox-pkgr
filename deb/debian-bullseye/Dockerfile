@@ -1,9 +1,10 @@
 ARG GO_IMAGE
-ARG BUILD_IMAGE=debian:bullseye
+ARG BASE_IMAGE=debian:bullseye
 ARG DEBIAN_FRONTEND=noninteractive
+
 FROM ${GO_IMAGE} as golang
 
-FROM ${BUILD_IMAGE}
+FROM ${BASE_IMAGE}
 
 RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections && \
     apt-get update &&                            \
@@ -20,30 +21,32 @@ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selectio
     libseccomp-dev                               \
     iproute2                                     \
     kmod                                         \
+    curl                                         \
     unzip &&                                     \
     \
     # Housekeeping
     apt-get clean -y &&                          \
     rm -rf                                       \
-    /var/cache/debconf/*                      \
-    /var/lib/apt/lists/*                      \
-    /var/log/*                                \
-    /tmp/*                                    \
-    /var/tmp/*                                \
-    /usr/share/doc/*                          \
-    /usr/share/man/*                          \
+    /var/cache/debconf/*                         \
+    /var/lib/apt/lists/*                         \
+    /var/log/*                                   \
+    /tmp/*                                       \
+    /var/tmp/*                                   \
+    /usr/share/doc/*                             \
+    /usr/share/man/*                             \
     /usr/share/local/*
 
-ARG GO_VERSION
+ARG arch
+ENV ARCH=${arch}
 ENV GOPATH /go
-ENV PATH $PATH:/usr/local/go/bin:$GOPATH/bin
+ENV PATH $PATH:/usr/local/go/bin:$GOPATH/bin:/root/.local/bin
 
 ARG DEB_FILES
 COPY ${DEB_FILES} /root/build-deb/debian
 RUN mk-build-deps -t "apt-get -o Debug::pkgProblemResolver=yes --no-install-recommends -y" -i /root/build-deb/debian/control
 
-ENV DISTRO debian
-ENV SUITE bullseye
+ENV BASE_IMAGE=${BASE_IMAGE}
+ENV SYSBOX_RELEASE true
 
 COPY --from=golang /usr/local/go /usr/local/go
 
@@ -55,35 +58,19 @@ COPY --from=golang /usr/local/go /usr/local/go
 ENV GO111MODULE=auto
 RUN go env -w GONOSUMDB=github.com/nestybox
 
-# install protoc compiler for gRPC
-RUN mkdir -p ~/bin/protoc \
-    && cd ~/bin/protoc/ \
-    && wget https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip \
-    && unzip protoc-3.6.1-linux-x86_64.zip \
-    && cp -r include/* /usr/local/include/ \
-    && cp bin/protoc /usr/local/bin/ \
-    && cd \
-    && rm -rf ~/bin/protoc/ \
-    && GIT_TAG="v1.3.1" \
-    && go get -d -u github.com/golang/protobuf/protoc-gen-go \
-    && git -C "$GOPATH"/src/github.com/golang/protobuf checkout $GIT_TAG > /dev/null \
-    && go install github.com/golang/protobuf/protoc-gen-go
+# Install protoc compiler for gRPC.
+RUN if [ "${arch}" = "amd64" ]; then arch_str="x86_64"; \
+    elif [ "${arch}" = "arm64" ]; then arch_str="aarch_64"; \
+    else echo "Unsupported platform: ${arch}"; exit; fi \
+    && curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v3.15.8/protoc-3.15.8-linux-${arch_str}.zip \
+    && unzip protoc-3.15.8-linux-${arch_str}.zip -d $HOME/.local \
+    && export PATH="$PATH:$HOME/.local/bin" \
+    && go install github.com/golang/protobuf/protoc-gen-go@latest \
+    && export PATH="$PATH:$(go env GOPATH)/bin"
 
-# install Docker.
-RUN apt-get update \
-    && apt-get install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg2 \
-    software-properties-common \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add - \
-    && apt-key fingerprint 0EBFCD88 \
-    && add-apt-repository \
-    "deb [arch=amd64] https://download.docker.com/linux/debian \
-    buster \
-    stable" \
-    && apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
+# Install Docker
+RUN curl -fsSL https://get.docker.com -o get-docker.sh \
+    && sh get-docker.sh
 ADD https://raw.githubusercontent.com/docker/docker-ce/master/components/cli/contrib/completion/bash/docker /etc/bash_completion.d/docker.sh
 
 # Use the old definition for SECCOMP_NOTIF_ID_VALID in /usr/include/linux/seccomp.h
