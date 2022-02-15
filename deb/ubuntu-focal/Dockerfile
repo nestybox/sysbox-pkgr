@@ -1,9 +1,10 @@
 ARG GO_IMAGE
-ARG BUILD_IMAGE=ubuntu:focal
+ARG BASE_IMAGE=ubuntu:focal
 ARG DEBIAN_FRONTEND=noninteractive
+
 FROM ${GO_IMAGE} as golang
 
-FROM ${BUILD_IMAGE}
+FROM ${BASE_IMAGE}
 
 RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections && \
     apt-get update &&                            \
@@ -26,18 +27,17 @@ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selectio
     # Housekeeping
     apt-get clean -y &&                          \
     rm -rf                                       \
-    /var/cache/debconf/*                      \
-    /var/lib/apt/lists/*                      \
-    /var/log/*                                \
-    /tmp/*                                    \
-    /var/tmp/*                                \
-    /usr/share/doc/*                          \
-    /usr/share/man/*                          \
+    /var/cache/debconf/*                         \
+    /var/lib/apt/lists/*                         \
+    /var/log/*                                   \
+    /tmp/*                                       \
+    /var/tmp/*                                   \
+    /usr/share/doc/*                             \
+    /usr/share/man/*                             \
     /usr/share/local/*
 
 ARG arch
 ENV ARCH=${arch}
-ARG GO_VERSION
 ENV GOPATH /go
 ENV PATH $PATH:/usr/local/go/bin:$GOPATH/bin:/root/.local/bin
 
@@ -45,8 +45,8 @@ ARG DEB_FILES
 COPY ${DEB_FILES} /root/build-deb/debian
 RUN mk-build-deps -t "apt-get -o Debug::pkgProblemResolver=yes --no-install-recommends -y" -i /root/build-deb/debian/control
 
-ENV DISTRO ubuntu
-ENV SUITE focal
+ENV BASE_IMAGE=${BASE_IMAGE}
+ENV SYSBOX_RELEASE true
 
 COPY --from=golang /usr/local/go /usr/local/go
 
@@ -58,7 +58,7 @@ COPY --from=golang /usr/local/go /usr/local/go
 ENV GO111MODULE=auto
 RUN go env -w GONOSUMDB=github.com/nestybox
 
-# install protoc compiler for gRPC
+# Install protoc compiler for gRPC.
 RUN if [ "${arch}" = "amd64" ]; then arch_str="x86_64"; \
     elif [ "${arch}" = "arm64" ]; then arch_str="aarch_64"; \
     else echo "Unsupported platform: ${arch}"; exit; fi \

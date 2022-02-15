@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# Copyright: (C) 2019-2021 Nestybox Inc.  All rights reserved.
+# Copyright: (C) 2019-2022 Nestybox Inc.  All rights reserved.
 #
 # Description: Script converts a user-defined changelog file into a
 # debian-friendly counterpart.
 #
 # Required input:
 #
-# User-defined changelog file must necesarily utilize the following layout:
+# User-defined changelog file must necessarily utilize the following layout:
 #
 # $ cat CHANGELOG.md
 # ...
@@ -52,7 +52,6 @@
 # for all othe entries (i.e. "released" entries), the version field will be
 # extracted from the changelog file itself.
 
-
 # Input file to be created/edited by whoever creates a new Sysbox release.
 changelog_file="sysbox/CHANGELOG.md"
 
@@ -64,19 +63,30 @@ version_file="sysbox/VERSION"
 # debian-package installer.
 debian_changelog="debian/changelog"
 
-# Redirect all generated output.
-exec > ${debian_changelog}
+# Base container image used to build Sysbox binaries.
+BASE_DISTRO=${BASE_IMAGE%:*}
+BASE_DISTRO_RELEASE=${BASE_IMAGE#*:}
 
+# Redirect all generated output.
+exec >${debian_changelog}
 
 function print_tag_header() {
 
     local tag=$1
     local unreleased=$2
 
-    if [[ $unreleased = true ]]; then
-	echo -e "sysbox-${EDITION} (${tag}-0.${DISTRO}-${SUITE}) UNRELEASED; urgency=medium\n"
+    if [[ "$SYSBOX_RELEASE" = "true" ]]; then
+        if [[ $unreleased = true ]]; then
+            echo -e "sysbox-${EDITION} (${tag}-0.linux) UNRELEASED; urgency=medium\n"
+        else
+            echo -e "sysbox-${EDITION} (${tag}-0.linux) unstable; urgency=medium\n"
+        fi
     else
-        echo -e "sysbox-${EDITION} (${tag}-0.${DISTRO}-${SUITE}) unstable; urgency=medium\n"
+        if [[ $unreleased = true ]]; then
+            echo -e "sysbox-${EDITION} (${tag}-0.${BASE_DISTRO}-${BASE_DISTRO_RELEASE}) UNRELEASED; urgency=medium\n"
+        else
+            echo -e "sysbox-${EDITION} (${tag}-0.${BASE_DISTRO}-${BASE_DISTRO_RELEASE}) unstable; urgency=medium\n"
+        fi
     fi
 }
 
@@ -98,11 +108,11 @@ function print_tag_trailer() {
         tag_email=$(git -C sysbox log -1 --format=%ae v$1)
         tag_date=$(git -C sysbox log -1 --format=%aD v$tag)
     fi
-    
-    echo -e "\n -- ${tag_author} <${tag_email}>  ${tag_date}\n"    
+
+    echo -e "\n -- ${tag_author} <${tag_email}>  ${tag_date}\n"
 }
 
-function main () {
+function main() {
     local currTag=""
     local prevTag=""
     local unreleased=""
@@ -128,12 +138,12 @@ function main () {
             local currTag=$(echo ${line} | cut -d"[" -f2 | cut -d"]" -f1)
 
             # If an 'unreleased' entry is found (usually the first / top-most
-	    # line in changelog file), then we will honor the tag present in the
-	    # 'version' file. For all other entries we will exclusively rely on
-	    # tags present in the changelog file.
+            # line in changelog file), then we will honor the tag present in the
+            # 'version' file. For all other entries we will exclusively rely on
+            # tags present in the changelog file.
             if echo ${line} | egrep -q "unreleased"; then
                 unreleased=true
-		currTag=${versionTag}
+                currTag=${versionTag}
             else
                 unreleased=false
             fi
@@ -145,13 +155,13 @@ function main () {
             print_tag_header ${currTag} ${unreleased}
 
             prevTag=${currTag}
-	    prevUnreleased=${unreleased}
-    
+            prevUnreleased=${unreleased}
+
         elif echo "${line}" | egrep -q "^ * "; then
             echo -e "${line}"
         fi
 
-    done < ${changelog_file}
+    done <${changelog_file}
 
     print_tag_trailer ${currTag} ${unreleased}
 }
