@@ -19,11 +19,11 @@ override_dh_dwz:
 SHELL=/bin/bash
 override_dh_auto_install:
 	# Sysbox binaries will be installed through the regular (makefile) process.
-	install -D -m0755 sysbox/sysbox-fs/build/amd64/sysbox-fs \
+	install -D -m0755 sysbox/sysbox-fs/build/${ARCH}/sysbox-fs \
 		debian/sysbox-ce/usr/bin/sysbox-fs
-	install -D -m0755 sysbox/sysbox-mgr/build/amd64/sysbox-mgr \
+	install -D -m0755 sysbox/sysbox-mgr/build/${ARCH}/sysbox-mgr \
 		debian/sysbox-ce/usr/bin/sysbox-mgr
-	install -D -m0755 sysbox/sysbox-runc/build/amd64/sysbox-runc \
+	install -D -m0755 sysbox/sysbox-runc/build/${ARCH}/sysbox-runc \
 		debian/sysbox-ce/usr/bin/sysbox-runc
 
 	# Sysbox services installation.
