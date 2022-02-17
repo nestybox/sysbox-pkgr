@@ -29,7 +29,7 @@ fi
 
 # Initialize dockerd to allow sysbox's containerized compilation as part of
 # of dpkg-build.
-dockerd >/var/log/dockerd.log 2>&1 &
+dockerd > /var/log/dockerd.log 2>&1 &
 sleep 3
 
 # Build the package and copy artifacts to the expected location.
