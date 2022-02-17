@@ -161,7 +161,7 @@ function main() {
             echo -e "${line}"
         fi
 
-    done <${changelog_file}
+    done < ${changelog_file}
 
     print_tag_trailer ${currTag} ${unreleased}
 }
