@@ -221,6 +221,12 @@ function config_crio() {
 	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "SYS_CHROOT"
 	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.runtime.default_capabilities.[]' "MKNOD"
 
+	# Create 'crio.image' table (required for 'pause_image' settings).
+	dasel put document -f ${host_crio_conf_file} -p toml -m '.crio.image'
+
+	# Create 'crio.network' table (required for 'network_dir' settings).
+	dasel put document -f ${host_crio_conf_file} -p toml -m '.crio.network'
+
 	# CRI-O puts a default limit of 1024 processes per pod; this is too small for
 	# Sysbox pods, since these run sometimes complex software such as Docker,
 	# K8s, etc. Thus we increase this to 16K processes per pod. Since the max
