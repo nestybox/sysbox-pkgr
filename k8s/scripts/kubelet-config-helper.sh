@@ -601,13 +601,21 @@ function adjust_crio_config_dependencies() {
 	# adjust crio.conf to honor that request.
 	local pause_image=$(get_crio_config_dependency "pod-infra-container-image")
 	if [ ! -z "$pause_image" ]; then
-		sed -i "s@pause_image =.*@pause_image = \"${pause_image}\"@" $crio_conf_file
+		if egrep -q "pause_image =" $crio_conf_file; then
+			sed -i "s@pause_image =.*@pause_image = \"${pause_image}\"@" $crio_conf_file
+		else
+			sed -i "/\[crio.image\]/a \    pause_image = \"${pause_image}\"" $crio_conf_file
+		fi
 		crio_sighup=true
 	fi
 
 	local cni_conf_dir=$(get_crio_config_dependency "cni-conf-dir")
 	if [ ! -z "$cni_conf_dir" ] && [[ $cni_conf_dir != "/etc/cni/net.d" ]]; then
-		sed -i "s@network_dir =.*@network_dir = \"${cni_conf_dir}\"@" $crio_conf_file
+		if egrep -q "network_dir =" $crio_conf_file; then
+			sed -i "s@network_dir =.*@network_dir = \"${cni_conf_dir}\"@" $crio_conf_file
+		else
+			sed -i "/\[crio.network\]/a \    network_dir = \"${cni_conf_dir}\"" $crio_conf_file
+		fi
 		crio_restart=true
 	fi
 
