@@ -109,7 +109,7 @@ $(FLATCAR_VERSIONS): $(FLATCAR_DEV_ENVS)
 	@make -C ../ sources/sysbox-internal
 	@make -C ../sources/sysbox-internal/ FLATCAR_VERSION=$@ FLATCAR_KERNEL=$(FLATCAR_$@_KERNEL) sysbox-flatcar
 	@mkdir -p bin/sysbox-ee/flatcar-$@
-	cp ../sources/sysbox-internal/build/flatcar-$@/* bin/sysbox-ee/flatcar-$@/
+	cp ../sources/sysbox-internal/build/flatcar-$@/amd64/* bin/sysbox-ee/flatcar-$@/
 	@printf "\n*** Completed building Sysbox's flatcar-$@ binaries ... ***\n\n"
 
 $(FLATCAR_DEV_ENVS):
