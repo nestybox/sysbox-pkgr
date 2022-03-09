@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Copyright: (C) 2019-2021 Nestybox Inc. All rights reserved.
+# Copyright: (C) 2019-2022 Nestybox Inc. All rights reserved.
 #
 
 set -e
 
-# The following table enumerates the Linux distributions supported by this
-# installer and the required kernel releases.
+# The following table enumerates the Linux distributions (and associated
+# releases) supported by this installer and the required kernel versions.
 #
 #   +=================================================+
 #   |  Supported Distributions  |  Supported Kernels  |
@@ -15,6 +15,8 @@ set -e
 #   |   Ubuntu Bionic (18.04)   |        5.3+         |
 #   |                           |                     |
 #   |   Ubuntu Focal (20.04)    |        5.4+         |
+#   |                           |                     |
+#   |   Ubuntu Impish (21.10)   |        5.13+        |
 #   |                           |                     |
 #   |   Debian Buster (10)      |        5.5+         |
 #   |                           |                     |
@@ -25,12 +27,14 @@ declare -A sysbox_support_matrix
 sysbox_support_matrix=(
     ["Ubuntu 18.04"]="5.3"
     ["Ubuntu 20.04"]="5.4"
+    ["Ubuntu 21.10"]="5.13"
     ["Debian 10"]="5.5"
     ["Debian 11"]="5.5"
 )
 
-# Minimum (oldest) kernel required for Sysbox installation to proceed.
-sysbox_min_required_kernel="5.3.0"
+# Minimum (oldest) kernel required for Sysbox installation to proceed when
+# dealing with non-officially-supported distros.
+sysbox_min_required_kernel_unsupported_distros="5.5.0"
 
 # Compare two versions in SemVer format.
 #
@@ -92,17 +96,7 @@ function verify_compatibility() {
     local found_supported_distro=false
     local found_supported_kernel=false
 
-    # Regardless of the distro on which we are installing, make sure that Sysbox
-    # can be installed only if a recent-enough kernel is in place. This is not
-    # sufficient to ensure Sysbox's proper operation, but this is the entry-level
-    # criteria that must be met for installer to proceed.
-    version_compare ${cur_kernel} ${sysbox_min_required_kernel} && :
-    if [[ $? -eq 2 ]]; then
-        echo -e "\nUnsupported linux kernel: \"${cur_kernel}\"\n"
-        exit 1
-    fi
-
-    # Iterate through the support_matrix and verify that per-distros minimum
+    # Iterate through the support_matrix and verify that per-distros' minimum
     # requirements are satisfied.
     for distro in "${!sysbox_support_matrix[@]}"; do
 
@@ -120,14 +114,21 @@ function verify_compatibility() {
         fi
     done
 
-    # Let installation proceed in case of a non-officially supported distro.
-    # Yet, bail if an unsupported kernel is found for a supported distro.
+    # If the distro on which Sysbox is being installed is not officially supported,
+    # let the installation proceed if the minimum kernel requirement is satisfied.
+    # Alternatively, bail out if an unsupported kernel release is found for a
+    # supported distro.
     if [[ ${found_supported_distro} = false ]]; then
-        echo -e "\nUnsupported linux distribution / release: \"${cur_distro}\". Please be" \
-            "aware that Sysbox may not operate as expected.\n"
+        version_compare ${cur_kernel} ${sysbox_min_required_kernel_unsupported_distros} && :
+        if [[ $? -eq 2 ]]; then
+            echo -e "\nUnsupported linux kernel release \"${cur_kernel}\" for" \
+                "\"{cur_distro}\" distro. Sysbox may not operate as expected.\n"
+            exit 1
+        fi
 
     elif [[ ${found_distro_supported_kernel} = false ]]; then
-        echo -e "\nUnsupported linux kernel \"${cur_kernel}\" for distro \"${cur_distro}\".\n"
+        echo -e "\nUnsupported linux kernel release \"${cur_kernel}\" for" \
+            "${cur_distro}\" distro.\n"
         exit 1
     fi
 }
@@ -144,7 +145,7 @@ upgrade | abort-upgrade) ;;
 
 \
     *)
-    echo "postinst called with unknown argument \`$1'" >&2
+    echo "preinst called with unknown argument \`$1'" >&2
     exit 0
     ;;
 esac
