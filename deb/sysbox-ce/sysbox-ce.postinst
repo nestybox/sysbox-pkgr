@@ -30,7 +30,6 @@ pool_subnet="172.25.0.0/16"
 
 # Docker config vars.
 docker_network_config_changed="false"
-docker_userns_config_changed="false"
 docker_runtime_config_changed="false"
 
 # Temp file for jq write operations.
@@ -126,75 +125,6 @@ function add_sysbox_user() {
 }
 
 #
-# There are two operational-modes in which Sysbox can function. Sysbox installer
-# will automatically pick mode 1) if 'shiftfs' module is available AND docker is
-# not operating in 'userns-remap' mode. Otherwise, it will choose option 2).
-#
-# 1) uid-shifting mode: In this case no 'userns-remap' should be present in
-#    dockerd's configuration.
-# 2) non-uid-shifting mode (userns-remap): In this mode a 'userns-remap' entry
-#    will be added (if not already present) along the 'sysbox' user previously
-#    created.
-#
-function adjust_docker_config_userns() {
-
-    # Skip userns-remap config processing if docker config is already holding
-    # a userns-remap entry AND docker is operating in this mode.
-    if jq --exit-status 'has("userns-remap")' ${dockerCfgFile} &> /dev/null &&
-        jq --exit-status '."userns-remap"' ${dockerCfgFile} | egrep -q -v "\"\"" &> /dev/null &&
-        docker info 2>&1 | egrep -q "^  userns$"; then
-        return
-    fi
-
-    # If shiftfs module is not present then consider configuring docker in userns
-    # mode.
-    if ! modprobe "${shiftfs_module}" &> /dev/null ; then
-
-        # Check for user's debconf response to determine if we will take care of
-        # the userns-remap configuration process.
-        db_get sysbox/docker_userns_remap_autoconfig
-        if [ "$RET" = "false" ]; then
-            return
-        fi
-
-        # If no 'userns-remap' key-entry is present, or if its associated value
-        # is empty, proceed to create a key and set its value to 'sysbox' user.
-        # Note that 'jq' does not provide 'in-place' editing capabilities (i.e.
-        # it displays inconsistent behavior), hence the need for the auxiliar
-        # 'tmpfile'.
-        if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "false" ] ||
-            [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ]; then
-
-            jq --indent 4 '. + {"userns-remap": "sysbox"}' \
-                ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
-
-            docker_userns_config_changed="true"
-
-        # If a valid userns entry already exists, but docker is not aware of it,
-        # ensure that docker is restarted at the end of the installation cycle.
-        elif [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "true" ] &&
-             [ ! $(jq '."userns-remap"' ${dockerCfgFile}) = "\"\"" ] &&
-             ! docker info 2>&1 | egrep -q "^  userns$"; then
-
-            docker_userns_config_changed="true"
-        fi
-
-    else
-        # If 'shiftfs' module is present but there's an unprocessed 'userns-remap' entry
-        # in docker config, go ahead and eliminate it. Notice that here we are referring
-        # to 'superficial' (unprocessed) userns config entries; if docker were to be
-        # operating in 'userns' mode, we would not be touching this configuration (see
-        # function's first code-block).
-        if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "true" ] &&
-            [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"sysbox\"" ]; then
-
-            jq 'del(."userns-remap")' \
-                ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
-        fi
-    fi
-}
-
-#
 # Add sysbox runtime to docker configuration.
 #
 function adjust_docker_config_runtime() {
@@ -202,31 +132,31 @@ function adjust_docker_config_runtime() {
     # If no 'runtimes' key-entry is present, proceed to add one.
     if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "false" ]; then
         jq --indent 4 '. + {"runtimes": {"sysbox-runc": {"path": "/usr/bin/sysbox-runc"}}}' \
-            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+            ${dockerCfgFile} >${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
         docker_runtime_config_changed="true"
 
     # If no 'sysbox-runc' runtime entry is present, proceed to add it.
     elif [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = "false" ]; then
         jq --indent 4 '.runtimes |= . + {"sysbox-runc": {"path": "/usr/bin/sysbox-runc"}}' \
-            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+            ${dockerCfgFile} >${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
         docker_runtime_config_changed="true"
 
     # If the runtime config is complete (i.e. both 'runtimes' and 'sysbox-runc'
     # entries exist) but has the old sysbox-runc binary location, update the location.
     elif grep -q "/usr/local/sbin/sysbox-runc" ${dockerCfgFile}; then
-       sed -i "s@/usr/local/sbin/sysbox-runc@/usr/bin/sysbox-runc@g" ${dockerCfgFile}
-       docker_runtime_config_changed="true"
+        sed -i "s@/usr/local/sbin/sysbox-runc@/usr/bin/sysbox-runc@g" ${dockerCfgFile}
+        docker_runtime_config_changed="true"
     fi
 
     # If the state has not been digested by docker yet, ensure that docker
     # processes it before this installation concludes.
     if [ ${docker_runtime_config_changed} = false ] &&
-          command -v docker >/dev/null 2>&1 &&
-          ! docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
+        command -v docker >/dev/null 2>&1 &&
+        ! docker info 2>&1 | egrep -q "Runtimes:.*sysbox-runc"; then
 
-       docker_runtime_config_changed="true"
+        docker_runtime_config_changed="true"
     fi
 }
 
@@ -253,41 +183,41 @@ function adjust_docker_config_network() {
 
     # If no 'bip' key-entry is present, proceed to add one.
     if [ $(jq 'has("bip")' ${dockerCfgFile}) = "false" ] ||
-       [ $(jq '."bip"' ${dockerCfgFile}) = "\"\"" ]; then
+        [ $(jq '."bip"' ${dockerCfgFile}) = "\"\"" ]; then
 
         # If bip address to add overlaps with an existing local subnet, then
         # dump a log message to user and skip bip's configuration.
         if system_local_subnet ${bip_host} &&
             ! ip -4 address show dev docker0 | egrep -q "${bip_subnet}"; then
-            echo -e "\nDocker bridge-ip network to configure (${bip_subnet}) overlaps"\
-                    "with existing system subnet. Installation process will skip this docker"\
-                    "network setting. Please manually configure docker's 'bip' subnet to"\
-                    "avoid connectivity issues.\n"
+            echo -e "\nDocker bridge-ip network to configure (${bip_subnet}) overlaps" \
+                "with existing system subnet. Installation process will skip this docker" \
+                "network setting. Please manually configure docker's 'bip' subnet to" \
+                "avoid connectivity issues.\n"
         else
             jq --arg bip ${bip_subnet} --indent 4 '. + {"bip": $bip}' ${dockerCfgFile} \
-                > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+                >${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
-	        docker_network_config_changed="true"
+            docker_network_config_changed="true"
         fi
     fi
 
     # If no 'default-address-pool' is found, do add one here.
     if [ $(jq 'has("default-address-pools")' ${dockerCfgFile}) = "false" ] ||
-       [ $(jq '."default-address-pools" | length' ${dockerCfgFile}) -eq "0" ]; then
+        [ $(jq '."default-address-pools" | length' ${dockerCfgFile}) -eq "0" ]; then
 
         # If address-pool overlaps with an existing local subnet, then
         # dump a log message to user and skip this attribute's configuration.
         if system_local_subnet ${pool_host}; then
-            echo -e "\nDocker default-address-pool to configure (${pool_subnet}) overlaps"\
-                    "with existing system subnet. Installation process will skip this docker"\
-                    "network setting. Please manually configure docker's 'default-address-pool'"\
-                    "subnet to avoid connectivity issues.\n"
+            echo -e "\nDocker default-address-pool to configure (${pool_subnet}) overlaps" \
+                "with existing system subnet. Installation process will skip this docker" \
+                "network setting. Please manually configure docker's 'default-address-pool'" \
+                "subnet to avoid connectivity issues.\n"
         else
             jq --arg subnet ${pool_subnet} --indent 4 \
                 '."default-address-pools"[0] |= . + {"base": $subnet, "size": 24}' ${dockerCfgFile} \
-                > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+                >${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
-	        docker_network_config_changed="true"
+            docker_network_config_changed="true"
         fi
     fi
 }
@@ -302,10 +232,8 @@ function adjust_docker_config() {
     if [[ ! -f ${dockerCfgFile} ]] || [[ ! -s ${dockerCfgFile} ]]; then
         mkdir -p ${dockerCfgDir}
         touch ${dockerCfgFile}
-        echo -e "{\n}" > ${dockerCfgFile}
+        echo -e "{\n}" >${dockerCfgFile}
     fi
-
-    adjust_docker_config_userns
 
     adjust_docker_config_runtime
 
@@ -316,16 +244,15 @@ function adjust_docker_config() {
     fi
 
     # Restart docker if disruptive changes have been made.
-    if [[ ${docker_userns_config_changed} = "true" ]] ||
-        [[ ${docker_network_config_changed} = "true" ]]; then
+    if [[ ${docker_network_config_changed} = "true" ]]; then
 
         # If existing containers are found then skip docker-restart to avoid any
         # service disruption.
         if ! docker ps -a | wc -l | egrep -q "1$"; then
             echo -e "\nDocker service was not restarted to avoid affecting existing" \
-                    "containers. Please remove them and restart Docker by doing:\n" \
-                    "\t\"docker rm \$(docker ps -a -q) -f &&" \
-                    "sudo systemctl restart docker\"\n"
+                "containers. Please remove them and restart Docker by doing:\n" \
+                "\t\"docker rm \$(docker ps -a -q) -f &&" \
+                "sudo systemctl restart docker\"\n"
         else
             systemctl restart docker
             return
@@ -335,7 +262,7 @@ function adjust_docker_config() {
     # If non-disruptive changes have been made to docker config, then send it a
     # sighup to have its config file getting re-parsed (no need to cold-boot).
     if [ ${docker_runtime_config_changed} = true ]; then
-	    kill -SIGHUP $(pidof dockerd)
+        kill -SIGHUP $(pidof dockerd)
     fi
 }
 
@@ -343,16 +270,16 @@ function adjust_docker_config() {
 # Checks if the docker engine is installed on the host
 #
 function docker_installed() {
-	ret=$(command -v dockerd >/dev/null 2>&1)
-	return $?
+    ret=$(command -v dockerd >/dev/null 2>&1)
+    return $?
 }
 
 #
 # Checks if the docker engine is running on the host
 #
 function docker_running() {
-	ret=$(pidof dockerd > /dev/null 2>&1)
-	return $?
+    ret=$(pidof dockerd >/dev/null 2>&1)
+    return $?
 }
 
 #
@@ -362,10 +289,10 @@ function check_kernel_headers() {
 
     #if ! dpkg-query -W -f='${Status} ${Version}\n' linux-headers-$(uname -r) \
     if ! dpkg -s linux-headers-$(uname -r) 2>&1 | egrep -q "install ok installed"; then
-        echo -e "\nThe linux kernel headers package was not found. This may be"\
-                "expected by user applications running within Sysbox containers."\
-                "Please install it with this command:\n"\
-                "\t\"sudo apt-get install -y linux-headers-\$(uname -r)\"\n"
+        echo -e "\nThe linux kernel headers package was not found. This may be" \
+            "expected by user applications running within Sysbox containers." \
+            "Please install it with this command:\n" \
+            "\t\"sudo apt-get install -y linux-headers-\$(uname -r)\"\n"
     fi
 }
 
@@ -373,9 +300,6 @@ function config_sysbox() {
 
     # Ensure sysbox-fs' default mountpoint is created in the file-system.
     create_sysboxfs_mountpoint
-
-	 # TODO: use "sysctl -p" option to load the sysctl settings from the sysbox
-	 # sysctl config file. This way we don't have to configure each here.
 
     # Allows user-namespaces creation for unprivileged users. This change will
     # persist through system reboots by relying on a sysctl.d config-file to be
@@ -397,29 +321,28 @@ function config_sysbox() {
     add_sysbox_user
 
     # Adjust dockerd configuration (if necessary)
-	 if docker_installed; then
-		 adjust_docker_config
-	 fi
+    if docker_installed; then
+        adjust_docker_config
+    fi
 
     # Check for kernel-headers.
     check_kernel_headers
 }
 
-
 case "$1" in
-    configure)
-        # Adjust system's configuration to satisfy Sysbox requirements.
-        config_sysbox
+configure)
+    # Adjust system's configuration to satisfy Sysbox requirements.
+    config_sysbox
 
-        # Avoid calling exit() here to allow debhelper tools to add their
-        # auto-generated code further below.
-        ;;
+    # Avoid calling exit() here to allow debhelper tools to add their
+    # auto-generated code further below.
+    ;;
 
-    abort-*)
-        ;;
+abort-*) ;;
 
-    *)
-        ;;
+\
+    *) ;;
+
 esac
 
 #DEBHELPER#

@@ -13,13 +13,11 @@ dockerCfgDir="/etc/docker"
 dockerCfgFile="${dockerCfgDir}/daemon.json"
 
 # Docker config vars.
-docker_userns_config_changed="false"
 docker_runtime_config_changed="false"
 
 # Temp file for jq write operations.
 tmpfile=$(mktemp /tmp/installer-scr.XXXXXX)
 trap 'rm -f "${tmpfile}"' EXIT
-
 
 #
 # Note: As per Debian packaging policies, package elimination should not remove
@@ -28,34 +26,14 @@ trap 'rm -f "${tmpfile}"' EXIT
 # dangling ownership.
 #
 
-function adjust_docker_config_userns() {
-
-    # If present, eliminate sysbox's userns-remap entry added during installation.
-    # It will be up to the user to restart dockerd for changes to be digested.
-    if [ $(jq 'has("userns-remap")' ${dockerCfgFile}) = "true" ] &&
-       [ $(jq '."userns-remap"' ${dockerCfgFile}) = "\"sysbox\"" ]; then
-
-        # Find out if user opted for automatic userns_remap configuration during
-        # installation. If that's the case we will assume that user also wants
-        # docker userns-remap configuration to be eliminated during uninstallation.
-        db_get sysbox/docker_userns_remap_autoconfig
-        if [ "$RET" = "true" ]; then
-            jq 'del(."userns-remap")' \
-                ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
-
-            docker_userns_config_changed="true"
-        fi
-    fi
-}
-
 function adjust_docker_config_runtime() {
 
     # Eliminate sysbox's runtime entry if present.
     if [ $(jq 'has("runtimes")' ${dockerCfgFile}) = "true" ] &&
-       [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = "true" ]; then
+        [ $(jq '.runtimes | has("sysbox-runc")' ${dockerCfgFile}) = "true" ]; then
 
         jq 'del(.runtimes."sysbox-runc")' \
-            ${dockerCfgFile} > ${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
+            ${dockerCfgFile} >${tmpfile} && cp ${tmpfile} ${dockerCfgFile}
 
         # If sysbox is a docker registered runtime, ensure that the uninstallation
         # process updates dockerd.
@@ -72,7 +50,6 @@ function adjust_docker_config_runtime() {
 #
 function adjust_docker_config() {
 
-    local docker_restart_required=false
     local docker_sighup_required=false
 
     # There is not much to do here if docker config file is not present.
@@ -80,35 +57,16 @@ function adjust_docker_config() {
         return
     fi
 
-    adjust_docker_config_userns
-
     adjust_docker_config_runtime
 
     if ! docker_running; then
         return
     fi
 
-    # Restart docker if disruptive changes have been made.
-    if [ ${docker_userns_config_changed} = "true" ]; then
-
-        # If existing containers are found then let's skip docker-restart
-        # to avoid any service disruption on non-sysbox containers.
-        if ! docker ps -a | wc -l | egrep -q "1$"; then
-            echo -e "\nDocker service was not restarted to avoid affecting existing" \
-                    "containers. Please remove them and restart Docker by doing:\n" \
-                    "\t\"docker rm \$(docker ps -a -q) -f &&" \
-                    "sudo systemctl restart docker\"\n"
-        else
-            systemctl restart docker
-            return
-        fi
-    fi
-
-    # We will only reach this point if docker was not rebooted above. In that
-    # case we will always send docker a sighup to digest the absense of sysbox
-    # runtime. This should not impact current non-sysbox containers.
+    # Send docker a sighup to digest the absence of sysbox runtime.
+    # This should not impact current non-sysbox containers.
     if [ ${docker_runtime_config_changed} = "true" ]; then
-            kill -SIGHUP $(pidof dockerd)
+        kill -SIGHUP $(pidof dockerd)
     fi
 }
 
@@ -116,34 +74,33 @@ function adjust_docker_config() {
 # Checks if the docker engine is installed on the host
 #
 function docker_installed() {
-	ret=$(command -v dockerd >/dev/null 2>&1)
-	return $?
+    ret=$(command -v dockerd >/dev/null 2>&1)
+    return $?
 }
 
 #
 # Checks if the docker engine is running on the host
 #
 function docker_running() {
-	ret=$(pidof dockerd > /dev/null 2>&1)
-	return $?
+    ret=$(pidof dockerd >/dev/null 2>&1)
+    return $?
 }
 
 case "$1" in
-    purge)
-        # Adjust docker config to eliminate entries added by Sysbox's
-        # installation process.
-        adjust_docker_config
+purge)
+    # Adjust docker config to eliminate entries added by Sysbox's
+    # installation process.
+    adjust_docker_config
     ;;
 
-    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
-    ;;
+remove | upgrade | failed-upgrade | abort-install | abort-upgrade | disappear) ;;
 
+\
     *)
-        echo "postrm called with unknown argument \`$1'" >&2
-        exit 1
+    echo "postrm called with unknown argument \`$1'" >&2
+    exit 1
     ;;
 esac
-
 
 #DEBHELPER#
 
