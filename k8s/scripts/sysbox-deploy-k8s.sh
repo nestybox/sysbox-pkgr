@@ -196,6 +196,9 @@ function config_crio() {
 	dasel put string -f ${host_crio_conf_file} -p toml "crio.runtime.cgroup_manager" "cgroupfs"
 	dasel put string -f ${host_crio_conf_file} -p toml "crio.runtime.conmon_cgroup" "pod"
 
+	# Disable selinux for now.
+	dasel put bool -f ${host_crio_conf_file} -p toml -m "crio.runtime.selinux" false
+
 	# In GKE, the CNIs are not in the usual "/opt/cni/bin/" dir, but under "/home/kubernetes/bin"
 	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/opt/cni/bin"
 	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/home/kubernetes/bin"
