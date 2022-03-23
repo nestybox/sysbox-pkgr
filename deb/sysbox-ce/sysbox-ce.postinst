@@ -51,15 +51,15 @@ trap 'rm -f "${tmpfile}"' EXIT
 # consume ~11K keys.  To be conservative, we set maxkeys to 20K. Note that since
 # each key consumes ~70 bytes on average, the total mem consumption assuming all
 # 20K keys are used is 20K * 70 = 1.4MB.
-kernel.keys.maxkeys = 20000
-kernel.keys.maxbytes = 1400000
+kernel_keys_maxkeys=20000
+kernel_keys_maxbytes=1400000
 
 # Increase the kernel's max PID limit to it's max value since Sysbox containers
 # are often used as VM-like environments and can consume hundreds or thousands
 # of PIDs each. For Sysbox deployments on K8s, we limit each pod to 16K pids via
 # the CRI-O config file. For Sysbox deployments in Docker hosts, use Docker's
 # "--pids-limit" option to fix this limit.
-kernel.pid_max = 4194304
+kernel_pid_max=4194304
 
 
 # Creates sysbox-fs mountpoint.
@@ -78,7 +78,7 @@ function create_sysboxfs_mountpoint() {
 # Enables the utilization of unprivileged user-namespaces.
 function enable_unprivileged_userns() {
 
-    val=$(sysctl kernel.unprivileged_userns_clone)
+    local val=$(sysctl kernel.unprivileged_userns_clone)
     if [[ "${val##* }" = 0 ]]; then
         sysctl -w kernel.unprivileged_userns_clone=1 >/dev/null 2>&1
     fi
@@ -98,17 +98,17 @@ function check_configfs_loaded() {
 # in most distros are too low for decent-size scenarios.
 function define_inotify_resources() {
 
-    val=$(sysctl fs.inotify.max_queued_events)
+    local val=$(sysctl fs.inotify.max_queued_events)
     if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
         sysctl -w fs.inotify.max_queued_events=${inotify_pool_size} >/dev/null 2>&1
     fi
 
-    val=$(sysctl fs.inotify.max_user_watches)
+    local val=$(sysctl fs.inotify.max_user_watches)
     if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
         sysctl -w fs.inotify.max_user_watches=${inotify_pool_size} >/dev/null 2>&1
     fi
 
-    val=$(sysctl fs.inotify.max_user_instances)
+    local val=$(sysctl fs.inotify.max_user_instances)
     if [[ "${val##* }" -lt ${inotify_pool_size} ]]; then
         sysctl -w fs.inotify.max_user_instances=${inotify_pool_size} >/dev/null 2>&1
     fi
@@ -116,18 +116,27 @@ function define_inotify_resources() {
 
 # Ensure kernel's 'keyring' resources meet sysbox requirements --
 # default values in most distros are too low for decent-size
-# scenarios. See definition of keyring_maxkeys variable above for
+# scenarios. See definitions of keyring variables above for
 # details.
 function define_keyring_resources() {
 
-    val=$(sysctl kernel.keys.maxkeys)
-    if [[ "${val##* }" -lt ${keyring_maxkeys} ]]; then
-        sysctl -w kernel.keys.maxkeys=${keyring_maxkeys} >/dev/null 2>&1
+    local val=$(sysctl kernel.keys.maxkeys)
+    if [[ "${val##* }" -lt ${kernel_keys_maxkeys} ]]; then
+        sysctl -w kernel.keys.maxkeys=${kernel_keys_maxkeys} >/dev/null 2>&1
     fi
 
-    val=$(sysctl kernel.keys.maxbytes)
-    if [[ "${val##* }" -lt ${keyring_maxbytes} ]]; then
-        sysctl -w kernel.keys.maxbytes=${keyring_maxbytes} >/dev/null 2>&1
+    local val=$(sysctl kernel.keys.maxbytes)
+    if [[ "${val##* }" -lt ${kernel_keys_maxbytes} ]]; then
+        sysctl -w kernel.keys.maxbytes=${kernel_keys_maxbytes} >/dev/null 2>&1
+    fi
+}
+
+# Apply a decent pid_max size.
+function define_pidmax_resources() {
+
+    local val=$(sysctl kernel.pid_max)
+    if [[ "${val##* }" -lt ${kernel_pid_max} ]]; then
+        sysctl -w kernel.pid_max=${kernel_pid_max} >/dev/null 2>&1
     fi
 }
 
@@ -329,6 +338,10 @@ function config_sysbox() {
 
     # Ensure kernel's keyring resources can meet Sysbox's scaling requirements.
     define_keyring_resources
+
+    # Ensure that kernel's pid_max values are large enough to meet Sysbox's scaling
+    # requirements.
+    define_pidmax_resources
 
     # Add 'sysbox' user to host a large pool of subordinate UIDs/GIDs to be
     # shared across all system-containers. This user must match the one defined
