@@ -27,8 +27,10 @@ else ifeq ($(UNAME_M),armel)
 	ARCH := armel
 endif
 
-# Sysbox's default baseline image to build release binaries.
-RELEASE_BASELINE_IMAGE=ubuntu-focal
+# Sysbox's default baseline image to build release binaries. Notice that this is
+# currently a requirement to build official Sysbox packages as only Impish carries
+# ID-mapped mount support in the kernel and associated clibs.
+RELEASE_BASELINE_IMAGE=ubuntu-impish
 
 # Go version to utilize in slave containers for the building process.
 # We are temporarily skipping these settings as we are relying on Go's
