@@ -4,6 +4,13 @@
 # debugging purposes.
 export DH_VERBOSE = 1
 
+# Override buildeb step to enforce 'xz' as the compressor to rely on. Notice
+# that starting with Ubuntu Impish (i.e., 21.10), all packages make use of
+# 'zstd' as the default compressor, but this one is not supported in debian
+# distro yet.
+override_dh_builddeb:
+	dh_builddeb -- -Zxz
+
 override_dh_auto_build:
 	# Build sysbox's components.
 	cd sysbox && make sysbox-static-local
