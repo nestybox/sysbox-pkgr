@@ -6,10 +6,6 @@
 	sysbox-ee-deploy-k8s-image \
 	sysbox-ee-deploy-k8s-image-artifacts \
 	sysbox-ee-deploy-k8s-image-flatcar-artifacts \
-	fetch_sysbox_ce_bionic_bins \
-	fetch_sysbox_ce_focal_bins \
-	fetch_sysbox_ee_bionic_bins \
-	fetch_sysbox_ee_focal_bins \
 	fetch_sysbox_ce_bins \
 	fetch_sysbox_ee_bins \
 	check-sysbox-artifacts \
@@ -22,8 +18,7 @@ SHELL := /bin/bash
 
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_FLATCAR_BINS = $(SYSBOX_BINS) fusermount shiftfs.ko
-SYSBOX_DISTRO = ubuntu-focal ubuntu-bionic
-SYSBOX_VER = 0.4.1
+SYSBOX_VER = 0.5.0
 CRIO_VERSIONS = v1.20 v1.21
 
 # Supported Flatcar versions
@@ -32,6 +27,17 @@ FLATCAR_2905.2.3_KERNEL := "5.10.61-flatcar"
 FLATCAR_2905.2.6_KERNEL := "5.10.75-flatcar"
 FLATCAR_DEV_ENVS := FLATCAR_DEV_ENV_2905.2.3 FLATCAR_DEV_ENV_2905.2.6
 
+# Obtain the current system architecture.
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_M),x86_64)
+	SYS_ARCH := amd64
+else ifeq ($(UNAME_M),aarch64)
+	SYS_ARCH := arm64
+else ifeq ($(UNAME_M),arm)
+	SYS_ARCH := armhf
+else ifeq ($(UNAME_M),armel)
+	SYS_ARCH := armel
+endif
 
 #
 # Sysbox artifacts for Ubuntu distro
@@ -42,49 +48,28 @@ FLATCAR_DEV_ENVS := FLATCAR_DEV_ENV_2905.2.3 FLATCAR_DEV_ENV_2905.2.6
 # binaries into the sysbox-deploy-k8s image. Variable SYSBOX_VER selects the
 # version of the Sysbox binaries to download.
 
-fetch-sysbox-ce-bionic-bins:
+fetch-sysbox-ce-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
-	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ce_$(SYSBOX_VER)-0.ubuntu-bionic_amd64.deb -P $(TMPDIR)
-	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_VER)-0.ubuntu-bionic_amd64.deb $(TMPDIR)/sysbox-ce-ubuntu-bionic
-	mkdir -p bin/sysbox-ce/ubuntu-bionic
-	rm -rf bin/sysbox-ce/ubuntu-bionic/*
-	cp $(TMPDIR)/sysbox-ce-ubuntu-bionic/usr/bin/sysbox-* bin/sysbox-ce/ubuntu-bionic/.
+	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ce_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb -P $(TMPDIR)
+	mkdir -p $(TMPDIR)/sysbox-ce/$(SYS_ARCH)
+	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce/$(SYS_ARCH)
+	mkdir -p bin/sysbox-ce/$(SYS_ARCH)
+	rm -rf bin/sysbox-ce/$(SYS_ARCH)/*
+	cp $(TMPDIR)/sysbox-ce/$(SYS_ARCH)/usr/bin/sysbox-* bin/sysbox-ce/$(SYS_ARCH)/.
 	rm -rf $(TMPDIR)
 
-fetch-sysbox-ce-focal-bins:
+fetch-sysbox-ee-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
-	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ce_$(SYSBOX_VER)-0.ubuntu-focal_amd64.deb -P $(TMPDIR)
-	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_VER)-0.ubuntu-focal_amd64.deb $(TMPDIR)/sysbox-ce-ubuntu-focal
-	mkdir -p bin/sysbox-ce/ubuntu-focal
-	rm -rf bin/sysbox-ce/ubuntu-focal/*
-	cp $(TMPDIR)/sysbox-ce-ubuntu-focal/usr/bin/sysbox-* bin/sysbox-ce/ubuntu-focal/.
+	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ee_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb -P $(TMPDIR)
+	mkdir -p $(TMPDIR)/sysbox-ee/$(SYS_ARCH)
+	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ee/$(SYS_ARCH)
+	mkdir -p bin/sysbox-ee/$(SYS_ARCH)
+	rm -rf bin/sysbox-ee/$(SYS_ARCH)/*
+	cp $(TMPDIR)/sysbox-ee/$(SYS_ARCH)/usr/bin/sysbox-* bin/sysbox-ee/$(SYS_ARCH)/.
 	rm -rf $(TMPDIR)
 
-fetch-sysbox-ee-bionic-bins:
-	$(eval TMPDIR := $(shell mktemp -d))
-	echo "TMPDIR = $(TMPDIR)"
-	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ee_$(SYSBOX_VER)-0.ubuntu-bionic_amd64.deb -P $(TMPDIR)
-	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_VER)-0.ubuntu-bionic_amd64.deb $(TMPDIR)/sysbox-ee-ubuntu-bionic
-	mkdir -p bin/sysbox-ee/ubuntu-bionic
-	rm -rf bin/sysbox-ee/ubuntu-bionic/*
-	cp $(TMPDIR)/sysbox-ee-ubuntu-bionic/usr/bin/sysbox-* bin/sysbox-ee/ubuntu-bionic/.
-	rm -rf $(TMPDIR)
-
-fetch-sysbox-ee-focal-bins:
-	$(eval TMPDIR := $(shell mktemp -d))
-	echo "TMPDIR = $(TMPDIR)"
-	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ee_$(SYSBOX_VER)-0.ubuntu-focal_amd64.deb -P $(TMPDIR)
-	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_VER)-0.ubuntu-focal_amd64.deb $(TMPDIR)/sysbox-ee-ubuntu-focal
-	mkdir -p bin/sysbox-ee/ubuntu-focal
-	rm -rf bin/sysbox-ee/ubuntu-focal/*
-	cp $(TMPDIR)/sysbox-ee-ubuntu-focal/usr/bin/sysbox-* bin/sysbox-ee/ubuntu-focal/.
-	rm -rf $(TMPDIR)
-
-fetch-sysbox-ce-bins: fetch-sysbox-ce-bionic-bins fetch-sysbox-ce-focal-bins
-
-fetch-sysbox-ee-bins: fetch-sysbox-ee-bionic-bins fetch-sysbox-ee-focal-bins
 
 #
 # Sysbox artifacts, and its dependencies, for Flatcar distro.
@@ -202,10 +187,10 @@ $(CRIO_VERSIONS):
 #
 
 check-sysbox-artifacts:
-	@$(foreach distro,$(SYSBOX_DISTRO),$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ce/$(distro)/$(file)" ] || "missing sysbox-ce binary: bin/sysbox-ce/$(distro)/$(file)";))
+	$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ce/$(SYS_ARCH)/$(file)" ] || "missing sysbox-ce binary: bin/sysbox-ce/$(SYS_ARCH)/$(file)")
 
 check-sysbox-ee-artifacts:
-	@$(foreach distro,$(SYSBOX_DISTRO),$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ee/$(distro)/$(file)" ] || "missing sysbox-ee binary: bin/sysbox-ee/$(distro)/$(file)";))
+	@$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ee/$(SYS_ARCH)/$(file)" ] || "missing sysbox-ee binary: bin/sysbox-ee/$(SYS_ARCH)/$(file)")
 
 check-crio-artifacts:
 	@$(foreach version,$(CRIO_VERSIONS),[ -f "bin/crio/$(version)/crio" ] || "missing CRI-O binary: bin/crio/$(version)/crio";)
@@ -219,7 +204,8 @@ check-sysbox-ee-flatcar-artifacts:
 
 all: sysbox-deploy-k8s-image sysbox-ee-deploy-k8s-image
 
-sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
+#sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
+sysbox-deploy-k8s-image: fetch-sysbox-ce-bins check-sysbox-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ce .
 
 sysbox-ee-deploy-k8s-image: sysbox-ee-deploy-k8s-artifacts sysbox-ee-deploy-k8s-flatcar-artifacts
