@@ -206,10 +206,14 @@ all: sysbox-deploy-k8s-image sysbox-ee-deploy-k8s-image
 
 #sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
 sysbox-deploy-k8s-image: fetch-sysbox-ce-bins check-sysbox-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ce .
+	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_VER) \
+		--build-arg sys_arch=$(SYS_ARCH) \
+		-f Dockerfile.sysbox-ce .
 
 sysbox-ee-deploy-k8s-image: sysbox-ee-deploy-k8s-artifacts sysbox-ee-deploy-k8s-flatcar-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s:v$(SYSBOX_VER) -f Dockerfile.sysbox-ee .
+	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s:v$(SYSBOX_VER) \
+		--build-arg sys_arch=$(SYS_ARCH) \
+		-f Dockerfile.sysbox-ee .
 
 sysbox-ee-deploy-k8s-artifacts: build-crio check-crio-artifacts fetch-sysbox-ee-bins check-sysbox-ee-artifacts
 

@@ -31,26 +31,26 @@ FROM centos/systemd
 
 ARG DEST=/opt/sysbox
 ARG CRICTL_VERSION="v1.20.0"
-ARG CRIO_V1_20_TAR="cri-o.amd64.v1.20.3.tar.gz"
-ARG CRIO_V1_21_TAR="cri-o.amd64.v1.21.3.tar.gz"
+ARG CRIO_V1_20_TAR="cri-o.${SYS_ARCH}.v1.20.3.tar.gz"
+ARG CRIO_V1_21_TAR="cri-o.${SYS_ARCH}.v1.21.3.tar.gz"
 
 RUN yum install -y curl wget git bc which
 
-RUN curl -Lso /bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl && \
+RUN curl -Lso /bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/${SYS_ARCH}/kubectl && \
     chmod +x /bin/kubectl
 
 # dasl for yaml, toml, json parsing
 RUN curl -s https://api.github.com/repos/tomwright/dasel/releases/latest | \
     grep browser_download_url | \
-    grep linux_amd64 | \
+    grep linux_${SYS_ARCH} | \
     cut -d '"' -f 4 | \
-    wget -qi - && mv dasel_linux_amd64 dasel && chmod +x dasel && mv ./dasel /usr/local/bin/dasel
+    wget -qi - && mv dasel_linux_${SYS_ARCH} dasel && chmod +x dasel && mv ./dasel /usr/local/bin/dasel
 
 # crictl will be copied to the host, and used by the crio installation agents
-RUN wget https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-amd64.tar.gz \
-    && tar zxvf crictl-${CRICTL_VERSION}-linux-amd64.tar.gz -C /usr/local/bin \
+RUN wget https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-${SYS_ARCH}.tar.gz \
+    && tar zxvf crictl-${CRICTL_VERSION}-linux-${SYS_ARCH}.tar.gz -C /usr/local/bin \
     && chmod +x /usr/local/bin/crictl \
-    && rm -f crictl-${CRICTL_VERSION}-linux-amd64.tar.gz
+    && rm -f crictl-${CRICTL_VERSION}-linux-${SYS_ARCH}.tar.gz
 
 # shiftfs-dkms sources
 RUN git clone --branch k5.4 https://github.com/nestybox/shiftfs-dkms.git /opt/shiftfs-k5.4 \
@@ -79,13 +79,13 @@ COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.
 #
 # Load CRI-O installation artifacts
 #
-RUN wget https://storage.googleapis.com/k8s-conform-cri-o/artifacts/${CRIO_V1_20_TAR} -O cri-o.amd64.tar.gz \
+RUN wget https://storage.googleapis.com/k8s-conform-cri-o/artifacts/${CRIO_V1_20_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
     && mkdir -p /opt/crio-deploy/bin/v1.20 \
-    && mv cri-o.amd64.tar.gz /opt/crio-deploy/bin/v1.20/.
+    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.20/.
 
-RUN wget https://storage.googleapis.com/k8s-conform-cri-o/artifacts/${CRIO_V1_21_TAR} -O cri-o.amd64.tar.gz \
+RUN wget https://storage.googleapis.com/k8s-conform-cri-o/artifacts/${CRIO_V1_21_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
     && mkdir -p /opt/crio-deploy/bin/v1.21 \
-    && mv cri-o.amd64.tar.gz /opt/crio-deploy/bin/v1.21/.
+    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.21/.
 
 COPY systemd/crio-installer.service /opt/crio-deploy/systemd/crio-installer.service
 COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
