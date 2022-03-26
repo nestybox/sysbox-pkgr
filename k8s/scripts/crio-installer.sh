@@ -24,8 +24,6 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-crio_tar_file_name="cri-o.amd64.tar.gz"
-
 function die() {
 	msg="$*"
 	echo "ERROR: $msg" >&2
@@ -43,8 +41,31 @@ function flatcar_distro() {
 	grep -q "^ID=flatcar" /etc/os-release
 }
 
+function get_sys_arch() {
+	local uname_m=$(uname -m)
+
+	if [[ "$uname_m" == "x86_64" ]]; then
+		sys_arch=amd64
+	elif [[ "$uname_m" == "aarch64" ]]; then
+		sys_arch=arm64
+	elif [[ "$uname_m" == "arm" ]]; then
+		sys_arch=armhf
+	elif [[ "$uname_m" == "armel" ]]; then
+		sys_arch=armel
+	fi
+
+	echo "${sys_arch}"
+}
+
+function get_crio_tar_file_name {
+	local sys_arch=$(get_sys_arch)
+
+	echo "cri-o.${sys_arch}.tar.gz"
+}
+
 function do_install_crio() {
 	local path=$1
+	local crio_tar_file_name=$(get_crio_tar_file_name)
 	local crio_tar_file_path="${path}/${crio_tar_file_name}"
 
 	# Extract and install the CRI-O (and related dependencies) binaries
