@@ -93,9 +93,9 @@ $(FLATCAR_VERSIONS): $(FLATCAR_DEV_ENVS)
 	@printf "\n*** Building Sysbox's flatcar-$@ binaries ... ***\n\n"
 	@make -C ../ sources/sysbox-internal
 	@make -C ../sources/sysbox-internal/ FLATCAR_VERSION=$@ FLATCAR_KERNEL=$(FLATCAR_$@_KERNEL) sysbox-flatcar
-	@mkdir -p bin/sysbox-ee/flatcar-$@
-	cp ../sources/sysbox-internal/build/flatcar-$@/amd64/* bin/sysbox-ee/flatcar-$@/
-	@printf "\n*** Completed building Sysbox's flatcar-$@ binaries ... ***\n\n"
+	@mkdir -p bin/sysbox-ee/flatcar-$@/$(SYS_ARCH)
+	cp ../sources/sysbox-internal/build/flatcar-$@/$(SYS_ARCH)/* bin/sysbox-ee/flatcar-$@/$(SYS_ARCH)/
+	@printf "\n*** Completed building Sysbox's flatcar-$@ binaries on $(SYS_ARCH) architecture ... ***\n\n"
 
 $(FLATCAR_DEV_ENVS):
 	$(eval FLATCAR_VERSION := $(subst FLATCAR_DEV_ENV_,,$@))
@@ -103,12 +103,12 @@ $(FLATCAR_DEV_ENVS):
 	if docker inspect --type=image ghcr.io/nestybox/flatcar-dev-container:${FLATCAR_VERSION} >/dev/null 2>&1; then		\
 		printf "\n*** Flatcar-${FLATCAR_VERSION} dev-environment image found. Skipping build process ... ***\n\n"; 		\
 	else																												\
-		printf "\n*** Building Flatcar-${FLATCAR_VERSION} dev-environment ... ***\n\n";									\
+		printf "\n*** Building Flatcar-${FLATCAR_VERSION} dev-environment on $(SYS_ARCH) architecture ... ***\n\n";									\
 		TMPDIR=$$(mktemp -d);																							\
 		chmod 755 $${TMPDIR};																							\
 																														\
 		# Fetch flatcar's official dev image and import it into a docker container.										\
-		curl -L https://stable.release.flatcar-linux.net/amd64-usr/${FLATCAR_VERSION}/flatcar_developer_container.bin.bz2 \
+		curl -L https://stable.release.flatcar-linux.net/$(SYS_ARCH)-usr/${FLATCAR_VERSION}/flatcar_developer_container.bin.bz2 \
 			-o $${TMPDIR}/flatcar_developer_container.bin.bz2;															\
 		bunzip2 -k $${TMPDIR}/flatcar_developer_container.bin.bz2;														\
 		mkdir -p $${TMPDIR}/${FLATCAR_VERSION};																			\
@@ -216,7 +216,9 @@ sysbox-ee-deploy-k8s-image: sysbox-ee-deploy-k8s-artifacts sysbox-ee-deploy-k8s-
 
 sysbox-ee-deploy-k8s-artifacts: build-crio check-crio-artifacts fetch-sysbox-ee-bins check-sysbox-ee-artifacts
 
-sysbox-ee-deploy-k8s-flatcar-artifacts: build-crio check-crio-artifacts build-flatcar-sysbox-ee-bins check-sysbox-ee-flatcar-artifacts
+#sysbox-ee-deploy-k8s-flatcar-artifacts: build-crio check-crio-artifacts build-flatcar-sysbox-ee-bins check-sysbox-ee-flatcar-artifacts
+sysbox-ee-deploy-k8s-flatcar-artifacts: build-flatcar-sysbox-ee-bins
+# check-sysbox-ee-flatcar-artifacts
 
 #
 # Cleanup targets
