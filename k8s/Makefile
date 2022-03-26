@@ -140,8 +140,8 @@ $(CRIO_VERSIONS):
 	@git clone git@github.com:nestybox/cri-o.git $(TMPDIR)/cri-o
 	@git -C $(TMPDIR)/cri-o checkout -b $@-sysbox origin/$@-sysbox
 	@cd $(TMPDIR)/cri-o && CONTAINER_RUNTIME=docker make build-static
-	@mkdir -p bin/crio/$@
-	@cp $(TMPDIR)/cri-o/bin/static/crio bin/crio/$@/
+	@mkdir -p bin/crio/$@/$(SYS_ARCH)
+	@cp $(TMPDIR)/cri-o/bin/static/crio bin/crio/$@/$(SYS_ARCH)
 	@chmod 755 -R $(TMPDIR) && rm -rf $(TMPDIR)
 
 #
@@ -193,7 +193,7 @@ check-sysbox-ee-artifacts:
 	@$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ee/$(SYS_ARCH)/$(file)" ] || "missing sysbox-ee binary: bin/sysbox-ee/$(SYS_ARCH)/$(file)")
 
 check-crio-artifacts:
-	@$(foreach version,$(CRIO_VERSIONS),[ -f "bin/crio/$(version)/crio" ] || "missing CRI-O binary: bin/crio/$(version)/crio";)
+	@$(foreach version,$(CRIO_VERSIONS),[ -f "bin/crio/$(version)/$(SYS_ARCH)/crio" ] || "missing CRI-O binary: bin/crio/$(version)/$(SYS_ARCH)/crio";)
 
 check-sysbox-ee-flatcar-artifacts:
 	@$(foreach version,$(FLATCAR_VERSIONS),$(foreach file,$(SYSBOX_FLATCAR_BINS),[ -f "bin/sysbox-ee/flatcar-$(version)/$(file)" ] || "missing sysbox-ee-flatcar binary: bin/sysbox-ee/flatcar-$(version)/$(file)";))
@@ -204,8 +204,7 @@ check-sysbox-ee-flatcar-artifacts:
 
 all: sysbox-deploy-k8s-image sysbox-ee-deploy-k8s-image
 
-#sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
-sysbox-deploy-k8s-image: fetch-sysbox-ce-bins check-sysbox-artifacts
+sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
 	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_VER) \
 		--build-arg sys_arch=$(SYS_ARCH) \
 		-f Dockerfile.sysbox-ce .

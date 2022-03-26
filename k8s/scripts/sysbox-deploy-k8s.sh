@@ -70,6 +70,9 @@ shiftfs_min_kernel_ver=5.4
 # Current OS distro release
 os_distro_release=""
 
+# System platform architecture
+sys_arch=""
+
 # Installation flags
 do_sysbox_install="true"
 do_sysbox_update="false"
@@ -82,7 +85,7 @@ do_crio_install="true"
 function deploy_crio_installer_service() {
 	echo "Deploying CRI-O installer agent on the host ($k8s_version) ..."
 
-	cp ${crio_artifacts}/bin/${k8s_version}/cri-o.amd64.tar.gz ${host_local_bin}/cri-o.amd64.tar.gz
+	cp ${crio_artifacts}/bin/${k8s_version}/cri-o.${sys_arch}.tar.gz ${host_local_bin}/cri-o.${sys_arch}.tar.gz
 	cp ${crio_artifacts}/bin/${k8s_version}/crio-patched ${host_local_bin}/crio-patched
 
 	cp ${crio_artifacts}/scripts/crio-installer.sh ${host_local_bin}/crio-installer.sh
@@ -648,6 +651,22 @@ function get_host_distro() {
 	echo "${distro_name}-${version_id}"
 }
 
+function get_sys_arch() {
+	local uname_m=$(uname -m)
+
+	if [[ "$uname_m" == "x86_64" ]]; then
+		sys_arch=amd64
+	elif [[ "$uname_m" == "aarch64" ]]; then
+		sys_arch=arm64
+	elif [[ "$uname_m" == "arm" ]]; then
+		sys_arch=armhf
+	elif [[ "$uname_m" == "armel" ]]; then
+		sys_arch=armel
+	fi
+
+	echo "${sys_arch}"
+}
+
 function host_flatcar_distro() {
 	local distro=$(get_host_distro)
 	echo $distro | grep -q "flatcar"
@@ -666,6 +685,14 @@ function is_supported_distro() {
 		[[ "$distro" == "ubuntu-18.04" ]] ||
 		[[ "$distro" =~ "debian" ]] ||
 		[[ "$distro" =~ "flatcar" ]]; then
+		return
+	fi
+
+	false
+}
+
+function is_supported_arch() {
+	if [[ "$sys_arch" == "amd64" ]] || [[ "$sys_arch" == "arm64" ]]; then
 		return
 	fi
 
@@ -888,6 +915,11 @@ function main() {
 	os_distro_release=$(get_host_distro)
 	if ! is_supported_distro; then
 		die "Sysbox is not supported on this host's distro ($os_distro_release)".
+	fi
+
+	sys_arch=$(get_sys_arch)
+	if ! is_supported_arch; then
+		die "Sysbox is not supported on this platform architecture ($sys_arch)".
 	fi
 
 	k8s_version=$(get_k8s_version)
