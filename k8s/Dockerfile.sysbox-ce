@@ -27,7 +27,8 @@
 # ubuntu + systemd image (systemctl can't not connect to the host's dbus, even
 # though the host's dbus socket was mounted into the container).
 
-FROM centos/systemd
+FROM ghcr.io/nestybox/centos7/systemd
+
 ARG sys_arch
 ENV SYS_ARCH=${sys_arch}
 ARG DEST=/opt/sysbox
