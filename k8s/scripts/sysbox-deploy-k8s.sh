@@ -256,10 +256,9 @@ function get_artifacts_dir() {
 
 	local distro=$os_distro_release
 
-	if [[ "$distro" == "ubuntu-20.04" ]]; then
-		artifacts_dir="${sysbox_artifacts}/bin/ubuntu-focal"
-	elif [[ "$distro" == "ubuntu-18.04" ]]; then
-		artifacts_dir="${sysbox_artifacts}/bin/ubuntu-bionic"
+	if [[ "$distro" == "ubuntu-20.04" ]] ||
+		[[ "$distro" == "ubuntu-18.04" ]]; then
+		artifacts_dir="${sysbox_artifacts}/bin/generic"
 	elif [[ "$distro" =~ "flatcar" ]]; then
 		local release=$(echo $distro | cut -d"-" -f2)
 		artifacts_dir="${sysbox_artifacts}/bin/flatcar-${release}"
