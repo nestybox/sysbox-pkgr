@@ -52,22 +52,22 @@ fetch-sysbox-ce-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
 	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ce_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb -P $(TMPDIR)
-	mkdir -p $(TMPDIR)/sysbox-ce/$(SYS_ARCH)
-	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce/$(SYS_ARCH)
-	mkdir -p bin/sysbox-ce/$(SYS_ARCH)
-	rm -rf bin/sysbox-ce/$(SYS_ARCH)/*
-	cp $(TMPDIR)/sysbox-ce/$(SYS_ARCH)/usr/bin/sysbox-* bin/sysbox-ce/$(SYS_ARCH)/.
+	mkdir -p $(TMPDIR)/sysbox-ce-generic
+	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
+	mkdir -p bin/sysbox-ce/generic
+	rm -rf bin/sysbox-ce/generic/*
+	cp $(TMPDIR)/sysbox-ce-generic/usr/bin/sysbox-* bin/sysbox-ce/generic/.
 	rm -rf $(TMPDIR)
 
 fetch-sysbox-ee-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
 	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ee_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb -P $(TMPDIR)
-	mkdir -p $(TMPDIR)/sysbox-ee/$(SYS_ARCH)
-	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ee/$(SYS_ARCH)
-	mkdir -p bin/sysbox-ee/$(SYS_ARCH)
-	rm -rf bin/sysbox-ee/$(SYS_ARCH)/*
-	cp $(TMPDIR)/sysbox-ee/$(SYS_ARCH)/usr/bin/sysbox-* bin/sysbox-ee/$(SYS_ARCH)/.
+	mkdir -p $(TMPDIR)/sysbox-ee-generic
+	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ee-generic
+	mkdir -p bin/sysbox-ee/generic
+	rm -rf bin/sysbox-ee/generic/*
+	cp $(TMPDIR)/sysbox-ee-generic/usr/bin/sysbox-* bin/sysbox-ee/generic/.
 	rm -rf $(TMPDIR)
 
 
@@ -93,8 +93,8 @@ $(FLATCAR_VERSIONS): $(FLATCAR_DEV_ENVS)
 	@printf "\n*** Building Sysbox's flatcar-$@ binaries ... ***\n\n"
 	@make -C ../ sources/sysbox-internal
 	@make -C ../sources/sysbox-internal/ FLATCAR_VERSION=$@ FLATCAR_KERNEL=$(FLATCAR_$@_KERNEL) sysbox-flatcar
-	@mkdir -p bin/sysbox-ee/flatcar-$@/$(SYS_ARCH)
-	cp ../sources/sysbox-internal/build/flatcar-$@/$(SYS_ARCH)/* bin/sysbox-ee/flatcar-$@/$(SYS_ARCH)/
+	@mkdir -p bin/sysbox-ee/flatcar-$@
+	cp ../sources/sysbox-internal/build/flatcar-$@/$(SYS_ARCH)/* bin/sysbox-ee/flatcar-$@/
 	@printf "\n*** Completed building Sysbox's flatcar-$@ binaries on $(SYS_ARCH) architecture ... ***\n\n"
 
 $(FLATCAR_DEV_ENVS):
@@ -140,8 +140,8 @@ $(CRIO_VERSIONS):
 	@git clone git@github.com:nestybox/cri-o.git $(TMPDIR)/cri-o
 	@git -C $(TMPDIR)/cri-o checkout -b $@-sysbox origin/$@-sysbox
 	@cd $(TMPDIR)/cri-o && make binaries
-	@mkdir -p bin/crio/$@/$(SYS_ARCH)
-	@cp $(TMPDIR)/cri-o/bin/crio-static bin/crio/$@/$(SYS_ARCH)/crio
+	@mkdir -p bin/crio/$@
+	@cp $(TMPDIR)/cri-o/bin/crio-static bin/crio/$@/crio
 	@chmod 755 -R $(TMPDIR) && rm -rf $(TMPDIR)
 
 #
@@ -187,13 +187,13 @@ $(CRIO_VERSIONS):
 #
 
 check-sysbox-artifacts:
-	$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ce/$(SYS_ARCH)/$(file)" ] || "missing sysbox-ce binary: bin/sysbox-ce/$(SYS_ARCH)/$(file)")
+	$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ce/generic/$(file)" ] || "missing sysbox-ce binary: bin/sysbox-ce/generic/$(file)")
 
 check-sysbox-ee-artifacts:
-	@$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ee/$(SYS_ARCH)/$(file)" ] || "missing sysbox-ee binary: bin/sysbox-ee/$(SYS_ARCH)/$(file)")
+	@$(foreach file,$(SYSBOX_BINS),[ -f "bin/sysbox-ee/generic/$(file)" ] || "missing sysbox-ee binary: bin/sysbox-ee/generic/$(file)")
 
 check-crio-artifacts:
-	@$(foreach version,$(CRIO_VERSIONS),[ -f "bin/crio/$(version)/$(SYS_ARCH)/crio" ] || "missing CRI-O binary: bin/crio/$(version)/$(SYS_ARCH)/crio";)
+	@$(foreach version,$(CRIO_VERSIONS),[ -f "bin/crio/$(version)/crio" ] || "missing CRI-O binary: bin/crio/$(version)/crio";)
 
 check-sysbox-ee-flatcar-artifacts:
 	@$(foreach version,$(FLATCAR_VERSIONS),$(foreach file,$(SYSBOX_FLATCAR_BINS),[ -f "bin/sysbox-ee/flatcar-$(version)/$(file)" ] || "missing sysbox-ee-flatcar binary: bin/sysbox-ee/flatcar-$(version)/$(file)";))
