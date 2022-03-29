@@ -139,9 +139,9 @@ $(CRIO_VERSIONS):
 	@chmod 755 $(TMPDIR)
 	@git clone git@github.com:nestybox/cri-o.git $(TMPDIR)/cri-o
 	@git -C $(TMPDIR)/cri-o checkout -b $@-sysbox origin/$@-sysbox
-	@cd $(TMPDIR)/cri-o && CONTAINER_RUNTIME=docker make build-static
+	@cd $(TMPDIR)/cri-o && make binaries
 	@mkdir -p bin/crio/$@/$(SYS_ARCH)
-	@cp $(TMPDIR)/cri-o/bin/static/crio bin/crio/$@/$(SYS_ARCH)
+	@cp $(TMPDIR)/cri-o/bin/crio-static bin/crio/$@/$(SYS_ARCH)/crio
 	@chmod 755 -R $(TMPDIR) && rm -rf $(TMPDIR)
 
 #
