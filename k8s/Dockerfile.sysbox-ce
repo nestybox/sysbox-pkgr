@@ -33,8 +33,8 @@ ARG sys_arch
 ENV SYS_ARCH=${sys_arch}
 ARG DEST=/opt/sysbox
 ARG CRICTL_VERSION="v1.20.0"
-ARG CRIO_V1_20_TAR="cri-o.${SYS_ARCH}.v1.20.3.tar.gz"
-ARG CRIO_V1_21_TAR="cri-o.${SYS_ARCH}.v1.21.3.tar.gz"
+ARG CRIO_V1_20_TAR="cri-o.${SYS_ARCH}.v1.20.5.tar.gz"
+ARG CRIO_V1_21_TAR="cri-o.${SYS_ARCH}.v1.21.6.tar.gz"
 
 RUN yum install -y curl wget git bc which
 
@@ -113,5 +113,5 @@ COPY config/etc_containers_registries.d_default.yaml /opt/crio-deploy/config/etc
 #
 # Load CRI-O patched binaries (to generate correct user-ns mappings)
 #
-COPY bin/crio/v1.20/${SYS_ARCH}/crio /opt/crio-deploy/bin/v1.20/crio-patched
-COPY bin/crio/v1.21/${SYS_ARCH}/crio /opt/crio-deploy/bin/v1.21/crio-patched
+COPY bin/crio/v1.20/crio /opt/crio-deploy/bin/v1.20/crio-patched
+COPY bin/crio/v1.21/crio /opt/crio-deploy/bin/v1.21/crio-patched
