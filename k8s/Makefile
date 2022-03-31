@@ -101,10 +101,10 @@ $(FLATCAR_VERSIONS): $(FLATCAR_DEV_ENVS)
 $(FLATCAR_DEV_ENVS):
 	$(eval FLATCAR_VERSION := $(subst FLATCAR_DEV_ENV_,,$@))
 
-	if docker inspect --type=image ghcr.io/nestybox/flatcar-dev-container:${FLATCAR_VERSION} >/dev/null 2>&1; then		\
+	if docker inspect --type=image ghcr.io/nestybox/flatcar-${FLATCAR_VERSION}-dev-container:latest >/dev/null 2>&1; then		\
 		printf "\n*** Flatcar-${FLATCAR_VERSION} dev-environment image found. Skipping build process ... ***\n\n"; 		\
 	else																												\
-		printf "\n*** Building Flatcar-${FLATCAR_VERSION} dev-environment on $(SYS_ARCH) architecture ... ***\n\n";									\
+		printf "\n*** Building Flatcar-${FLATCAR_VERSION} dev-environment for ${SYS_ARCH} architecture ... ***\n\n";									\
 		TMPDIR=$$(mktemp -d);																							\
 		chmod 755 $${TMPDIR};																							\
 																														\
@@ -120,7 +120,7 @@ $(FLATCAR_DEV_ENVS):
 		# Build enhanced dev-container image.																			\
 		docker image build																								\
 			--build-arg FLATCAR_VERSION=${FLATCAR_VERSION} 																\
-			--tag ghcr.io/nestybox/flatcar-dev-container:${FLATCAR_VERSION} 											\
+			--tag ghcr.io/nestybox/flatcar-${FLATCAR_VERSION}-dev-container:${SYS_ARCH} 											\
 			-f Dockerfile.flatcar.dev .; 																				\
 																														\
 		sudo umount $${TMPDIR}/${FLATCAR_VERSION}; 																		\
