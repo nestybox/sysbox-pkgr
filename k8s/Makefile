@@ -40,6 +40,12 @@ else ifeq ($(UNAME_M),armel)
 	SYS_ARCH := armel
 endif
 
+# Flatcar didn't add arm64 support till '3033' stable release.
+ifeq ($(SYS_ARCH),ARM64)
+       FLATCAR_VERSIONS := $(shell echo ${FLATCAR_VERSIONS} | cut -f3- -d" ")
+endif
+
+
 #
 # Sysbox artifacts for Ubuntu distro
 #
