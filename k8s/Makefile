@@ -41,8 +41,9 @@ else ifeq ($(UNAME_M),armel)
 endif
 
 # Flatcar didn't add arm64 support till '3033' stable release.
-ifeq ($(SYS_ARCH),ARM64)
-       FLATCAR_VERSIONS := $(shell echo ${FLATCAR_VERSIONS} | cut -f3- -d" ")
+ifeq ($(SYS_ARCH),arm64)
+	FLATCAR_VERSIONS := $(shell echo ${FLATCAR_VERSIONS} | cut -f3- -d" ")
+	FLATCAR_DEV_ENVS := $(shell echo ${FLATCAR_DEV_ENVS} | cut -f3- -d" ")
 endif
 
 
