@@ -18,7 +18,7 @@ SHELL := /bin/bash
 
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_FLATCAR_BINS = $(SYSBOX_BINS) fusermount shiftfs.ko
-SYSBOX_VER = 0.5.0
+SYSBOX_VER = 0.5.1
 CRIO_VERSIONS = v1.20 v1.21
 
 # Supported Flatcar versions
@@ -224,9 +224,7 @@ sysbox-ee-deploy-k8s-image: sysbox-ee-deploy-k8s-artifacts sysbox-ee-deploy-k8s-
 
 sysbox-ee-deploy-k8s-artifacts: build-crio check-crio-artifacts fetch-sysbox-ee-bins check-sysbox-ee-artifacts
 
-#sysbox-ee-deploy-k8s-flatcar-artifacts: build-crio check-crio-artifacts build-flatcar-sysbox-ee-bins check-sysbox-ee-flatcar-artifacts
-sysbox-ee-deploy-k8s-flatcar-artifacts: build-flatcar-sysbox-ee-bins
-# check-sysbox-ee-flatcar-artifacts
+sysbox-ee-deploy-k8s-flatcar-artifacts: build-crio check-crio-artifacts build-flatcar-sysbox-ee-bins check-sysbox-ee-flatcar-artifacts
 
 #
 # Cleanup targets
