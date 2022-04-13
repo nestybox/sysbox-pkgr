@@ -108,7 +108,7 @@ $(FLATCAR_VERSIONS): $(FLATCAR_DEV_ENVS)
 $(FLATCAR_DEV_ENVS):
 	$(eval FLATCAR_VERSION := $(subst FLATCAR_DEV_ENV_,,$@))
 
-	if docker inspect --type=image ghcr.io/nestybox/flatcar-${FLATCAR_VERSION}-dev-container:latest >/dev/null 2>&1; then		\
+	if docker manifest inspect ghcr.io/nestybox/flatcar-${FLATCAR_VERSION}-dev-container:latest >/dev/null 2>&1; then               \
 		printf "\n*** Flatcar-${FLATCAR_VERSION} dev-environment image found. Skipping build process ... ***\n\n"; 		\
 	else																												\
 		printf "\n*** Building Flatcar-${FLATCAR_VERSION} dev-environment for ${SYS_ARCH} architecture ... ***\n\n";									\
