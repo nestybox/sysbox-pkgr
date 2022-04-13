@@ -100,7 +100,7 @@ build-flatcar-sysbox-ee-bins: $(FLATCAR_VERSIONS)
 $(FLATCAR_VERSIONS): $(FLATCAR_DEV_ENVS)
 	@printf "\n*** Building Sysbox's flatcar-$@ binaries ... ***\n\n"
 	@make -C ../ sources/sysbox-internal
-	@make -C ../sources/sysbox-internal/ FLATCAR_VERSION=$@ FLATCAR_KERNEL=$(FLATCAR_$@_KERNEL) sysbox-flatcar
+	@make -C ../sources/sysbox-internal/ FLATCAR_VERSION=$@ FLATCAR_KERNEL=$(FLATCAR_$@_KERNEL) sysbox-flatcar-static
 	@mkdir -p bin/sysbox-ee/flatcar-$@
 	cp ../sources/sysbox-internal/build/flatcar-$@/$(SYS_ARCH)/* bin/sysbox-ee/flatcar-$@/
 	@printf "\n*** Completed building Sysbox's flatcar-$@ binaries on $(SYS_ARCH) architecture ... ***\n\n"
