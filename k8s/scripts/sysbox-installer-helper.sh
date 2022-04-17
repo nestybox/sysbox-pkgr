@@ -99,11 +99,35 @@ function flatcar_distro() {
 	grep -q "^ID=flatcar" /etc/os-release
 }
 
+function check_procfs_mount_userns() {
+
+	# Attempt to mount procfs from a user-namespace.
+	if unshare -U -p -f --mount-proc -r cat /dev/null; then
+		return 0
+	fi
+
+	# Find out if there's anything we can do to workaround this situation. In certain
+	# scenarios (e.g. Flatcar >= 3033.2.4), a fake (bind-mounted) '/proc/cmdline' can
+	# prevent procfs from being mounted within a user-namespace. In these cases we'll
+	# attempt to unmount this resource and try again.
+	if mount | egrep -q "cmdline" && umount /proc/cmdline; then
+		if unshare -U -p -f --mount-proc -r cat /dev/null; then
+			return 0
+		fi
+	fi
+
+	return 1
+}
+
 function main() {
 
 	euid=$(id -u)
 	if [[ $euid -ne 0 ]]; then
 		die "This script must be run as root"
+	fi
+
+	if ! check_procfs_mount_userns; then
+		die "Sysbox unmet requirement: node is unable to mount procfs from within unprivileged user-namespaces."
 	fi
 
 	# In flatcar's case the shiftfs module is explicitly provided by the installer
