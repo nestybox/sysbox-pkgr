@@ -67,8 +67,9 @@ subgid_file="${host_etc}/subgid"
 # Shiftfs
 shiftfs_min_kernel_ver=5.4
 
-# Current OS distro release
+# Current OS distro and kernel release
 os_distro_release=""
+os_kernel_release=""
 
 # System platform architecture
 sys_arch=""
@@ -437,7 +438,7 @@ function install_sysbox_deps() {
 
 	echo "Installing Sysbox dependencies on host ..."
 
-	local version=$(get_host_kernel)
+	local version=$(get_host_kernel_brief)
 	if semver_lt $version 5.4; then
 		echo "Kernel has version $version, which is below the min required for shiftfs ($shiftfs_min_kernel_ver); skipping shiftfs installation."
 		return
@@ -671,8 +672,13 @@ function host_flatcar_distro() {
 	echo $distro | grep -q "flatcar"
 }
 
+function get_host_kernel_brief() {
+	local kernel=$(get_host_kernel)
+	echo "$kernel" | cut -d "." -f1-2
+}
+
 function get_host_kernel() {
-	cat /proc/version | cut -d" " -f3 | cut -d "." -f1-2
+	uname -r
 }
 
 function is_supported_distro() {
@@ -688,6 +694,25 @@ function is_supported_distro() {
 	fi
 
 	false
+}
+
+function is_supported_kernel() {
+
+	local kernel=$os_kernel_release
+
+	# Ubuntu distro is supported starting with kernel 5.3+.
+	if [[ "$os_distro_release" =~ "ubuntu" ]] && semver_lt $kernel 5.3; then
+		echo "Unsupported kernel version $version for Ubuntu distribution (< 5.3)."
+		return false
+	fi
+
+	# For all other distros, Sysbox requires 5.5+.
+	if semver_lt $kernel 5.5; then
+		echo "Unsupported kernel version $version for $os_distro_release distribution (< 5.5)."
+		return false
+	fi
+
+	true
 }
 
 function is_supported_arch() {
@@ -911,6 +936,11 @@ function main() {
 		die "Sysbox is not supported on this host's distro ($os_distro_release)".
 	fi
 
+	os_kernel_release=$(get_host_kernel)
+	if ! is_supported_kernel; then
+		die "Sysbox is not supported on this host's kernel release ($os_kernel_release)".
+	fi
+
 	sys_arch=$(get_sys_arch)
 	if ! is_supported_arch; then
 		die "Sysbox is not supported on this platform architecture ($sys_arch)".
@@ -974,7 +1004,7 @@ function main() {
 			config_crio_for_sysbox
 			crio_restart_pending=true
 			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
-			echo "$os_distro_release" >${host_var_lib_sysbox_deploy_k8s}/os_distro_release
+			echo "$os_kernel_release" >${host_var_lib_sysbox_deploy_k8s}/os_kernel_release
 		fi
 
 		if [[ "$crio_restart_pending" == "true" ]]; then
@@ -1033,7 +1063,7 @@ function main() {
 			remove_sysbox_deps
 			crio_restart_pending=true
 			rm -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
-			rm -f ${host_var_lib_sysbox_deploy_k8s}/os_distro_release
+			rm -f ${host_var_lib_sysbox_deploy_k8s}/os_kernel_release
 			rm_label_from_node "sysbox-runtime"
 			echo "$sysbox_edition removal completed."
 		fi
