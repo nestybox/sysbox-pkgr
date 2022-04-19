@@ -50,7 +50,6 @@ host_crio_conf_file_backup="${host_crio_conf_file}.orig"
 host_run="/mnt/host/run"
 host_var_lib="/mnt/host/var/lib"
 host_var_lib_sysbox_deploy_k8s="${host_var_lib}/sysbox-deploy-k8s"
-host_var_lib_sysbox_deploy_k8s_distro="${host_var_lib}/sysbox-deploy-k8s/distro_release"
 
 # Subid default values.
 subid_alloc_min_start=100000
@@ -337,6 +336,11 @@ function stop_sysbox() {
 }
 
 function install_sysbox() {
+	# Sysbox could potentially be already installed (during upgrades),
+	# so stop it first to ensure that copy instructions below can
+	# succeed.
+	stop_sysbox
+
 	echo "Installing $sysbox_edition on host ..."
 	copy_sysbox_to_host
 	copy_conf_to_host
@@ -701,18 +705,22 @@ function is_supported_kernel() {
 	local kernel=$os_kernel_release
 
 	# Ubuntu distro is supported starting with kernel 5.3+.
-	if [[ "$os_distro_release" =~ "ubuntu" ]] && semver_lt $kernel 5.3; then
-		echo "Unsupported kernel version $version for Ubuntu distribution (< 5.3)."
-		return false
+	if [[ "$os_distro_release" =~ "ubuntu" ]]; then
+		if semver_lt $kernel 5.3; then
+			echo "Unsupported kernel version $kernel for Ubuntu distribution (< 5.3)."
+			return 1
+		fi
+
+		return 0
 	fi
 
 	# For all other distros, Sysbox requires 5.5+.
 	if semver_lt $kernel 5.5; then
-		echo "Unsupported kernel version $version for $os_distro_release distribution (< 5.5)."
-		return false
+		echo "Unsupported kernel version $kernel for $os_distro_release distribution (< 5.5)."
+		return 1
 	fi
 
-	true
+	return 0
 }
 
 function is_supported_arch() {
@@ -737,15 +745,15 @@ function is_supported_k8s_version() {
 	false
 }
 
-function is_host_upgraded() {
-	local cur_distro=$os_distro_release
+function is_kernel_upgraded() {
+	local cur_distro=$os_kernel_release
 
-	if [ ! -f ${host_var_lib_sysbox_deploy_k8s_distro} ]; then
+	if [ ! -f ${host_var_lib_sysbox_deploy_k8s}/os_kernel_release ]; then
 		false
 		return
 	fi
 
-	local prev_distro=$(cat ${host_var_lib_sysbox_deploy_k8s_distro})
+	local prev_distro=$(cat ${host_var_lib_sysbox_deploy_k8s}/os_kernel_release)
 	if [[ ${cur_distro} == ${prev_distro} ]]; then
 		false
 		return
@@ -775,7 +783,7 @@ function install_precheck() {
 		do_sysbox_install="false"
 	fi
 
-	if is_host_upgraded; then
+	if is_kernel_upgraded; then
 		do_sysbox_update="true"
 	fi
 }
@@ -995,7 +1003,7 @@ function main() {
 			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/crio_installed
 		fi
 
-		# Install Sysbox
+		# (Re)Install Sysbox
 		if [[ "$do_sysbox_install" == "true" ]] ||
 			[[ "$do_sysbox_update" == "true" ]]; then
 			add_label_to_node "sysbox-runtime=installing"
