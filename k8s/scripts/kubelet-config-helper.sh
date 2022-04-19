@@ -534,7 +534,7 @@ function backup_config() {
 # Function iterates through all the kubelet environment-files and all the
 # environment-vars to search for the passed attribute and, if found, returns
 # its associated value.
-function get_crio_config_dependency() {
+function get_crio_config_dependency_from_kubelet_systemd() {
 	local exec_attr=$1
 
 	if [ -z "$exec_attr" ]; then
@@ -572,6 +572,29 @@ function get_crio_config_dependency() {
 	done
 }
 
+# Function obtains the kubelet config file and then search for the passed
+# config attribute.
+function get_crio_config_dependency_from_kubelet_config() {
+	local config_attr=$1
+
+	if [ -z "$config_attr" ]; then
+		echo ""
+		return
+	fi
+
+	# Let's start by identifying the kubelet config file.
+	# TODO: What if there's no explicit one defined? Is there a default one?
+	local kubelet_cfg_file=$(get_crio_config_dependency_from_kubelet_systemd "config")
+
+	# Check if there's a matching config_attr in the kubelet config file and return
+	# its associated value if present.
+	if [ ! -z "$kubelet_cfg_file" ]; then
+		local config_attr_val=$(egrep "$config_attr" "$kubelet_cfg_file" | cut -d":" -f2 | tr -d '"')
+		echo "$config_attr_val"
+		return
+	fi
+}
+
 # Function takes care of reconciliating operational attributes that can
 # potentially overlap between 'kubelet' and 'crio' components. In this scenario
 # we want to translate kubelet's overlapping attribute to the one understood by
@@ -591,6 +614,9 @@ function get_crio_config_dependency() {
 # * --cni-conf-dir: Path utilized by kubelet to find the CNI configuration
 #   attributes (defaults to /etc/cni/net.d).
 #
+# * --cgroup-driver: Driver utilized by kubelet to manipulate cgroups on the
+#   host.
+#
 # TODO: Review the list of kubelet attributes to identify other 'overlapping'
 # parameters (if any).
 function adjust_crio_config_dependencies() {
@@ -599,7 +625,7 @@ function adjust_crio_config_dependencies() {
 
 	# If kubelet is currently running with an explicit "infra" (pause) image, then
 	# adjust crio.conf to honor that request.
-	local pause_image=$(get_crio_config_dependency "pod-infra-container-image")
+	local pause_image=$(get_crio_config_dependency_from_kubelet_systemd "pod-infra-container-image")
 	if [ ! -z "$pause_image" ]; then
 		if egrep -q "pause_image =" $crio_conf_file; then
 			sed -i "s@pause_image =.*@pause_image = \"${pause_image}\"@" $crio_conf_file
@@ -609,7 +635,10 @@ function adjust_crio_config_dependencies() {
 		crio_sighup=true
 	fi
 
-	local cni_conf_dir=$(get_crio_config_dependency "cni-conf-dir")
+	#
+	# Adjust crio.conf with kubelet's view of 'cni-conf-dir'.
+	#
+	local cni_conf_dir=$(get_crio_config_dependency_from_kubelet_systemd "cni-conf-dir")
 	if [ ! -z "$cni_conf_dir" ] && [[ $cni_conf_dir != "/etc/cni/net.d" ]]; then
 		if egrep -q "network_dir =" $crio_conf_file; then
 			sed -i "s@network_dir =.*@network_dir = \"${cni_conf_dir}\"@" $crio_conf_file
@@ -619,6 +648,40 @@ function adjust_crio_config_dependencies() {
 		crio_restart=true
 	fi
 
+	#
+	# Adjust crio.conf with the cgroup driver configured by kubelet. Notice that as of
+	# Kubelet <= 1.21, the default cgroup-driver is 'cgroupfs'.
+	#
+	local cgroup_driver_kubelet_systemd=$(get_crio_config_dependency_from_kubelet_systemd "cgroup-driver")
+	local cgroup_driver_kubelet_config=$(get_crio_config_dependency_from_kubelet_config "cgroupDriver")
+	local cgroup_driver
+	if [ ! -z "$cgroup_driver_kubelet_config" ]; then
+		cgroup_driver=$cgroup_driver_kubelet_config
+	elif [ ! -z "$cgroup_driver_kubelet_systemd" ]; then
+		cgroup_driver=$cgroup_driver_kubelet_systemd
+	else
+		cgroup_driver="cgroupfs"
+	fi
+
+	# Cri-o defaults to "systemd" cgroup driver, so we must only deal with scenarios where
+	# kubelet is operating in "cgroupfs" mode.
+	if [[ $cgroup_driver == "cgroupfs" ]]; then
+		if egrep -q "cgroup_manager =" $crio_conf_file; then
+			sed -i "s@cgroup_manager =.*@cgroup_manager = \"${cgroup_driver}\"@" $crio_conf_file
+		else
+			sed -i "/\[crio.runtime\]/a \    cgroup_manager = \"${cgroup_driver}\"" $crio_conf_file
+		fi
+
+		# In 'cgroupfs' mode, the conmon-group value must be defined as below.
+		if egrep -q "conmon_cgroup =" $crio_conf_file; then
+			sed -i "s@conmon_cgroup =.*@conmon_cgroup = \"pod\"@" $crio_conf_file
+		else
+			sed -i "/\[crio.runtime\]/a \    conmon_cgroup = \"pod\"" $crio_conf_file
+		fi
+		crio_restart=true
+	fi
+
+	# Process crio changes.
 	if [[ "$crio_sighup" == "true" ]]; then
 		pkill -HUP crio
 	fi
@@ -756,6 +819,20 @@ function clean_runtime_state() {
 	echo $runtime >${var_lib_sysbox_deploy_k8s}/prior_runtime
 }
 
+# QoS cgroups are created as transient systemd slices when making use of the systemd
+# cgroup driver. In these scenarios, kubelet won't be able to initialize if there are
+# pre-existing kubepod cgroup entries corresponding to previous kubelet instantiations.
+# This function ensures that these entries are eliminated.
+function clean_cgroups_kubepods() {
+
+	# We eliminate all the cgroup kubepod entries by simply stopping their associated
+	# systemd service.
+	echo "Stopping/eliminating kubelet QoS cgroup kubepod entries..."
+	for i in $(systemctl list-unit-files --no-legend --no-pager -l | grep --color=never -o .*.slice | grep kubepod); do
+		systemctl stop $i
+	done
+}
+
 ###############################################################################
 # Scenario 1: Snap setup -- Snap-based kubelet
 ###############################################################################
@@ -801,11 +878,13 @@ function do_config_kubelet_snap() {
 	if [[ ${runtime} =~ "dockershim" ]]; then
 		stop_kubelet_snap
 		clean_runtime_state "$runtime"
+		clean_cgroups_kubepods
 		config_kubelet_snap
 		start_kubelet_snap
 	else
 		stop_kubelet_snap
 		clean_runtime_state "$runtime"
+		clean_cgroups_kubepods
 		stop_containerd
 		config_kubelet_snap
 		start_kubelet_snap
@@ -1075,6 +1154,7 @@ function do_config_kubelet_docker_systemd() {
 	adjust_crio_config_dependencies
 	stop_kubelet
 	clean_runtime_state "$runtime"
+	clean_cgroups_kubepods
 	start_kubelet
 }
 
@@ -1143,12 +1223,14 @@ function do_config_kubelet() {
 	if [[ ${runtime} =~ "dockershim" ]]; then
 		stop_kubelet
 		clean_runtime_state "$runtime"
+		clean_cgroups_kubepods
 		config_kubelet "host-based"
 		adjust_crio_config_dependencies
 		restart_kubelet
 	else
 		stop_kubelet
 		clean_runtime_state "$runtime"
+		clean_cgroups_kubepods
 		stop_containerd
 		config_kubelet "host-based"
 		adjust_crio_config_dependencies

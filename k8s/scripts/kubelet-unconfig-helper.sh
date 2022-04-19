@@ -117,6 +117,20 @@ function clean_runtime_state() {
 	fi
 }
 
+# QoS cgroups are created as transient systemd slices when making use of the systemd
+# cgroup driver. In these scenarios, kubelet won't be able to initialize if there are
+# pre-existing kubepod cgroup entries corresponding to previous kubelet instantiations.
+# This function ensures that these entries are eliminated.
+function clean_cgroups_kubepods() {
+
+	# We eliminate all the cgroup kubepod entries by simply stopping their associated
+	# systemd service.
+	echo "Stopping/eliminating kubelet QoS cgroup kubepod entries..."
+	for i in $(systemctl list-unit-files --no-legend --no-pager -l | grep --color=never -o .*.slice | grep kubepod); do
+		systemctl stop $i
+	done
+}
+
 # Sets the restart-policy mode for any given docker container.
 function set_ctr_restart_policy() {
 	local cntr=$1
@@ -208,6 +222,7 @@ function do_unconfig_kubelet_snap() {
 
 	stop_kubelet_snap
 	clean_runtime_state
+	clean_cgroups_kubepods
 	revert_kubelet_config_snap
 	start_kubelet_snap
 }
@@ -387,6 +402,7 @@ function do_unconfig_kubelet_docker_systemd() {
 
 	stop_kubelet
 	clean_runtime_state
+	clean_cgroups_kubepods
 	revert_kubelet_config
 	start_kubelet
 }
@@ -498,6 +514,7 @@ function do_unconfig_kubelet() {
 
 	stop_kubelet
 	clean_runtime_state
+	clean_cgroups_kubepods
 	revert_kubelet_config
 	restart_kubelet
 }

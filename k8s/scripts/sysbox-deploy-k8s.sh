@@ -194,11 +194,6 @@ function config_crio() {
 		cp ${host_crio_conf_file} ${host_crio_conf_file_backup}
 	fi
 
-	# Configure CRI-O with the cgroupfs driver
-	# TODO: do this only when K8s is configured without systemd cgroups
-	dasel put string -f ${host_crio_conf_file} -p toml "crio.runtime.cgroup_manager" "cgroupfs"
-	dasel put string -f ${host_crio_conf_file} -p toml "crio.runtime.conmon_cgroup" "pod"
-
 	# Disable selinux for now.
 	dasel put bool -f ${host_crio_conf_file} -p toml -m "crio.runtime.selinux" false
 
