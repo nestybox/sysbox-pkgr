@@ -753,73 +753,66 @@ function install_precheck() {
 	fi
 }
 
-# Compare semantic versions; takes two semantic version numbers of the form
-# x.y.z (or x.y), and returns 0 if the first is a smaller version than the
-# second, and 1 otherwise.
+
+# Compare two versions in SemVer format.
 #
-# Kindly borrowed from: https://gist.github.com/maxrimue/ca69ee78081645e1ef62
+# Examples:  (1.0.1, 1.0.1) = 0
+#            (1.0.1, 1.0.2) = 2
+#            (1.0.1, 1.0.0) = 1
+#            (1, 1.0) = 0
+#            (3.0.4.10, 3.0.4.2) = 1
+#            (5.0.0-22, 5.0.0-22) = 0
+#            (5.0.0-22, 5.0.0-21) = 1
+#            (5.0.0-21, 5.0.0-22) = 2
+#
+function version_compare() {
+
+    if [[ $1 == $2 ]]; then
+        return 0
+    fi
+
+    local IFS='.|-'
+    local i ver1=($1) ver2=($2)
+
+    # Fill empty fields in ver1 with zeros.
+    for ((i = ${#ver1[@]}; i < ${#ver2[@]}; i++)); do
+        ver1[i]=0
+    done
+
+    for ((i = 0; i < ${#ver1[@]}; i++)); do
+        if [[ -z ${ver2[i]} ]]; then
+            # Fill empty fields in ver2 with zeros.
+            ver2[i]=0
+        fi
+        if ((10#${ver1[i]} > 10#${ver2[i]})); then
+            return 1
+        fi
+        if ((10#${ver1[i]} < 10#${ver2[i]})); then
+            return 2
+        fi
+    done
+
+    return 0
+}
+
+# Compare semantic versions; takes two semantic version numbers of the form
+# x.y.z (or x.y), and returns 0 if the first is less than the
+# second, and 1 otherwise.
 function semver_lt() {
-	v1=$1
-	v2=$2
-
-	# First, we replace the dots by blank spaces, like this:
-	v1=${v1//./ }
-	v2=${v2//./ }
-
-	# If you have a "v" in front of your versions, you can get rid of it like this:
-	v1=${v1//v/}
-	v2=${v2//v/}
-
-	# Now we have "0 12 0" and "1 15 5"
-	# So, we just need to extract each number like this:
-	patch1=$(echo $v1 | awk '{print $3}')
-	minor1=$(echo $v1 | awk '{print $2}')
-	major1=$(echo $v1 | awk '{print $1}')
-
-	patch2=$(echo $v2 | awk '{print $3}')
-	minor2=$(echo $v2 | awk '{print $2}')
-	major2=$(echo $v2 | awk '{print $1}')
-
-	# And now, we can simply compare the variables, like:
-	if [ $major1 -lt $major2 ]; then
-		return 0
-	elif [ $major1 -gt $major2 ]; then
-		return 1
-	elif [ $minor1 -lt $minor2 ]; then
+	version_compare $1 $2
+	if [ "$?" -eq "2" ]; then
 		return 0
 	else
 		return 1
 	fi
 }
 
+# Compare semantic versions; takes two semantic version numbers of the form
+# x.y.z (or x.y), and returns 0 if the first is greater than or equal to the
+# second, and 1 otherwise.
 function semver_ge() {
-	v1=$1
-	v2=$2
-
-	# First, we replace the dots by blank spaces, like this:
-	v1=${v1//./ }
-	v2=${v2//./ }
-
-	# If you have a "v" in front of your versions, you can get rid of it like this:
-	v1=${v1//v/}
-	v2=${v2//v/}
-
-	# Now we have "0 12 0" and "1 15 5"
-	# So, we just need to extract each number like this:
-	patch1=$(echo $v1 | awk '{print $3}')
-	minor1=$(echo $v1 | awk '{print $2}')
-	major1=$(echo $v1 | awk '{print $1}')
-
-	patch2=$(echo $v2 | awk '{print $3}')
-	minor2=$(echo $v2 | awk '{print $2}')
-	major2=$(echo $v2 | awk '{print $1}')
-
-	# And now, we can simply compare the variables, like:
-	if [ $major1 -gt $major2 ]; then
-		return 0
-	elif [ $major1 -lt $major2 ]; then
-		return 1
-	elif [ $minor1 -ge $minor2 ]; then
+	version_compare $1 $2
+	if [ "$?" -ne "2" ]; then
 		return 0
 	else
 		return 1
