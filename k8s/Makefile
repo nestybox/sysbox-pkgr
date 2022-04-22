@@ -19,7 +19,7 @@ SHELL := /bin/bash
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_FLATCAR_BINS = $(SYSBOX_BINS) fusermount shiftfs.ko
 SYSBOX_VER = 0.5.1
-CRIO_VERSIONS = v1.20 v1.21
+CRIO_VERSIONS = v1.20 v1.21 v1.22 v1.23
 
 # Supported Flatcar versions
 FLATCAR_VERSIONS := 2905.2.3 2905.2.6 3033.2.4
@@ -138,6 +138,9 @@ $(FLATCAR_DEV_ENVS):
 #
 # CRI-O artifacts
 #
+# **NOTE**: make sure to install libgpgme-dev on your host prior to calling the build-crio target:
+# $ sudo apt-get install -y libgpgme-dev
+#
 
 build-crio: $(CRIO_VERSIONS)
 
@@ -153,15 +156,19 @@ $(CRIO_VERSIONS):
 	@chmod 755 -R $(TMPDIR) && rm -rf $(TMPDIR)
 
 #
-# The check-* targets verify that CRI-O, Sysbox binaries and its dependencies, are
+# The check-* targets verify that CRI-O, Sysbox binaries and its dependencies are
 # all in the "bin" directory:
 #
 # bin
 # ├── crio
-# │   ├── v1.20
-# │   │   └── crio
+# │   └── v1.20
+# │       └── crio
 # │   └── v1.21
 # │       └── crio
+# │   └── v1.22
+# │       └── crio
+# │   ├── v1.23
+# │   │   └── crio
 # ├── sysbox-ce
 # │   ├── ubuntu-bionic
 # │   │   ├── sysbox-fs
