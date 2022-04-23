@@ -18,6 +18,8 @@ set -e
 #   |                           |                     |
 #   |   Ubuntu Impish (21.10)   |        5.13+        |
 #   |                           |                     |
+#   |   Ubuntu Jammy (22.04)    |        5.15+        |
+#   |                           |                     |
 #   |   Debian Buster (10)      |        5.5+         |
 #   |                           |                     |
 #   |   Debian Bullseye (11)    |        5.5+         |
@@ -28,6 +30,7 @@ sysbox_support_matrix=(
     ["Ubuntu 18.04"]="5.3"
     ["Ubuntu 20.04"]="5.4"
     ["Ubuntu 21.10"]="5.13"
+    ["Ubuntu 22.04"]="5.15"
     ["Debian 10"]="5.5"
     ["Debian 11"]="5.5"
 )

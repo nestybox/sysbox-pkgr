@@ -11,6 +11,7 @@
 	ubuntu-bionic      \
 	ubuntu-focal       \
 	ubuntu-impish      \
+	ubuntu-jammy       \
 	clean
 
 SHELL:=/bin/bash
@@ -27,9 +28,10 @@ else ifeq ($(UNAME_M),armel)
 	ARCH := armel
 endif
 
-# Sysbox's default baseline image to build release binaries. Notice that this is
-# currently a requirement to build official Sysbox packages as only Impish carries
-# ID-mapped mount support in the kernel and associated clibs.
+# Sysbox's default baseline image to build release binaries. Notice
+# that this is currently a requirement to build official Sysbox
+# packages as only Impish (or later) carries ID-mapped mount support
+# in the kernel and associated clibs.
 RELEASE_BASELINE_IMAGE=ubuntu-impish
 
 # Go version to utilize in slave containers for the building process.
@@ -142,7 +144,7 @@ debian-bullseye: $(SOURCES)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
 
 ubuntu: ## Build Ubuntu packages
-ubuntu: ubuntu-bionic ubuntu-focal ubuntu-impish
+ubuntu: ubuntu-bionic ubuntu-focal ubuntu-impish ubuntu-jammy
 
 ubuntu-bionic: ## Build Ubuntu Bionic package
 ubuntu-bionic: $(SOURCES)
@@ -160,6 +162,13 @@ ubuntu-focal: $(SOURCES)
 
 ubuntu-impish: ## Build Ubuntu Impish package
 ubuntu-impish: $(SOURCES)
+	@echo "== Building packages for $@ =="
+	$(DOCKER_BUILD)
+	$(DOCKER_RUN)
+	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
+
+ubuntu-jammy: ## Build Ubuntu Jammy package
+ubuntu-jammy: $(SOURCES)
 	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
