@@ -444,7 +444,7 @@ function adjust_kubelet_exec_instruction() {
 	echo "Adjusted exec instruction in kubelet's service file \"$systemd_file\"."
 }
 
-# As its name implies, this function goal is to carry out all the steps that
+# As its name implies, this function's goal is to carry out all the steps that
 # are necessary to configure kubelet to use cri-o in systemd-managed deployments.
 #
 # The relative complexity of this function and its helper routines is simply a
@@ -534,7 +534,7 @@ function backup_config() {
 # Function iterates through all the kubelet environment-files and all the
 # environment-vars to search for the passed attribute and, if found, returns
 # its associated value.
-function get_crio_config_dependency_from_kubelet_systemd() {
+function get_kubelet_config_attr_from_systemd() {
 	local exec_attr=$1
 
 	if [ -z "$exec_attr" ]; then
@@ -574,7 +574,7 @@ function get_crio_config_dependency_from_kubelet_systemd() {
 
 # Function obtains the kubelet config file and then search for the passed
 # config attribute.
-function get_crio_config_dependency_from_kubelet_config() {
+function get_kubelet_config_attr() {
 	local config_attr=$1
 
 	if [ -z "$config_attr" ]; then
@@ -584,12 +584,12 @@ function get_crio_config_dependency_from_kubelet_config() {
 
 	# Let's start by identifying the kubelet config file.
 	# TODO: What if there's no explicit one defined? Is there a default one?
-	local kubelet_cfg_file=$(get_crio_config_dependency_from_kubelet_systemd "config")
+	local kubelet_cfg_file=$(get_kubelet_config_attr_from_systemd "config")
 
 	# Check if there's a matching config_attr in the kubelet config file and return
 	# its associated value if present.
 	if [ ! -z "$kubelet_cfg_file" ]; then
-		local config_attr_val=$(egrep "$config_attr" "$kubelet_cfg_file" | cut -d":" -f2 | tr -d '"')
+		local config_attr_val=$(egrep "$config_attr" "$kubelet_cfg_file" | cut -d":" -f2 | tr -d ',"')
 		echo "$config_attr_val"
 		return
 	fi
@@ -625,7 +625,7 @@ function adjust_crio_config_dependencies() {
 
 	# If kubelet is currently running with an explicit "infra" (pause) image, then
 	# adjust crio.conf to honor that request.
-	local pause_image=$(get_crio_config_dependency_from_kubelet_systemd "pod-infra-container-image")
+	local pause_image=$(get_kubelet_config_attr_from_systemd "pod-infra-container-image")
 	if [ ! -z "$pause_image" ]; then
 		if egrep -q "pause_image =" $crio_conf_file; then
 			sed -i "s@pause_image =.*@pause_image = \"${pause_image}\"@" $crio_conf_file
@@ -638,7 +638,7 @@ function adjust_crio_config_dependencies() {
 	#
 	# Adjust crio.conf with kubelet's view of 'cni-conf-dir'.
 	#
-	local cni_conf_dir=$(get_crio_config_dependency_from_kubelet_systemd "cni-conf-dir")
+	local cni_conf_dir=$(get_kubelet_config_attr_from_systemd "cni-conf-dir")
 	if [ ! -z "$cni_conf_dir" ] && [[ $cni_conf_dir != "/etc/cni/net.d" ]]; then
 		if egrep -q "network_dir =" $crio_conf_file; then
 			sed -i "s@network_dir =.*@network_dir = \"${cni_conf_dir}\"@" $crio_conf_file
@@ -652,8 +652,8 @@ function adjust_crio_config_dependencies() {
 	# Adjust crio.conf with the cgroup driver configured by kubelet. Notice that as of
 	# Kubelet <= 1.21, the default cgroup-driver is 'cgroupfs'.
 	#
-	local cgroup_driver_kubelet_systemd=$(get_crio_config_dependency_from_kubelet_systemd "cgroup-driver")
-	local cgroup_driver_kubelet_config=$(get_crio_config_dependency_from_kubelet_config "cgroupDriver")
+	local cgroup_driver_kubelet_systemd=$(get_kubelet_config_attr_from_systemd "cgroup-driver")
+	local cgroup_driver_kubelet_config=$(get_kubelet_config_attr "cgroupDriver")
 	local cgroup_driver
 	if [ ! -z "$cgroup_driver_kubelet_config" ]; then
 		cgroup_driver=$cgroup_driver_kubelet_config
