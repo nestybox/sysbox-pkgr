@@ -437,7 +437,7 @@ function install_sysbox_deps() {
 
 	echo "Installing Sysbox dependencies on host ..."
 
-	local version=$(get_host_kernel_brief)
+	local version=$os_kernel_release
 	if semver_lt $version 5.4; then
 		echo "Kernel has version $version, which is below the min required for shiftfs ($shiftfs_min_kernel_ver); skipping shiftfs installation."
 		return
@@ -669,11 +669,6 @@ function get_sys_arch() {
 function host_flatcar_distro() {
 	local distro=$(get_host_distro)
 	echo $distro | grep -q "flatcar"
-}
-
-function get_host_kernel_brief() {
-	local kernel=$(get_host_kernel)
-	echo "$kernel" | cut -d "." -f1-2
 }
 
 function get_host_kernel() {
