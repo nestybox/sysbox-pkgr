@@ -437,9 +437,9 @@ function install_sysbox_deps() {
 
 	echo "Installing Sysbox dependencies on host ..."
 
-	local version=$os_kernel_release
-	if semver_lt $version 5.4; then
-		echo "Kernel has version $version, which is below the min required for shiftfs ($shiftfs_min_kernel_ver); skipping shiftfs installation."
+	local kversion=$(echo $os_kernel_release | cut -d "." -f1-2)
+	if semver_lt $kversion 5.4; then
+		echo "Kernel has version $kversion, which is below the min required for shiftfs ($shiftfs_min_kernel_ver); skipping shiftfs installation."
 		return
 	fi
 
@@ -447,17 +447,17 @@ function install_sysbox_deps() {
 		install_sysbox_deps_flatcar
 	else
 		echo "Copying shiftfs sources to host ..."
-		if semver_ge $version 5.4 && semver_lt $version 5.8; then
-			echo "Kernel version $version is >= 5.4 and < 5.8"
+		if semver_ge $kversion 5.4 && semver_lt $kversion 5.8; then
+			echo "Kernel version $kversion is >= 5.4 and < 5.8"
 			cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
-		elif semver_ge $version 5.8 && semver_lt $version 5.11; then
-			echo "Kernel version $version is >= 5.8 and < 5.11"
+		elif semver_ge $kversion 5.8 && semver_lt $kversion 5.11; then
+			echo "Kernel version $kversion is >= 5.8 and < 5.11"
 			cp -r "/opt/shiftfs-k5.10" "$host_run/shiftfs-dkms"
-		elif semver_ge $version 5.11 && semver_lt $version 5.13; then
-			echo "Kernel version $version is >= 5.11 and < 5.13"
+		elif semver_ge $kversion 5.11 && semver_lt $kversion 5.13; then
+			echo "Kernel version $kversion is >= 5.11 and < 5.13"
 			cp -r "/opt/shiftfs-k5.11" "$host_run/shiftfs-dkms"
 		else
-			echo "Kernel version $version is >= 5.13"
+			echo "Kernel version $kversion is >= 5.13"
 			cp -r "/opt/shiftfs-k5.13" "$host_run/shiftfs-dkms"
 		fi
 	fi
@@ -692,12 +692,12 @@ function is_supported_distro() {
 
 function is_supported_kernel() {
 
-	local kernel=$os_kernel_release
+	local kversion=$(echo $os_kernel_release | cut -d "." -f1-2)
 
 	# Ubuntu distro is supported starting with kernel 5.3+.
 	if [[ "$os_distro_release" =~ "ubuntu" ]]; then
-		if semver_lt $kernel 5.3; then
-			echo "Unsupported kernel version $kernel for Ubuntu distribution (< 5.3)."
+		if semver_lt $kversion 5.3; then
+			echo "Unsupported kernel version $kversion for Ubuntu distribution (< 5.3)."
 			return 1
 		fi
 
@@ -705,8 +705,8 @@ function is_supported_kernel() {
 	fi
 
 	# For all other distros, Sysbox requires 5.5+.
-	if semver_lt $kernel 5.5; then
-		echo "Unsupported kernel version $kernel for $os_distro_release distribution (< 5.5)."
+	if semver_lt $kversion 5.5; then
+		echo "Unsupported kernel version $kversion for $os_distro_release distribution (< 5.5)."
 		return 1
 	fi
 
@@ -736,15 +736,15 @@ function is_supported_k8s_version() {
 }
 
 function is_kernel_upgraded() {
-	local cur_distro=$os_kernel_release
+	local cur_kernel=$os_kernel_release
 
 	if [ ! -f ${host_var_lib_sysbox_deploy_k8s}/os_kernel_release ]; then
 		false
 		return
 	fi
 
-	local prev_distro=$(cat ${host_var_lib_sysbox_deploy_k8s}/os_kernel_release)
-	if [[ ${cur_distro} == ${prev_distro} ]]; then
+	local prev_kernel=$(cat ${host_var_lib_sysbox_deploy_k8s}/os_kernel_release)
+	if [[ ${cur_kernel} == ${prev_kernel} ]]; then
 		false
 		return
 	fi
@@ -778,7 +778,6 @@ function install_precheck() {
 	fi
 }
 
-
 # Compare two versions in SemVer format.
 #
 # Examples:  (1.0.1, 1.0.1) = 0
@@ -792,32 +791,32 @@ function install_precheck() {
 #
 function version_compare() {
 
-    if [[ $1 == $2 ]]; then
-        return 0
-    fi
+	if [[ $1 == $2 ]]; then
+		return 0
+	fi
 
-    local IFS='.|-'
-    local i ver1=($1) ver2=($2)
+	local IFS='.|-'
+	local i ver1=($1) ver2=($2)
 
-    # Fill empty fields in ver1 with zeros.
-    for ((i = ${#ver1[@]}; i < ${#ver2[@]}; i++)); do
-        ver1[i]=0
-    done
+	# Fill empty fields in ver1 with zeros.
+	for ((i = ${#ver1[@]}; i < ${#ver2[@]}; i++)); do
+		ver1[i]=0
+	done
 
-    for ((i = 0; i < ${#ver1[@]}; i++)); do
-        if [[ -z ${ver2[i]} ]]; then
-            # Fill empty fields in ver2 with zeros.
-            ver2[i]=0
-        fi
-        if ((10#${ver1[i]} > 10#${ver2[i]})); then
-            return 1
-        fi
-        if ((10#${ver1[i]} < 10#${ver2[i]})); then
-            return 2
-        fi
-    done
+	for ((i = 0; i < ${#ver1[@]}; i++)); do
+		if [[ -z ${ver2[i]} ]]; then
+			# Fill empty fields in ver2 with zeros.
+			ver2[i]=0
+		fi
+		if ((10#${ver1[i]} > 10#${ver2[i]})); then
+			return 1
+		fi
+		if ((10#${ver1[i]} < 10#${ver2[i]})); then
+			return 2
+		fi
+	done
 
-    return 0
+	return 0
 }
 
 # Compare semantic versions; takes two semantic version numbers of the form
