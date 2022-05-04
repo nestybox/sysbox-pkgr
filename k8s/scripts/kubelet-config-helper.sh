@@ -122,34 +122,49 @@ function get_kubelet_env_var() {
 	echo ${env_var}
 }
 
+# Extract kubelet's execution attribute-value associated to a given attribute from
+# the exec-line passed by caller.
+function parse_kubelet_exec_attr_val() {
+	local exec_line=$1
+	local exec_attr=$2
+
+	# Attempt to extract attribute assuming "equal" (i.e. "=") based format being
+	# used (most common case). Example: --config=/home/kubernetes/kubelet-config.yaml.
+	# A full match between 'exec_attr' string and 'exec_attr_val' one indicates that
+	# no valid 'exec_attr_val' has been found.
+	local exec_attr_val=$(echo "$exec_line" | sed 's/ /\n/g' | egrep "^--${exec_attr}" | cut -d"=" -f2)
+	if [[ ! "$exec_attr_val" == "--${exec_attr}" ]]; then
+		echo "$exec_attr_val"
+		return
+	fi
+
+	# Attempt to extract attribute assuming "space" based format being used
+	# (most common case). Example: --config /home/kubernetes/kubelet-config.yaml.
+	local exec_attr_val=$(echo "$exec_line" | sed 's/ /\n/g' | egrep -C1 "^--${exec_attr}" | tail -1)
+	if [[ ! "$exec_attr_val" == "--${exec_attr}" ]]; then
+		echo "$exec_attr_val"
+		return
+	fi
+
+	echo ""
+}
+
 function get_kubelet_env_var_all() {
 	systemctl show kubelet.service | egrep "ExecStart=" |
 		cut -d ";" -f2 | sed -e 's@argv\[\]=${kubelet_bin}@@g' |
 		sed 's/ /\n/g' | egrep "^\\$"
 }
 
-# Notice the contrast with the above function. Here we return ExecStart
-# 'attributes' (or parameters) and not 'env-vars' as it's the case above.
-#
-# TODO: Fix this function: description doesn't match implementation. Also,
-# it's not being used.
-function get_kubelet_exec_attrib_all() {
-	local attr=$1
-
-	systemctl show kubelet.service | egrep "ExecStart=" |
-		sed -e 's@argv\[\]=${kubelet_bin}@@g' | sed 's/ /\n/g' |
-		egrep "^--${attr}" | cut -d"=" -f2
-}
-
 function get_kubelet_exec_attr_val() {
-	local attr=$1
+	local exec_attr=$1
 
 	local exec_line=$(get_kubelet_exec_line)
 	if [ -z "$exec_line" ]; then
 		return
 	fi
 
-	echo "$exec_line" | sed 's/ /\n/g' | egrep "^--${attr}" | cut -d"=" -f2
+	local exec_attr_val=$(parse_kubelet_exec_attr_val "$exec_line" "$exec_attr")
+	echo "$exec_attr_val"
 }
 
 function get_kubelet_service_file() {
@@ -564,7 +579,8 @@ function get_kubelet_config_attr_from_systemd() {
 			var=${var#"$"}
 
 			if grep -q "$var" "$file"; then
-				local exec_attr_val=$(sed 's/ /\n/g' "$file" | egrep "^--${exec_attr}" | cut -d"=" -f2)
+				local exec_line=$(cat "$file")
+				local exec_attr_val=$(parse_kubelet_exec_attr_val "$exec_line" "$exec_attr")
 				echo "$exec_attr_val"
 				return
 			fi
