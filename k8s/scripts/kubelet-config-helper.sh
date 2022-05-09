@@ -611,6 +611,20 @@ function get_kubelet_config_attr() {
 	fi
 }
 
+# Function extracts kubelet config attributes from a snap-based kubelet
+# setup.
+function get_kubelet_config_attr_from_snap() {
+	local config_attr=$1
+
+	# Return if not within a kubelet-snap setup.
+	if [ -z "$kubelet_snap" ]; then
+		echo ""
+		return
+	fi
+
+	snap get $kubelet_snap $config_attr
+}
+
 # Function takes care of reconciliating operational attributes that can
 # potentially overlap between 'kubelet' and 'crio' components. In this scenario
 # we want to translate kubelet's overlapping attribute to the one understood by
@@ -641,7 +655,15 @@ function adjust_crio_config_dependencies() {
 
 	# If kubelet is currently running with an explicit "infra" (pause) image, then
 	# adjust crio.conf to honor that request.
-	local pause_image=$(get_kubelet_config_attr_from_systemd "pod-infra-container-image")
+	local pause_image_systemd=$(get_kubelet_config_attr_from_systemd "pod-infra-container-image")
+	local pause_image_snap=$(get_kubelet_config_attr_from_snap "pod-infra-container-image")
+	local pause_image
+	if [ ! -z "$pause_image_systemd" ]; then
+		pause_image=$pause_image_systemd
+	elif [ ! -z "$pause_image_snap" ]; then
+		pause_image=$pause_image_snap
+	fi
+
 	if [ ! -z "$pause_image" ]; then
 		if egrep -q "pause_image =" $crio_conf_file; then
 			sed -i "s@pause_image =.*@pause_image = \"${pause_image}\"@" $crio_conf_file
@@ -654,7 +676,15 @@ function adjust_crio_config_dependencies() {
 	#
 	# Adjust crio.conf with kubelet's view of 'cni-conf-dir'.
 	#
-	local cni_conf_dir=$(get_kubelet_config_attr_from_systemd "cni-conf-dir")
+	local cni_conf_dir_systemd=$(get_kubelet_config_attr_from_systemd "cni-conf-dir")
+	local cni_conf_dir_snap=$(get_kubelet_config_attr_from_snap "cni-conf-dir")
+	local cni_conf_dir
+	if [ ! -z "$cni_conf_dir_systemd" ]; then
+		cni_conf_dir=$cni_conf_dir_systemd
+	elif [ ! -z "$cni_conf_dir_snap" ]; then
+		cni_conf_dir=$cni_conf_dir_snap
+	fi
+
 	if [ ! -z "$cni_conf_dir" ] && [[ $cni_conf_dir != "/etc/cni/net.d" ]]; then
 		if egrep -q "network_dir =" $crio_conf_file; then
 			sed -i "s@network_dir =.*@network_dir = \"${cni_conf_dir}\"@" $crio_conf_file
@@ -670,11 +700,14 @@ function adjust_crio_config_dependencies() {
 	#
 	local cgroup_driver_kubelet_systemd=$(get_kubelet_config_attr_from_systemd "cgroup-driver")
 	local cgroup_driver_kubelet_config=$(get_kubelet_config_attr "cgroupDriver")
+	local cgroup_driver_kubelet_snap=$(get_kubelet_config_attr_from_snap "cgroup-driver")
 	local cgroup_driver
 	if [ ! -z "$cgroup_driver_kubelet_config" ]; then
 		cgroup_driver=$cgroup_driver_kubelet_config
 	elif [ ! -z "$cgroup_driver_kubelet_systemd" ]; then
 		cgroup_driver=$cgroup_driver_kubelet_systemd
+	elif [ ! -z "$cgroup_driver_kubelet_snap" ]; then
+		cgroup_driver=$cgroup_driver_kubelet_snap
 	else
 		cgroup_driver="cgroupfs"
 	fi
@@ -896,6 +929,7 @@ function do_config_kubelet_snap() {
 		clean_runtime_state "$runtime"
 		clean_cgroups_kubepods
 		config_kubelet_snap
+		adjust_crio_config_dependencies
 		start_kubelet_snap
 	else
 		stop_kubelet_snap
@@ -903,6 +937,7 @@ function do_config_kubelet_snap() {
 		clean_cgroups_kubepods
 		stop_containerd
 		config_kubelet_snap
+		adjust_crio_config_dependencies
 		start_kubelet_snap
 	fi
 }
