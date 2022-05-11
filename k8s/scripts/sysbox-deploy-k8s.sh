@@ -251,7 +251,9 @@ function get_artifacts_dir() {
 
 	local distro=$os_distro_release
 
-	if [[ "$distro" == "ubuntu-20.04" ]] ||
+	if [[ "$distro" == "ubuntu-22.04" ]] ||
+		[[ "$distro" == "ubuntu-21.10" ]] ||
+		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]]; then
 		artifacts_dir="${sysbox_artifacts}/bin/generic"
 	elif [[ "$distro" =~ "flatcar" ]]; then
@@ -679,8 +681,9 @@ function is_supported_distro() {
 
 	local distro=$os_distro_release
 
-	# TODO: add sysbox binaries for all supported distros.
-	if [[ "$distro" == "ubuntu-20.04" ]] ||
+	if [[ "$distro" == "ubuntu-22.04" ]] ||
+		[[ "$distro" == "ubuntu-21.10" ]] ||
+		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
 		[[ "$distro" =~ "debian" ]] ||
 		[[ "$distro" =~ "flatcar" ]]; then
