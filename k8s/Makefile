@@ -19,7 +19,6 @@ SHELL := /bin/bash
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_FLATCAR_BINS = $(SYSBOX_BINS) fusermount shiftfs.ko
 SYSBOX_VER = 0.5.1
-CRIO_VERSIONS = v1.20 v1.21 v1.22 v1.23
 
 # Supported Flatcar versions
 FLATCAR_VERSIONS := 2905.2.3 2905.2.6 3033.2.4
@@ -142,18 +141,12 @@ $(FLATCAR_DEV_ENVS):
 # $ sudo apt-get install -y libgpgme-dev
 #
 
-build-crio: $(CRIO_VERSIONS)
+build-crio: crio-build-container bin/crio
+	docker run -v $(shell pwd)/bin:/mnt/results crio-bld
 
-$(CRIO_VERSIONS):
-	@printf "\n*** Building cri-o $@ ... ***\n\n"
-	$(eval TMPDIR := $(shell mktemp -d))
-	@chmod 755 $(TMPDIR)
-	@git clone git@github.com:nestybox/cri-o.git $(TMPDIR)/cri-o
-	@git -C $(TMPDIR)/cri-o checkout -b $@-sysbox origin/$@-sysbox
-	@cd $(TMPDIR)/cri-o && make binaries
-	@mkdir -p bin/crio/$@
-	@cp $(TMPDIR)/cri-o/bin/crio-static bin/crio/$@/crio
-	@chmod 755 -R $(TMPDIR) && rm -rf $(TMPDIR)
+
+crio-build-container:
+	docker build -t crio-bld -f Dockerfile.crio .
 
 #
 # The check-* targets verify that CRI-O, Sysbox binaries and its dependencies are

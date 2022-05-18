@@ -1,0 +1,43 @@
+#
+# CRI-O build container Dockerfile
+#
+
+FROM ubuntu:impish
+
+# K8s version for k8s-in-docker (i.e., this is the version of K8s running inside
+# the k8s-in-docker container).
+ARG k8s_version=v1.20.2
+
+# CRI-O & crictl version for testing sysbox pods; CRI-O 1.20 is required as it
+# introduces rootless pod support (via the Linux user-ns)
+ARG crio_version=1.20
+ARG crio_os=xUbuntu_20.04
+ARG crictl_version=v1.20.0
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    make \
+    wget \
+    ca-certificates \
+    ssh-client \
+    gcc \
+    libgpgme-dev
+
+# Install Golang 1.16.4 release and explicitly activate modules functionality.
+RUN wget https://golang.org/dl/go1.17.5.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.17.5.linux-amd64.tar.gz && \
+    /usr/local/go/bin/go env -w GONOSUMDB=/root/nestybox
+
+ENV GOPATH /go
+ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
+RUN go env -w GONOSUMDB=/root/nestybox && \
+    mkdir -p "$GOPATH/src" "$GOPATH/bin" && \
+    chmod -R 777 "$GOPATH"
+
+# CRI-O build script
+COPY scripts/crio-build.sh /usr/bin/crio-build.sh
+
+WORKDIR /root
+CMD crio-build.sh
