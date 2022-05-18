@@ -18,7 +18,7 @@ SHELL := /bin/bash
 
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_FLATCAR_BINS = $(SYSBOX_BINS) fusermount shiftfs.ko
-SYSBOX_VER = 0.5.1
+SYSBOX_VER = 0.5.2
 
 # Supported Flatcar versions
 FLATCAR_VERSIONS := 2905.2.3 2905.2.6 3033.2.4
