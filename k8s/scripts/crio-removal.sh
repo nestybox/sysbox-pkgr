@@ -24,7 +24,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-CRIO_VERSION=1.20
+CRIO_VERSION=1.21
 
 function die() {
 	msg="$*"
