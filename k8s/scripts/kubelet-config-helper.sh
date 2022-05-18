@@ -660,8 +660,9 @@ function adjust_crio_config_dependencies() {
 	local pause_image
 	if [ ! -z "$pause_image_systemd" ]; then
 		pause_image=$pause_image_systemd
-	elif [ ! -z "$pause_image_snap" ]; then
-		pause_image=$pause_image_snap
+	# Skipping for now due to issue #550.
+	# elif [ ! -z "$pause_image_snap" ]; then
+	#	pause_image=$pause_image_snap
 	fi
 
 	if [ ! -z "$pause_image" ]; then
