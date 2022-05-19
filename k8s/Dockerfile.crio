@@ -8,11 +8,11 @@ FROM ubuntu:impish
 # the k8s-in-docker container).
 ARG k8s_version=v1.20.2
 
-# CRI-O & crictl version for testing sysbox pods; CRI-O 1.20 is required as it
-# introduces rootless pod support (via the Linux user-ns)
-ARG crio_version=1.20
+# CRI-O & crictl version for testing sysbox pods; CRI-O 1.2X+ is required as it
+# introduces (1.20) rootless pod support (via the Linux user-ns).
+ARG crio_version=1.21
 ARG crio_os=xUbuntu_20.04
-ARG crictl_version=v1.20.0
+ARG crictl_version=v1.21.0
 
 ENV DEBIAN_FRONTEND=noninteractive
 
