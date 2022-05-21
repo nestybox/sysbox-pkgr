@@ -146,7 +146,7 @@ build-crio: crio-build-container bin/crio
 
 
 crio-build-container:
-	docker build -t crio-bld -f Dockerfile.crio .
+	docker build -t crio-bld -f Dockerfile.crio --build-arg sys_arch=$(SYS_ARCH) .
 
 #
 # The check-* targets verify that CRI-O, Sysbox binaries and its dependencies are
