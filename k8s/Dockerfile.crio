@@ -4,15 +4,8 @@
 
 FROM ubuntu:impish
 
-# K8s version for k8s-in-docker (i.e., this is the version of K8s running inside
-# the k8s-in-docker container).
-ARG k8s_version=v1.20.2
-
-# CRI-O & crictl version for testing sysbox pods; CRI-O 1.2X+ is required as it
-# introduces (1.20) rootless pod support (via the Linux user-ns).
-ARG crio_version=1.21
-ARG crio_os=xUbuntu_20.04
-ARG crictl_version=v1.21.0
+ARG sys_arch
+ENV SYS_ARCH=${sys_arch}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -25,9 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libgpgme-dev
 
-# Install Golang 1.16.4 release and explicitly activate modules functionality.
-RUN wget https://golang.org/dl/go1.17.5.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.17.5.linux-amd64.tar.gz && \
+# Install Golang and explicitly activate modules functionality.
+RUN wget https://golang.org/dl/go1.17.5.linux-${sys_arch}.tar.gz && \
+    tar -C /usr/local -xzf go1.17.5.linux-${sys_arch}.tar.gz && \
     /usr/local/go/bin/go env -w GONOSUMDB=/root/nestybox
 
 ENV GOPATH /go
