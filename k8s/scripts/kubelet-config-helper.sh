@@ -665,7 +665,7 @@ function adjust_crio_config_dependencies() {
 	#	pause_image=$pause_image_snap
 	fi
 
-	if [ ! -z "$pause_image" ]; then
+	if [ ! -z "${pause_image:-}" ]
 		if egrep -q "pause_image =" $crio_conf_file; then
 			sed -i "s@pause_image =.*@pause_image = \"${pause_image}\"@" $crio_conf_file
 		else
