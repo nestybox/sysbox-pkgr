@@ -18,6 +18,6 @@ for ver in ${CRIO_VERSIONS[@]}; do
 	git clone https://github.com/nestybox/cri-o.git ${TMPDIR}/cri-o
 	git -C ${TMPDIR}/cri-o checkout -b ${ver}-sysbox origin/${ver}-sysbox
 	cd ${TMPDIR}/cri-o && make binaries
-	mkdir -p /mnt/results/bin/crio/${ver}
+	mkdir -p /mnt/results/crio/${ver}
 	cp ${TMPDIR}/cri-o/bin/crio-static /mnt/results/crio/${ver}/crio
 done
