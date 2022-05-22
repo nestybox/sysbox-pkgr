@@ -686,7 +686,7 @@ function adjust_crio_config_dependencies() {
 		cni_conf_dir=$cni_conf_dir_snap
 	fi
 
-	if [ ! -z "$cni_conf_dir" ] && [[ $cni_conf_dir != "/etc/cni/net.d" ]]; then
+	if [ ! -z "${cni_conf_dir:-}" ] && [[ $cni_conf_dir != "/etc/cni/net.d" ]]; then
 		if egrep -q "network_dir =" $crio_conf_file; then
 			sed -i "s@network_dir =.*@network_dir = \"${cni_conf_dir}\"@" $crio_conf_file
 		else
@@ -715,7 +715,7 @@ function adjust_crio_config_dependencies() {
 
 	# Cri-o defaults to "systemd" cgroup driver, so we must only deal with scenarios where
 	# kubelet is operating in "cgroupfs" mode.
-	if [[ $cgroup_driver == "cgroupfs" ]]; then
+	if [ ! -z "${cgroup_driver:-}" ] && [[ $cgroup_driver == "cgroupfs" ]]; then
 		if egrep -q "cgroup_manager =" $crio_conf_file; then
 			sed -i "s@cgroup_manager =.*@cgroup_manager = \"${cgroup_driver}\"@" $crio_conf_file
 		else
