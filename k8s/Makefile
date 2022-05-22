@@ -141,7 +141,7 @@ $(FLATCAR_DEV_ENVS):
 # $ sudo apt-get install -y libgpgme-dev
 #
 
-build-crio: crio-build-container bin/crio
+build-crio: crio-build-container
 	docker run -v $(shell pwd)/bin:/mnt/results crio-bld
 
 
