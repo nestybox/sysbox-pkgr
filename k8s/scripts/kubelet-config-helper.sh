@@ -605,7 +605,7 @@ function get_kubelet_config_attr() {
 	# Check if there's a matching config_attr in the kubelet config file and return
 	# its associated value if present.
 	if [ ! -z "$kubelet_cfg_file" ]; then
-		local config_attr_val=$(egrep "$config_attr" "$kubelet_cfg_file" | cut -d":" -f2 | tr -d ',"')
+		local config_attr_val=$(egrep "$config_attr" "$kubelet_cfg_file" | cut -d":" -f2 | tr -d ' ,"')
 		echo "$config_attr_val"
 		return
 	fi
