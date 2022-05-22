@@ -617,7 +617,7 @@ function get_kubelet_config_attr_from_snap() {
 	local config_attr=$1
 
 	# Return if not within a kubelet-snap setup.
-	if [ -z "$kubelet_snap" ]; then
+	if [ -z "${kubelet_snap:-}" ]; then
 		echo ""
 		return
 	fi
