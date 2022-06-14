@@ -957,7 +957,6 @@ function do_config_kubelet_snap() {
 		stop_kubelet_snap
 		clean_runtime_state "$runtime"
 		clean_cgroups_kubepods
-		stop_containerd
 		config_kubelet_snap
 		adjust_crio_config_dependencies
 		start_kubelet_snap
@@ -1304,7 +1303,6 @@ function do_config_kubelet() {
 		stop_kubelet
 		clean_runtime_state "$runtime"
 		clean_cgroups_kubepods
-		stop_containerd
 		config_kubelet "host-based"
 		adjust_crio_config_dependencies
 		restart_kubelet
