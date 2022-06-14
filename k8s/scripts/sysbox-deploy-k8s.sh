@@ -197,10 +197,6 @@ function config_crio() {
 	# Disable selinux for now.
 	dasel put bool -f ${host_crio_conf_file} -p toml -m "crio.runtime.selinux" false
 
-	# In GKE, the CNIs are not in the usual "/opt/cni/bin/" dir, but under "/home/kubernetes/bin"
-	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/opt/cni/bin"
-	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/home/kubernetes/bin"
-
 	# Add user "containers" to the /etc/subuid and /etc/subgid files
 	get_subid_limits
 	config_subid_range "$subuid_file" "$subid_alloc_min_range" "$subuid_min" "$subuid_max"

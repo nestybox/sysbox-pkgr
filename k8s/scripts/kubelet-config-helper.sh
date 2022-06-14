@@ -696,6 +696,27 @@ function adjust_crio_config_dependencies() {
 	fi
 
 	#
+	# Adjust crio.conf with kubelet's view of 'cni-bin-dir'.
+	#
+	local cni_bin_dir_systemd=$(get_kubelet_config_attr_from_systemd "cni-bin-dir")
+	local cni_bin_dir_snap=$(get_kubelet_config_attr_from_snap "cni-bin-dir")
+	local cni_bin_dir
+	if [ ! -z "$cni_bin_dir_systemd" ]; then
+		cni_bin_dir=$cni_bin_dir_systemd
+	elif [ ! -z "$cni_bin_dir_snap" ]; then
+		cni_bin_dir=$cni_bin_dir_snap
+	fi
+
+	if [ ! -z "${cni_bin_dir:-}" ]; then
+		if egrep -q "plugin_dirs =" $crio_conf_file; then
+			sed -i "s@plugin_dirs =.*@plugin_dirs = [\"${cni_bin_dir}\"]@" $crio_conf_file
+		else
+			sed -i "/\[crio.network\]/a \    plugin_dirs = [\"${cni_bin_dir}\"]" $crio_conf_file
+		fi
+		crio_restart=true
+	fi
+
+	#
 	# Adjust crio.conf with the cgroup driver configured by kubelet. Notice that as of
 	# Kubelet <= 1.21, the default cgroup-driver is 'cgroupfs'.
 	#
