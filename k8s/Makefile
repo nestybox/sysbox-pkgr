@@ -154,8 +154,6 @@ crio-build-container:
 #
 # bin
 # ├── crio
-# │   └── v1.20
-# │       └── crio
 # │   └── v1.21
 # │       └── crio
 # │   └── v1.22
