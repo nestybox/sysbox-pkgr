@@ -142,7 +142,7 @@ $(FLATCAR_DEV_ENVS):
 #
 
 build-crio: crio-build-container
-	docker run -v $(shell pwd)/bin:/mnt/results crio-bld
+	docker run --rm -v $(shell pwd)/bin:/mnt/results crio-bld
 
 
 crio-build-container:
