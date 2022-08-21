@@ -10,7 +10,6 @@
 	ubuntu             \
 	ubuntu-bionic      \
 	ubuntu-focal       \
-	ubuntu-impish      \
 	ubuntu-jammy       \
 	clean
 
@@ -32,7 +31,7 @@ endif
 # that this is currently a requirement to build official Sysbox
 # packages as only Impish (or later) carries ID-mapped mount support
 # in the kernel and associated clibs.
-RELEASE_BASELINE_IMAGE=ubuntu-impish
+RELEASE_BASELINE_IMAGE=ubuntu-jammy
 
 # Go version to utilize in slave containers for the building process.
 # We are temporarily skipping these settings as we are relying on Go's
@@ -144,7 +143,7 @@ debian-bullseye: $(SOURCES)
 	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
 
 ubuntu: ## Build Ubuntu packages
-ubuntu: ubuntu-bionic ubuntu-focal ubuntu-impish ubuntu-jammy
+ubuntu: ubuntu-bionic ubuntu-focal ubuntu-jammy
 
 ubuntu-bionic: ## Build Ubuntu Bionic package
 ubuntu-bionic: $(SOURCES)
@@ -155,13 +154,6 @@ ubuntu-bionic: $(SOURCES)
 
 ubuntu-focal: ## Build Ubuntu Focal package
 ubuntu-focal: $(SOURCES)
-	@echo "== Building packages for $@ =="
-	$(DOCKER_BUILD)
-	$(DOCKER_RUN)
-	$(CHOWN) -R $(shell id -u):$(shell id -g) build/$(ARCH)/$@
-
-ubuntu-impish: ## Build Ubuntu Impish package
-ubuntu-impish: $(SOURCES)
 	@echo "== Building packages for $@ =="
 	$(DOCKER_BUILD)
 	$(DOCKER_RUN)
