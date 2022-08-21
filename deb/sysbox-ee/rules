@@ -48,10 +48,6 @@ override_dh_auto_install:
 	install -D -m 0644 /sources/99-sysbox-sysctl.conf \
 		debian/sysbox-ee/lib/sysctl.d/99-sysbox-sysctl.conf
 
-	# Setup configfs module requirement.
-	install -D -m 0644 /sources/50-sysbox-mod.conf \
-		debian/sysbox-ee/usr/lib/modules-load.d/50-sysbox-mod.conf
-
 override_dh_installinit:
 	# Use "sysbox" as our service name, not "sysbox-ee".
 	dh_installinit --name=sysbox
