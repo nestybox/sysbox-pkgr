@@ -2,7 +2,7 @@
 # CRI-O build container Dockerfile
 #
 
-FROM ubuntu:impish
+FROM ubuntu:jammy
 
 ARG sys_arch
 ENV SYS_ARCH=${sys_arch}
