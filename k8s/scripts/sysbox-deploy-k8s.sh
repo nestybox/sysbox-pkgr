@@ -51,9 +51,20 @@ host_run="/mnt/host/run"
 host_var_lib="/mnt/host/var/lib"
 host_var_lib_sysbox_deploy_k8s="${host_var_lib}/sysbox-deploy-k8s"
 
+#
 # Subid default values.
+#
+# Sysbox supports up 4K sys contaienrs per K8s node, each with 64K subids.
+#
+# Historical note: prior to Docker's acquisition of Nesytbox, Sysbox-CE was
+# limited to 16-pods-per-node via variable subid_alloc_min_range below, whereas
+# Sysbox-EE was limited to 4K-pods-per-node. After Docker's acquisition of
+# Nestybox (05/22) Sysbox-EE is no longer being offered and therefore Docker has
+# decided to lift the Sysbox-CE limit to encourage adoption of Sysbox on K8s
+# clusters (the limit will now be 4K-pods-per-node as it was in Sysbox-EE).
+#
 subid_alloc_min_start=100000
-subid_alloc_min_range=""
+subid_alloc_min_range=268435456
 subid_alloc_max_end=4294967295
 
 # We use CRI-O's default user "containers" for the sub-id range (rather than
@@ -853,18 +864,11 @@ function semver_ge() {
 function do_edition_adjustments() {
 	local edition_tag=$1
 
-	# Set the Sysbox edition name being installed and define the corresponding
-	# number of sys containers being supported.
-	#
-	# * Sysbox (CE) supports up to 16 sys containers, each with 64k uids(gids).
-	# * Sysbox-EE supports up to 4K sys containers, each with 64k uids(gids).
-
+	# Set the Sysbox edition name being installed.
 	if [[ ${edition_tag} == "ce" ]]; then
 		sysbox_edition="Sysbox"
-		subid_alloc_min_range=1048576
 	elif [[ ${edition_tag} == "ee" ]]; then
 		sysbox_edition="Sysbox-EE"
-		subid_alloc_min_range=268435456
 	else
 		print_usage
 		die "invalid sysbox edition value: $edition_tag"
