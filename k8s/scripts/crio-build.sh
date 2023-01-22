@@ -9,7 +9,7 @@
 # Usage: docker run -v $(shell pwd)/bin:/mnt/results crio-bld
 #
 
-declare -a CRIO_VERSIONS=(v1.21 v1.22 v1.23)
+declare -a CRIO_VERSIONS=(v1.21 v1.22 v1.23 v1.24 v1.25)
 
 for ver in ${CRIO_VERSIONS[@]}; do
 	printf "\n*** Building CRI-O ${ver} ... ***\n\n"
