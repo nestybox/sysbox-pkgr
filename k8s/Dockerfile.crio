@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgpgme-dev
 
 # Install Golang and explicitly activate modules functionality.
-RUN wget https://golang.org/dl/go1.17.5.linux-${sys_arch}.tar.gz && \
-    tar -C /usr/local -xzf go1.17.5.linux-${sys_arch}.tar.gz && \
+RUN wget https://golang.org/dl/go1.19.2.linux-${sys_arch}.tar.gz && \
+    tar -C /usr/local -xzf go1.19.2.linux-${sys_arch}.tar.gz && \
     /usr/local/go/bin/go env -w GONOSUMDB=/root/nestybox
 
 ENV GOPATH /go
