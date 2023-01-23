@@ -132,7 +132,7 @@ function parse_kubelet_exec_attr_val() {
 	# used (most common case). Example: --config=/home/kubernetes/kubelet-config.yaml.
 	# A full match between 'exec_attr' string and 'exec_attr_val' one indicates that
 	# no valid 'exec_attr_val' has been found.
-	local exec_attr_val=$(echo "$exec_line" | sed 's/ /\n/g' | egrep "^--${exec_attr}" | cut -d"=" -f2)
+	local exec_attr_val=$(echo "$exec_line" | sed 's/ /\n/g' | egrep "^--${exec_attr}" | cut -d"=" -f2 | tr -d \'\")
 	if [[ ! "$exec_attr_val" == "--${exec_attr}" ]]; then
 		echo "$exec_attr_val"
 		return
@@ -140,7 +140,7 @@ function parse_kubelet_exec_attr_val() {
 
 	# Attempt to extract attribute assuming "space" based format being used.
 	# Example: --config /home/kubernetes/kubelet-config.yaml.
-	local exec_attr_val=$(echo "$exec_line" | sed 's/ /\n/g' | egrep -C1 "^--${exec_attr}" | tail -1)
+	local exec_attr_val=$(echo "$exec_line" | sed 's/ /\n/g' | egrep -C1 "^--${exec_attr}" | tail -1 | tr -d \'\")
 	if [[ ! "$exec_attr_val" == "--${exec_attr}" ]]; then
 		echo "$exec_attr_val"
 		return
@@ -568,8 +568,8 @@ function backup_config() {
 }
 
 # Function iterates through all the kubelet environment-files and all the
-# environment-vars to search for the passed attribute and, if found, returns
-# its associated value.
+# environment-vars defined within a systemd file to search for the passed
+# attribute and, if found, returns its associated value.
 function get_kubelet_config_attr_from_systemd() {
 	local exec_attr=$1
 
@@ -709,6 +709,12 @@ function adjust_crio_config_dependencies() {
 	fi
 
 	if [ ! -z "${pause_image:-}" ]; then
+		# kubelet/crio seems to be unable to pull images that have both a tag and
+		# a digest attribute, so here we are eliminating the tag one if digests are
+		# present.
+		pause_image=$(echo $pause_image | sed 's/:.*@/@/')
+
+		# Adjust crio.conf with kubelet's 'pause-image' attribute.
 		if egrep -q "pause_image =" $crio_conf_file; then
 			sed -i "s@pause_image =.*@pause_image = \"${pause_image}\"@" $crio_conf_file
 		else
