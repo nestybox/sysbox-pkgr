@@ -20,24 +20,17 @@ FROM ghcr.io/nestybox/centos7/systemd
 ARG sys_arch
 ENV SYS_ARCH=${sys_arch}
 ARG DEST=/opt/sysbox
-ARG CRICTL_VERSION="v1.21.0"
-ARG CRIO_V1_21_TAR="cri-o.${SYS_ARCH}.v1.21.0.tar.gz"
+ARG CRICTL_VERSION="v1.24.2"
 ARG CRIO_V1_22_TAR="cri-o.${SYS_ARCH}.v1.22.0.tar.gz"
 ARG CRIO_V1_23_TAR="cri-o.${SYS_ARCH}.v1.23.0.tar.gz"
 ARG CRIO_V1_24_TAR="cri-o.${SYS_ARCH}.v1.24.0.tar.gz"
 ARG CRIO_V1_25_TAR="cri-o.${SYS_ARCH}.v1.25.0.tar.gz"
+ARG CRIO_V1_26_TAR="cri-o.${SYS_ARCH}.v1.26.0.tar.gz"
 
 RUN yum install -y curl wget git bc which
 
 RUN curl -Lso /bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/${SYS_ARCH}/kubectl && \
     chmod +x /bin/kubectl
-
-# dasl for yaml, toml, json parsing
-#RUN curl -s https://api.github.com/repos/tomwright/dasel/releases/latest | \
-#    grep browser_download_url | \
-#    grep linux_${SYS_ARCH} | \
-#    cut -d '"' -f 4 | \
-#    wget -qi - && mv dasel_linux_${SYS_ARCH} dasel && chmod +x dasel && mv ./dasel /usr/local/bin/dasel
 
 RUN wget https://github.com/TomWright/dasel/releases/download/v1.27.3/dasel_linux_${SYS_ARCH} \
     && mv dasel_linux_${SYS_ARCH} dasel && chmod +x dasel && mv ./dasel /usr/local/bin/dasel
@@ -79,10 +72,6 @@ COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.
 # Load CRI-O installation artifacts
 #
 
-RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_21_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
-    && mkdir -p /opt/crio-deploy/bin/v1.21 \
-    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.21/.
-
 RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_22_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
     && mkdir -p /opt/crio-deploy/bin/v1.22 \
     && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.22/.
@@ -98,6 +87,10 @@ RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_24_TAR} -O cri
 RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_25_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
     && mkdir -p /opt/crio-deploy/bin/v1.25 \
     && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.25/.
+
+RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_26_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
+    && mkdir -p /opt/crio-deploy/bin/v1.26 \
+    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.26/.
 
 COPY systemd/crio-installer.service /opt/crio-deploy/systemd/crio-installer.service
 COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
@@ -124,8 +117,8 @@ COPY config/etc_containers_registries.d_default.yaml /opt/crio-deploy/config/etc
 # Load CRI-O patched binaries (to generate correct user-ns mappings)
 #
 
-COPY bin/crio/v1.21/crio /opt/crio-deploy/bin/v1.21/crio-patched
 COPY bin/crio/v1.22/crio /opt/crio-deploy/bin/v1.22/crio-patched
 COPY bin/crio/v1.23/crio /opt/crio-deploy/bin/v1.23/crio-patched
 COPY bin/crio/v1.24/crio /opt/crio-deploy/bin/v1.24/crio-patched
 COPY bin/crio/v1.25/crio /opt/crio-deploy/bin/v1.25/crio-patched
+COPY bin/crio/v1.26/crio /opt/crio-deploy/bin/v1.26/crio-patched
