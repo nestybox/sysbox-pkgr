@@ -77,15 +77,15 @@ function print_tag_header() {
 
     if [[ "$SYSBOX_RELEASE" = "true" ]]; then
         if [[ $unreleased = true ]]; then
-            echo -e "sysbox-${EDITION} (${tag}-0.linux) UNRELEASED; urgency=medium\n"
+            echo -e "sysbox-${EDITION} (${tag}.linux) UNRELEASED; urgency=medium\n"
         else
-            echo -e "sysbox-${EDITION} (${tag}-0.linux) unstable; urgency=medium\n"
+            echo -e "sysbox-${EDITION} (${tag}.linux) unstable; urgency=medium\n"
         fi
     else
         if [[ $unreleased = true ]]; then
-            echo -e "sysbox-${EDITION} (${tag}-0.${BASE_DISTRO}-${BASE_DISTRO_RELEASE}) UNRELEASED; urgency=medium\n"
+            echo -e "sysbox-${EDITION} (${tag}.${BASE_DISTRO}-${BASE_DISTRO_RELEASE}) UNRELEASED; urgency=medium\n"
         else
-            echo -e "sysbox-${EDITION} (${tag}-0.${BASE_DISTRO}-${BASE_DISTRO_RELEASE}) unstable; urgency=medium\n"
+            echo -e "sysbox-${EDITION} (${tag}.${BASE_DISTRO}-${BASE_DISTRO_RELEASE}) unstable; urgency=medium\n"
         fi
     fi
 }
