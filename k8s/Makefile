@@ -18,7 +18,8 @@ SHELL := /bin/bash
 
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_FLATCAR_BINS = $(SYSBOX_BINS) fusermount shiftfs.ko
-SYSBOX_VER = 0.5.2
+SYSBOX_CE_VER = $(shell cat ../sources/sysbox/VERSION)
+SYSBOX_EE_VER = $(shell cat ../sources/sysbox-internal/VERSION)
 
 # Supported Flatcar versions
 FLATCAR_VERSIONS := 2905.2.3 2905.2.6 3033.2.4
@@ -52,15 +53,15 @@ endif
 
 # The fetch_* targets download the Sysbox binaries from the Sysbox repo and
 # place them in the "bin" sub-directory. The *_image targets then load those
-# binaries into the sysbox-deploy-k8s image. Variable SYSBOX_VER selects the
-# version of the Sysbox binaries to download.
+# binaries into the sysbox-deploy-k8s image. Variable SYSBOX_CE_VER selects
+# the version of the Sysbox binaries to download.
 
 fetch-sysbox-ce-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
-	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ce_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb -P $(TMPDIR)
+	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER).linux_amd64.deb -P $(TMPDIR)
 	mkdir -p $(TMPDIR)/sysbox-ce-generic
-	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
+	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
 	mkdir -p bin/sysbox-ce/generic
 	rm -rf bin/sysbox-ce/generic/*
 	cp $(TMPDIR)/sysbox-ce-generic/usr/bin/sysbox-* bin/sysbox-ce/generic/.
@@ -69,9 +70,9 @@ fetch-sysbox-ce-bins:
 fetch-sysbox-ee-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
-	wget https://downloads.nestybox.com/sysbox/releases/v$(SYSBOX_VER)/sysbox-ee_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb -P $(TMPDIR)
+	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_EE_VER)/sysbox-ee/sysbox-ee_$(SYSBOX_EE_VER).linux_amd64.deb -P $(TMPDIR)
 	mkdir -p $(TMPDIR)/sysbox-ee-generic
-	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_VER)-0.linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ee-generic
+	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_EE_VER).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ee-generic
 	mkdir -p bin/sysbox-ee/generic
 	rm -rf bin/sysbox-ee/generic/*
 	cp $(TMPDIR)/sysbox-ee-generic/usr/bin/sysbox-* bin/sysbox-ee/generic/.
@@ -211,12 +212,12 @@ check-sysbox-ee-flatcar-artifacts:
 all: sysbox-deploy-k8s-image sysbox-ee-deploy-k8s-image
 
 sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_VER) \
+	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_CE_VER) \
 		--build-arg sys_arch=$(SYS_ARCH) \
 		-f Dockerfile.sysbox-ce .
 
 sysbox-ee-deploy-k8s-image: sysbox-ee-deploy-k8s-artifacts sysbox-ee-deploy-k8s-flatcar-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s:v$(SYSBOX_VER) \
+	docker build -t ghcr.io/nestybox/sysbox-ee-deploy-k8s:v$(SYSBOX_EE_VER) \
 		--build-arg sys_arch=$(SYS_ARCH) \
 		-f Dockerfile.sysbox-ee .
 
