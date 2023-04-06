@@ -35,6 +35,10 @@ runtime=""
 # Container's default restart-policy mode (i.e. no restart).
 kubelet_ctr_restart_mode="no"
 
+# Kubelet's initialization command and parameters. We are caching
+# this value as a global var for performance reasons.
+execstart_line_global=""
+
 function die() {
 	msg="$*"
 	echo "ERROR: $msg" >&2
@@ -325,27 +329,47 @@ function get_kubelet_exec_line_from_systemd_regular() {
 	fi
 }
 
-function get_kubelet_exec_line_from_exec_command() {
-
-	local exec_line=$(ps -e -o command | egrep "^kubelet")
-	echo "$exec_line"
-}
-
-function get_kubelet_exec_line() {
+function get_kubelet_exec_line_from_systemd() {
+	if [ ! -z "$execstart_line_global" ]; then
+		echo "$execstart_line_global"
+		return
+	fi
 
 	local execstart_line=$(get_kubelet_exec_line_from_systemd_docker)
 	if [ ! -z "$execstart_line" ]; then
+		execstart_line_global="$execstart_line"
 		echo "$execstart_line"
 		return
 	fi
 
 	local execstart_line=$(get_kubelet_exec_line_from_systemd_regular)
 	if [ ! -z "$execstart_line" ]; then
+		execstart_line_global="$execstart_line"
+		echo "$execstart_line"
+		return
+	fi
+}
+
+function get_kubelet_exec_line_from_shell() {
+	if [ ! -z "$execstart_line_global" ]; then
+		echo "$execstart_line_global"
+		return
+	fi
+
+	local execstart_line=$(ps -e -o command | egrep "^kubelet")
+	execstart_line_global="$execstart_line"
+	echo "$execstart_line"
+}
+
+function get_kubelet_exec_line() {
+
+	local execstart_line=$(get_kubelet_exec_line_from_systemd)
+	if [ ! -z "$execstart_line" ]; then
 		echo "$execstart_line"
 		return
 	fi
 
-	local execstart_line=$(get_kubelet_exec_line_from_exec_command)
+	local execstart_line=$(get_kubelet_exec_line_from_shell)
 	if [ ! -z "$execstart_line" ]; then
 		echo "$execstart_line"
 		return
@@ -494,7 +518,7 @@ function config_kubelet() {
 	local kubelet_env_var="KUBELET_CRIO_ARGS"
 
 	# Identify the exec-line.
-	local exec_line=$(get_kubelet_exec_line)
+	local exec_line=$(get_kubelet_exec_line_from_systemd)
 	if [ -z "$exec_line" ]; then
 		die "No Kubelet execution instruction could be identified."
 	fi
@@ -660,7 +684,6 @@ function get_kubelet_config_attr_from_config_file() {
 	local config_attr=$1
 
 	if [ -z "$config_attr" ]; then
-		echo ""
 		return
 	fi
 
@@ -684,25 +707,26 @@ function get_kubelet_config_attr_from_snap() {
 
 	# Return if not within a kubelet-snap setup.
 	if [ -z "${kubelet_snap:-}" ]; then
-		echo ""
 		return
 	fi
 
 	snap get $kubelet_snap $config_attr
 }
 
-#
-#
-function get_kubelet_config_attr_from_exec_command() {
+# Function obtains the kubelet exec instruction as it appears in linux shell.
+function get_kubelet_config_attr_from_shell() {
 	local exec_attr="$1"
-	local exec_line="${2:-}"
 
 	if [ -z "$exec_attr" ]; then
-		echo ""
 		return
 	fi
 
-	local exec_attr_val=$(get_kubelet_exec_attr_val "$exec_attr" "$exec_line")
+	local execstart_line=$(get_kubelet_exec_line_from_shell)
+	if [ -z "$execstart_line" ]; then
+		return
+	fi
+
+	local exec_attr_val=$(parse_kubelet_exec_attr_val "$exec_attr" "$execstart_line")
 	echo "$exec_attr_val"
 }
 
@@ -734,7 +758,6 @@ function get_kubelet_config_attr_from_exec_command() {
 # TODO: Review the list of kubelet attributes to identify other 'overlapping'
 # parameters (if any).
 function adjust_crio_config_dependencies() {
-	local kubelet_exec_line="${1:-}"
 	local crio_sighup=false
 	local crio_restart=false
 
@@ -742,7 +765,7 @@ function adjust_crio_config_dependencies() {
 	# adjust crio.conf to honor that request.
 	local pause_image_systemd=$(get_kubelet_config_attr_from_systemd "pod-infra-container-image")
 	local pause_image_snap=$(get_kubelet_config_attr_from_snap "pod-infra-container-image")
-	local pause_image_exec=$(get_kubelet_config_attr_from_exec_command "pod-infra-container-image" "$kubelet_exec_line")
+	local pause_image_exec=$(get_kubelet_config_attr_from_shell "pod-infra-container-image")
 	local pause_image
 	if [ ! -z "$pause_image_systemd" ]; then
 		pause_image=$pause_image_systemd
@@ -773,7 +796,7 @@ function adjust_crio_config_dependencies() {
 	#
 	local cni_conf_dir_systemd=$(get_kubelet_config_attr_from_systemd "cni-conf-dir")
 	local cni_conf_dir_snap=$(get_kubelet_config_attr_from_snap "cni-conf-dir")
-	local cni_conf_dir_exec=$(get_kubelet_config_attr_from_exec_command "cni-conf-dir" "$kubelet_exec_line")
+	local cni_conf_dir_exec=$(get_kubelet_config_attr_from_shell "cni-conf-dir")
 	local cni_conf_dir
 	if [ ! -z "$cni_conf_dir_systemd" ]; then
 		cni_conf_dir=$cni_conf_dir_systemd
@@ -797,7 +820,7 @@ function adjust_crio_config_dependencies() {
 	#
 	local cni_bin_dir_systemd=$(get_kubelet_config_attr_from_systemd "cni-bin-dir")
 	local cni_bin_dir_snap=$(get_kubelet_config_attr_from_snap "cni-bin-dir")
-	local cni_bin_dir_exec=$(get_kubelet_config_attr_from_exec_command "cni-bin-dir" "$kubelet_exec_line")
+	local cni_bin_dir_exec=$(get_kubelet_config_attr_from_shell "cni-bin-dir")
 	local cni_bin_dir
 	if [ ! -z "$cni_bin_dir_systemd" ]; then
 		cni_bin_dir=$cni_bin_dir_systemd
@@ -816,14 +839,12 @@ function adjust_crio_config_dependencies() {
 		crio_restart=true
 	fi
 
-	#
-	# Adjust crio.conf with the cgroup driver configured by kubelet. Notice that as of
-	# Kubelet <= 1.21, the default cgroup-driver is 'cgroupfs'.
-	#
+	# Adjust crio.conf with the cgroup driver configured by kubelet. As of today (Mar-2023), kubelet
+	# still defaults to `cgroupfs`.
 	local cgroup_driver_systemd=$(get_kubelet_config_attr_from_systemd "cgroup-driver")
 	local cgroup_driver_config=$(get_kubelet_config_attr_from_config_file "cgroupDriver")
 	local cgroup_driver_snap=$(get_kubelet_config_attr_from_snap "cgroup-driver")
-	local cgroup_driver_exec=$(get_kubelet_config_attr_from_exec_command "cgroup-driver" "$kubelet_exec_line")
+	local cgroup_driver_exec=$(get_kubelet_config_attr_from_shell "cgroup-driver")
 	local cgroup_driver
 	if [ ! -z "$cgroup_driver_config" ]; then
 		cgroup_driver=$cgroup_driver_config
@@ -1238,8 +1259,6 @@ function get_runtime_kubelet_rke2() {
 }
 
 function config_kubelet_rke2() {
-	local kubelet_exec_line="${1}"
-
 	echo "Executing Kubelet RKE2 configuration function ..."
 
 	local rancher_config="/etc/rancher/rke2/config.yaml"
@@ -1260,7 +1279,7 @@ function config_kubelet_rke2() {
 		echo "container-runtime-endpoint: /var/run/crio/crio.sock" >>"$rancher_config"
 	fi
 
-	local cgroup_driver=$(get_kubelet_config_attr_from_exec_command "cgroup-driver" "$kubelet_exec_line")
+	local cgroup_driver=$(get_kubelet_config_attr_from_shell "cgroup-driver")
 	if [[ "$cgroup_driver" == "cgroupfs" ]]; then
 		if egrep -q "cgroup-driver=" "$rancher_config"; then
 			sed -i "s@cgroup-driver=.*@cgroup-driver=cgroupfs" "$rancher_config"
@@ -1311,11 +1330,11 @@ function do_config_kubelet_rke2() {
 	# that's something that we haven't observed yet given the short interval
 	# between the 'clean' and the 'stop' events.
 
-	local kubelet_exec_line=$(get_kubelet_exec_line)
+	local kubelet_exec_line=$(get_kubelet_exec_line_from_shell)
 	clean_runtime_state "$runtime"
 	stop_rke2
-	config_kubelet_rke2 "$kubelet_exec_line"
-	adjust_crio_config_dependencies "$kubelet_exec_line"
+	config_kubelet_rke2
+	adjust_crio_config_dependencies
 	start_rke2
 }
 
