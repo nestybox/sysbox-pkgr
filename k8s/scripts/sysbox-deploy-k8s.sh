@@ -779,15 +779,27 @@ function is_kernel_upgraded() {
 }
 
 function add_label_to_node() {
-	label=$1
+	local label=$1
 	echo "Adding K8s label \"$label\" to node ..."
 	kubectl label node "$NODE_NAME" --overwrite "${label}"
 }
 
 function rm_label_from_node() {
-	label=$1
+	local label=$1
 	echo "Removing K8s label \"$label\" from node ..."
 	kubectl label node "$NODE_NAME" "${label}-"
+}
+
+function add_taint_to_node() {
+	local taint=$1
+	echo "Adding K8s taint \"$taint\" to node ..."
+	kubectl taint nodes "$NODE_NAME" "$taint" --overwrite=true
+}
+
+function rm_taint_from_node() {
+	taint=$1
+	echo "Removing K8s taint \"$taint\" from node ..."
+	kubectl taint nodes "$NODE_NAME" "$taint"-
 }
 
 function install_precheck() {
@@ -1001,6 +1013,9 @@ function main() {
 		mkdir -p ${host_var_lib_sysbox_deploy_k8s}
 		install_precheck
 
+		# Prevent new pods being scheduled till sysbox installation is completed.
+		add_taint_to_node "sysbox-runtime=not-running:NoSchedule"
+
 		# Install CRI-O
 		if [[ "$do_crio_install" == "true" ]]; then
 			add_label_to_node "crio-runtime=installing"
@@ -1047,6 +1062,7 @@ function main() {
 
 		add_label_to_node "crio-runtime=running"
 		add_label_to_node "sysbox-runtime=running"
+		rm_taint_from_node "sysbox-runtime=not-running:NoSchedule"
 
 		echo "The k8s runtime on this node is now CRI-O."
 		echo "$sysbox_edition installation completed."
@@ -1054,6 +1070,9 @@ function main() {
 
 	cleanup)
 		mkdir -p ${host_var_lib_sysbox_deploy_k8s}
+
+		# Prevent new pods being scheduled during sysbox cleanup phase.
+		add_taint_to_node "sysbox-runtime=not-running:NoSchedule"
 
 		# Switch the K8s runtime away from CRI-O (but only if this daemonset installed CRI-O previously)
 		if [ -f ${host_var_lib_sysbox_deploy_k8s}/crio_installed ] && [[ "$k8s_runtime" == "crio" ]]; then
@@ -1098,6 +1117,8 @@ function main() {
 		if [[ "$crio_restart_pending" == "true" ]]; then
 			restart_crio
 		fi
+
+		rm_taint_from_node "sysbox-runtime=not-running:NoSchedule"
 
 		echo "The k8s runtime on this node is now $k8s_runtime."
 		;;
