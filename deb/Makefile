@@ -33,11 +33,9 @@ endif
 # in the kernel and associated clibs.
 RELEASE_BASELINE_IMAGE=ubuntu-jammy
 
-# Go version to utilize in slave containers for the building process.
-# We are temporarily skipping these settings as we are relying on Go's
-# top-of-tree (till 1.13 comes out).
+# Go version to utilize in building process.
 GO_BASE_IMAGE=golang
-GO_VERSION:=1.16
+GO_VERSION:=1.19
 GO_IMAGE=$(GO_BASE_IMAGE):$(GO_VERSION)
 
 # Sysbox source-code locations.
