@@ -149,38 +149,21 @@ function parse_kubelet_exec_attr_val() {
 	echo ""
 }
 
-function get_kubelet_env_var_all() {
+function get_kubelet_env_vars() {
 	systemctl show kubelet.service | egrep "ExecStart=" |
 		cut -d ";" -f2 | sed -e 's@argv\[\]=${kubelet_bin}@@g' |
-		sed 's/ /\n/g' | egrep "^\\$"
+		sed 's/ /\n/g' | egrep "^\\$" | sed 's/\$//g'
 }
 
-# Function obtains any given kubelet executional/operational attribute. Notice
-# that function takes the complete kubelet instruction being executed as an
-# optional argument; if this one is not provided by caller, function attempts
-# to obtain this information by parsing systemd unit files or the "ps" output
-# in the system.
-function get_kubelet_exec_attr_val() {
-	local exec_attr=$1
-	local exec_line="${2:-}"
-
-	if [ -z "$exec_line" ]; then
-		exec_line=$(get_kubelet_exec_line)
-	fi
-
-	if [ -z "$exec_line" ]; then
-		return
-	fi
-
-	local exec_attr_val=$(parse_kubelet_exec_attr_val "$exec_attr" "$exec_line")
-	echo "$exec_attr_val"
+function get_kubelet_env_vars_content() {
+	systemctl show kubelet.service -p Environment --no-pager
 }
 
 function get_kubelet_service_file() {
 	systemctl show kubelet | grep "^FragmentPath" | cut -d "=" -f2
 }
 
-function get_kubelet_service_dropin_file() {
+function get_kubelet_service_dropin_files() {
 	systemctl show kubelet | grep "^DropInPaths" | cut -d "=" -f2
 }
 
@@ -384,17 +367,18 @@ function get_kubelet_exec_line() {
 function get_kubelet_systemd_file_per_exec() {
 	local exec_line=$1
 
-	# Let's look first at the drop-in file first as it has more preference.
-	#
-	# TODO: What about scenarios with multiple dropin-files?
-	local dropin_file=$(get_kubelet_service_dropin_file)
-	if [ ! -z "$dropin_file" ]; then
-		local flat_dropin_str=$(sed ':x; /\\$/ { N; s/\\\n//; tx }' $dropin_file | tr -s ' ' | tr -d \'\")
-		if [[ "$flat_dropin_str" =~ "$exec_line" ]]; then
-			echo "$dropin_file"
-			return
+	# Let's identify all the existing drop-in files associated with the kubelet service
+	# to look for an exec_line match -- these have preference so we must start here.
+	local dropinFiles=$(get_kubelet_service_dropin_files)
+	for f in ${dropinFiles}; do
+		if [ ! -z "$f" ]; then
+			local flat_dropin_str=$(sed ':x; /\\$/ { N; s/\\\n//; tx }' $f | tr -s ' ' | tr -d \'\")
+			if [[ "$flat_dropin_str" =~ "$exec_line" ]]; then
+				echo "$f"
+				return
+			fi
 		fi
-	fi
+	done
 
 	local service_file=$(get_kubelet_service_file)
 	if [ ! -z "$service_file" ]; then
