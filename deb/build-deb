@@ -9,6 +9,7 @@ set -e
 # Untar Sysbox sources.
 mkdir -p /root/build-deb/sysbox
 tar -C /root/build-deb -xzf /sources/sysbox.tgz
+chown -R $(id -u):$(id -g) .
 
 # Obtain sysbox version out of the source tree.
 VERSION=$(cat /root/build-deb/sysbox/VERSION)
