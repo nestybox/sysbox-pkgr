@@ -551,10 +551,16 @@ function backup_config() {
 	cp "$file" "${var_lib_sysbox_deploy_k8s}"/"${type}.orig"
 }
 
-# Function iterates through all the kubelet environment-files and all the
-# environment-vars defined within a systemd file to search for the passed
-# attribute and, if found, returns its associated value.
-function get_kubelet_config_attr_from_systemd() {
+# Searches the passed exec_attr throughout all the 'Environment' clauses defined in
+# the kubelet service file and associated drop-in files. Function must be able to parse
+# relatively complex/long one-liners like this one:
+# Environment=KUBELET_CGROUP_FLAGS=--cgroup-driver=systemd \
+#             "KUBELET_CONTAINERD_FLAGS=--container-runtime=remote \
+#              --runtime-request-timeout=15m --container-runtime-endpoint=unix:///run/containerd/containerd.sock \
+#              --runtime-cgroups=/system.slice/containerd.service" "KUBELET_TLS_BOOTSTRAP_FLAGS=--kubeconfig \
+#              /var/lib/kubelet/kubeconfig --bootstrap-kubeconfig /var/lib/kubelet/bootstrap-kubeconfig"
+#
+function get_kubelet_config_attr_from_systemd_environment() {
 	local exec_attr=$1
 
 	if [ -z "$exec_attr" ]; then
@@ -562,19 +568,74 @@ function get_kubelet_config_attr_from_systemd() {
 		return
 	fi
 
-	# Let's first look directly into the list of ExecStart attributes used
-	# within the kubelet service file.
-	local exec_attr_val=$(get_kubelet_exec_attr_val "$exec_attr")
+	local env_vars_content=$(get_kubelet_env_vars_content)
+	if [[ "$env_vars_content" =~ "$exec_attr" ]]; then
+		# Parse equal-signed based attribute: Example: "--cgroup-driver=systemd"
+		local exec_attr_val=$(echo "$env_vars_content" | awk -F"--${exec_attr}=" '{print $2}' | cut -d' ' -f1 | tr -d \'\")
+		if [ ! -z "$exec_attr_val" ]; then
+			echo "$exec_attr_val"
+			return
+		fi
+
+		# Parse space-based attribute. Example: "--bootstrap-kubeconfig /var/lib/kubelet/bootstrap-kubeconfig"
+		local exec_attr_val=$(echo "$env_vars_content" | awk -F"--${exec_attr} " '{print $2}' | cut -d' ' -f1 | tr -d \'\")
+		if [ ! -z "$exec_attr_val" ]; then
+			echo "$exec_attr_val"
+			return
+		fi
+	fi
+}
+
+# Searches the passed exec_attr throughout all the 'ExecStart' clauses defined in
+# the kubelet service file and associated drop-in files.
+function get_kubelet_config_attr_from_systemd_execstart() {
+	local exec_attr=$1
+
+	if [ -z "$exec_attr" ]; then
+		return
+	fi
+
+	local exec_line=$(get_kubelet_exec_line_from_systemd)
+	if [ -z "$exec_line" ]; then
+		return
+	fi
+
+	local exec_attr_val=$(parse_kubelet_exec_attr_val "$exec_attr" "$exec_line")
+	echo "$exec_attr_val"
+}
+
+# Function attempts to identify the value assigned to the attribute being passed. To
+# accomplish its goal the function iterates through all the systemd files associated
+# with the kubelet service, which includes the kubelet service file, kubelet's drop-in
+# files, and external environment-files.
+function get_kubelet_config_attr_from_systemd() {
+	local exec_attr=$1
+
+	if [ -z "$exec_attr" ]; then
+		return
+	fi
+
+	# Let's identify all the existing 'Environment' attributes defined within the kubelet service file
+	# as well as its drop-in files.
+	local exec_attr_val=$(get_kubelet_config_attr_from_systemd_environment "$exec_attr")
 	if [ ! -z "$exec_attr_val" ]; then
 		echo "$exec_attr_val"
 		return
 	fi
 
-	local env_files=$(get_kubelet_env_files)
-	local env_vars=$(get_kubelet_env_var_all)
+	# Look directly into the list of 'ExecStart' attributes used within the kubelet service file.
+	local exec_attr_val=$(get_kubelet_config_attr_from_systemd_execstart "$exec_attr")
+	if [ ! -z "$exec_attr_val" ]; then
+		echo "$exec_attr_val"
+		return
+	fi
 
-	# Let's now iterate through the matrix formed by all env-files and env-vars
-	# to look for the exec attribute we are after. If found, return its value.
+	# Let's now look within any existing 'EnvironmentFile' (e.g., '/etc/default/kubelet').
+	# To be thorough we must iterate through the matrix formed by all env-files and
+	# env-vars to look for the exec attribute we are after. If found, return its value.
+	local env_files=$(get_kubelet_env_files)
+	local env_vars=$(get_kubelet_env_vars)
+
 	for file in $env_files; do
 		for var in $env_vars; do
 			if [ ! -f "$file" ]; then
