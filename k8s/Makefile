@@ -65,7 +65,7 @@ endif
 fetch-sysbox-ce-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
-	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_amd64.deb -P $(TMPDIR)
+	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb -P $(TMPDIR)
 	mkdir -p $(TMPDIR)/sysbox-ce-generic
 	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
 	mkdir -p bin/sysbox-ce/generic
@@ -76,7 +76,7 @@ fetch-sysbox-ce-bins:
 fetch-sysbox-ee-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
-	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_EE_VER)/sysbox-ee/sysbox-ee_$(SYSBOX_EE_VER_FULL).linux_amd64.deb -P $(TMPDIR)
+	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_EE_VER)/sysbox-ee/sysbox-ee_$(SYSBOX_EE_VER_FULL).linux_$(SYS_ARCH).deb -P $(TMPDIR)
 	mkdir -p $(TMPDIR)/sysbox-ee-generic
 	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_EE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ee-generic
 	mkdir -p bin/sysbox-ee/generic
