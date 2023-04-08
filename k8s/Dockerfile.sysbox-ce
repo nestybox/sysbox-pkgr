@@ -117,7 +117,6 @@ COPY config/etc_containers_registries.d_default.yaml /opt/crio-deploy/config/etc
 # Load CRI-O patched binaries (to generate correct user-ns mappings)
 #
 
-COPY bin/crio/v1.22/crio /opt/crio-deploy/bin/v1.22/crio-patched
 COPY bin/crio/v1.23/crio /opt/crio-deploy/bin/v1.23/crio-patched
 COPY bin/crio/v1.24/crio /opt/crio-deploy/bin/v1.24/crio-patched
 COPY bin/crio/v1.25/crio /opt/crio-deploy/bin/v1.25/crio-patched
