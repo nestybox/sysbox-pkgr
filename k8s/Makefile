@@ -18,8 +18,14 @@ SHELL := /bin/bash
 
 SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_FLATCAR_BINS = $(SYSBOX_BINS) fusermount shiftfs.ko
+
+# Obtain the version to build from the Sysbox repo itself. If a full version string
+# is not found in the corresponding VERSION file, append a dummy revision/patch ("0")
+# to match the name of the sysbox's deb image to download.
 SYSBOX_CE_VER = $(shell cat ../sources/sysbox/VERSION)
 SYSBOX_EE_VER = $(shell cat ../sources/sysbox-internal/VERSION)
+SYSBOX_CE_VER_FULL = $(shell echo $(SYSBOX_CE_VER) | sed '/-[0-9]/!s/.*/&-0/')
+SYSBOX_EE_VER_FULL = $(shell echo $(SYSBOX_EE_VER) | sed '/-[0-9]/!s/.*/&-0/')
 
 # Supported Flatcar versions
 FLATCAR_VERSIONS := 2905.2.3 2905.2.6 3033.2.4
@@ -59,9 +65,9 @@ endif
 fetch-sysbox-ce-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
-	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER).linux_amd64.deb -P $(TMPDIR)
+	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_amd64.deb -P $(TMPDIR)
 	mkdir -p $(TMPDIR)/sysbox-ce-generic
-	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
+	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
 	mkdir -p bin/sysbox-ce/generic
 	rm -rf bin/sysbox-ce/generic/*
 	cp $(TMPDIR)/sysbox-ce-generic/usr/bin/sysbox-* bin/sysbox-ce/generic/.
@@ -70,9 +76,9 @@ fetch-sysbox-ce-bins:
 fetch-sysbox-ee-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
-	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_EE_VER)/sysbox-ee/sysbox-ee_$(SYSBOX_EE_VER).linux_amd64.deb -P $(TMPDIR)
+	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_EE_VER)/sysbox-ee/sysbox-ee_$(SYSBOX_EE_VER_FULL).linux_amd64.deb -P $(TMPDIR)
 	mkdir -p $(TMPDIR)/sysbox-ee-generic
-	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_EE_VER).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ee-generic
+	dpkg -x $(TMPDIR)/sysbox-ee_$(SYSBOX_EE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ee-generic
 	mkdir -p bin/sysbox-ee/generic
 	rm -rf bin/sysbox-ee/generic/*
 	cp $(TMPDIR)/sysbox-ee-generic/usr/bin/sysbox-* bin/sysbox-ee/generic/.
