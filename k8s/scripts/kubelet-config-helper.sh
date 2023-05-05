@@ -1237,14 +1237,20 @@ function kubelet_rke_deployment() {
 # service
 ###############################################################################
 
+function get_rke2_service_name() {
+	# figure out which rke2 service is running
+	# one of these must be active because of the check in kubelet_rke2_deployment
+	systemctl list-units --type service --state active --quiet --plain 'rke2-*' | cut -d ' ' -f1
+}
+
 function start_rke2() {
-	echo "Starting RKE2 agent ..."
-	systemctl start rke2-agent
+	echo "Starting RKE2 service $1 ..."
+	systemctl start $1
 }
 
 function stop_rke2() {
-	echo "Stopping RKE2 agent ..."
-	systemctl stop rke2-agent
+	echo "Stopping RKE2 service $1 ..."
+	systemctl stop $1
 }
 
 function get_runtime_kubelet_rke2() {
@@ -1331,17 +1337,19 @@ function do_config_kubelet_rke2() {
 	# between the 'clean' and the 'stop' events.
 
 	local kubelet_exec_line=$(get_kubelet_exec_line_from_shell)
+	local rke2_service_name=$(get_rke2_service_name) # rke2-agent or rke2-server
 	clean_runtime_state "$runtime"
-	stop_rke2
+	stop_rke2 "$rke2_service_name"
 	config_kubelet_rke2
 	adjust_crio_config_dependencies
-	start_rke2
+	start_rke2 "$rke2_service_name"
 }
 
 function kubelet_rke2_deployment() {
 
-	# Worker nodes in RKE2 setups rely on rke2-agent's systemd service.
-	if systemctl is-active --quiet rke2-agent; then
+	# Worker nodes in RKE2 setups rely on rke2-agent's systemd service,
+	# or rke2-server for single-node clusters (there is only the controller node)
+	if systemctl is-active --quiet rke2-agent rke2-server; then
 		return
 	fi
 
