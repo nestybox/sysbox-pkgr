@@ -949,6 +949,24 @@ function do_distro_adjustments() {
 	sed -i '/^kernel.unprivileged_userns_clone/ s/^#*/# /' ${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf
 }
 
+# determines if running on a GKE cluster
+function check_gke() {
+	cluster_name=$(curl --connect-timeout 1 -s -H "Metadata-Flavor: Google" 169.254.169.254/computeMetadata/v1/instance/attributes/cluster-name || false)
+	if [[ -z $cluster_name ]]; then
+		false
+		return
+	fi
+	true
+}
+
+# fixes issue with network bridge on GKE not working
+# also adds correct path to k8s binaries on GKE nodes in /home/kubernetes/bin
+function config_crio_for_gke() {
+	rm ${host_etc}/cni/net.d/100-crio-bridge.conf
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/opt/cni/bin/"
+	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/home/kubernetes/bin"
+}
+
 #
 # Main Function
 #
@@ -1023,6 +1041,11 @@ function main() {
 			deploy_crio_installer_service
 			remove_crio_installer_service
 			config_crio
+			# check if running on GKE, and if so, patch crio config
+			if check_gke; then
+				echo "Configuring CRI-O for GKE"
+				config_crio_for_gke
+			fi
 			crio_restart_pending=true
 			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/crio_installed
 		fi
