@@ -161,11 +161,13 @@ crio-build-container:
 #
 # bin
 # ├── crio
-# │   └── v1.21
+# │   └── v1.24
 # │       └── crio
-# │   └── v1.22
+# │   └── v1.25
 # │       └── crio
-# │   ├── v1.23
+# │   ├── v1.26
+# │   │   └── crio
+# │   ├── v1.27
 # │   │   └── crio
 # ├── sysbox-ce
 # │   ├── ubuntu-bionic
