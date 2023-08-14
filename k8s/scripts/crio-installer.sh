@@ -89,6 +89,9 @@ function do_install_crio() {
 		sed -i "/Type=notify/a Environment=PATH=${path}:/sbin:/bin:/usr/sbin:/usr/bin" /etc/systemd/system/crio.service
 		sed -i "s@/usr/local/bin/crio@${path}/crio@" /etc/systemd/system/crio.service
 	fi
+
+	# Create directories expected by CRI-O
+	mkdir -p /var/lib/crio
 }
 
 function install_crio() {
