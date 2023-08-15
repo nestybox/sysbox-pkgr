@@ -1045,7 +1045,7 @@ function main() {
 
 		# Switch the K8s runtime to CRI-O
 		#
-		# Note: this will configure the Kubelet to use CRI-O and restart it;,
+		# Note: this will configure the Kubelet to use CRI-O and restart it,
 		# thereby killing all pods on the K8s node (including this daemonset).
 		# The K8s control plane will then re-create the pods, but this time
 		# with CRI-O. The operation can take up to 1 minute.
