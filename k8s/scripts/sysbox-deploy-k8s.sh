@@ -949,17 +949,21 @@ function do_distro_adjustments() {
 	sed -i '/^kernel.unprivileged_userns_clone/ s/^#*/# /' ${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf
 }
 
-# determines if running on a GKE cluster
+# determines if running on a GKE cluster by checking metadata endpoint
 function check_gke() {
-	cluster_name=$(curl --connect-timeout 1 -s -H "Metadata-Flavor: Google" 169.254.169.254/computeMetadata/v1/instance/attributes/cluster-name || false)
-	if [[ -z $cluster_name ]]; then
+	is_cluster=$(curl -s -o /dev/null \
+	 		-w "%{http_code}" \
+	   		--connect-timeout 1 \
+	     		-H "Metadata-Flavor: Google" \
+	       		169.254.169.254/computeMetadata/v1/instance/attributes/cluster-name)
+	if [ $is_cluster -ne 200 ]; then
 		false
 		return
 	fi
 	true
 }
 
-# fixes issue with network bridge on GKE not working
+# fixes issue with crio network bridge on GKE not working
 # also adds correct path to k8s binaries on GKE nodes in /home/kubernetes/bin
 function config_crio_for_gke() {
 	rm ${host_etc}/cni/net.d/100-crio-bridge.conf
