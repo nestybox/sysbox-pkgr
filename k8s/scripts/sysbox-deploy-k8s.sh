@@ -950,6 +950,8 @@ function do_distro_adjustments() {
 
 # determines if running on a GKE cluster by checking metadata endpoint
 function check_gke() {
+	# GKE nodes will respond with an HTTP 200 for this URL and Metadata-Flavor header.
+	# Other clouds, URLs, etc. will throw a 404 error. If curl cannot connect the code will be 000.
 	is_cluster=$(curl -s -o /dev/null \
 	 		-w "%{http_code}" \
 	   		--connect-timeout 1 \
