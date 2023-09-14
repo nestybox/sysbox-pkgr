@@ -611,6 +611,12 @@ function config_crio_for_sysbox() {
 	if host_flatcar_distro; then
 		sed -i 's@/usr/bin/sysbox-runc@/opt/bin/sysbox-runc@' ${host_crio_conf_file}
 	fi
+
+	# In GKE configure existing plugins 
+	if is_host_gke; then
+		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/opt/cni/bin/"
+		dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/home/kubernetes/bin"
+	fi
 }
 
 function unconfig_crio_for_sysbox() {
@@ -691,6 +697,10 @@ function host_flatcar_distro() {
 
 function get_host_kernel() {
 	uname -r
+}
+
+function is_host_gke() {
+	curl -Ls -o /dev/null "http://metadata.google.internal/computeMetadata/v1/instance/image" -H "Metadata-Flavor: Google" && true || false
 }
 
 function is_supported_distro() {
