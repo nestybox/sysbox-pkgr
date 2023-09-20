@@ -950,7 +950,7 @@ function do_distro_adjustments() {
 }
 
 # determines if running on a GKE cluster by checking metadata endpoint
-function check_gke() {
+function is_gke() {
 	# GKE nodes will respond with an HTTP 200 for this URL and Metadata-Flavor header.
 	# Other clouds, URLs, etc. will throw a 404 error. If curl cannot connect the code will be 000.
 	is_cluster=$(curl -s -o /dev/null \
@@ -965,10 +965,10 @@ function check_gke() {
 	true
 }
 
-# fixes issue with crio network bridge on GKE not working
-# also adds correct path to k8s binaries on GKE nodes in /home/kubernetes/bin
+# Fixes an issue with crio network bridge on GKE not working.
+# Also adds correct path to k8s binaries on GKE nodes in /home/kubernetes/bin
 function config_crio_for_gke() {
-	rm ${host_etc}/cni/net.d/100-crio-bridge.conf
+	rm -rf ${host_etc}/cni/net.d/100-crio-bridge.conf
 	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/opt/cni/bin/"
 	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/home/kubernetes/bin"
 }
@@ -1047,8 +1047,8 @@ function main() {
 			deploy_crio_installer_service
 			remove_crio_installer_service
 			config_crio
-			# check if running on GKE, and if so, patch crio config
-			if check_gke; then
+			# if running on GKE patch the CRI-O config
+			if is_gke; then
 				echo "Configuring CRI-O for GKE"
 				config_crio_for_gke
 			fi
