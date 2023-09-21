@@ -1,17 +1,22 @@
 Sysbox-deploy-k8s image generation and update procedure
 =======================================================
 
-1) Build the sysbox-deploy images through the usual `make <target>` method. The process
-must be completed in every supported architecture (i.e., amd64 and arm64).
+1) Build the sysbox-deploy images through the usual `make <target>` method.
+
+  NOTE: The process must be completed in every supported architecture (i.e.,
+  amd64 and arm64).
 
 2) Identify the image that has been created and re-tag it accordingly to match the
-platform architecture being used (this must be done for each supported platform):
+platform architecture being used.
+
+  NOTE: this must be done for each supported platforms.
+
+  NOTE: tag the images with the `_amd64` and `_arm64` suffixes as needed.
 
 ```
 $ docker images
 REPOSITORY                           TAG       IMAGE ID       CREATED              SIZE
 ghcr.io/nestybox/sysbox-deploy-k8s   v0.5.2    eb28ac89b60f   About a minute ago   982MB
-
 
 $ docker tag eb28ac89b60f ghcr.io/nestybox/sysbox-deploy-k8s:v0.5.2_arm64
 
@@ -19,12 +24,15 @@ $ docker images
 REPOSITORY                           TAG            IMAGE ID       CREATED          SIZE
 ghcr.io/nestybox/sysbox-deploy-k8s   v0.5.2         eb28ac89b60f   7 minutes ago    982MB
 ghcr.io/nestybox/sysbox-deploy-k8s   v0.5.2_arm64   eb28ac89b60f   7 minutes ago    982MB
+ghcr.io/nestybox/sysbox-deploy-k8s   v0.5.2_amd64   c23934aef102   7 minutes ago    970MB
 ```
+
 
 3) Push each image to ghcr.io (for both supported platforms):
 
 ```
 $ docker push ghcr.io/nestybox/sysbox-deploy-k8s:v0.5.2_arm64
+$ docker push ghcr.io/nestybox/sysbox-deploy-k8s:v0.5.2_amd64
 ```
 
 4) Now is time to update the existing manifest to point to the new image components. This
@@ -71,6 +79,3 @@ $ docker manifest inspect ghcr.io/nestybox/sysbox-deploy-k8s:latest
 ...
 
 ````
-
-
-
