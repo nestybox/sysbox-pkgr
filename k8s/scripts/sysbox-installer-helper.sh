@@ -41,6 +41,11 @@ function install_package_deps() {
 }
 
 function install_shiftfs() {
+	# If shiftfs is not needed, skip
+	if ! shiftfs_needed; then
+		echo "Skipping shiftfs installation (kernel has id-mapped mounts support)."
+		return
+	fi
 
 	# If shiftfs is already installed, skip
 	if shiftfs_installed; then
@@ -66,19 +71,39 @@ function shiftfs_installed() {
 	modinfo shiftfs >/dev/null 2>&1
 }
 
+function compare_ge() {
+	echo "$1" "$2" | awk '{exit !($1 >= $2)}'
+}
+
+function shiftfs_needed() {
+	# shiftfs is not needed or recommended on kernels >= 5.19
+	# where idmapped mounts are present and stable
+	local kversion=$(uname -r | cut -d "." -f1-2)
+
+	# do not need full semver comparison since kversion will be X.Y thanks to cut
+	if compare_ge $kversion 5.19; then
+		# kernel is >= 5.19, not needed
+		return 1
+	else
+		return 0
+	fi
+}
+
 function probe_kernel_mods() {
 
 	echo "Probing kernel modules ..."
 
-	# If provided by the caller, load the passed shiftfs module, otherwise assume
-	# that this one is already present in the system's default modules location.
-	local shiftfs_module=${1:-}
-	if [ ! -z "${shiftfs_module}" ]; then
-		if ! lsmod | grep -q shiftfs; then
-			insmod ${shiftfs_module}
+	if shiftfs_needed; then
+		# If provided by the caller, load the passed shiftfs module, otherwise assume
+		# that this one is already present in the system's default modules location.
+		local shiftfs_module=${1:-}
+		if [ ! -z "${shiftfs_module}" ]; then
+			if ! lsmod | grep -q shiftfs; then
+				insmod ${shiftfs_module}
+			fi
+		else
+			modprobe shiftfs
 		fi
-	else
-		modprobe shiftfs
 	fi
 
 	modprobe configfs
@@ -88,7 +113,7 @@ function probe_kernel_mods() {
 			"by certain applications running inside a Sysbox container.\n"
 	fi
 
-	if ! lsmod | grep -q shiftfs; then
+	if shiftfs_needed && ! lsmod | grep -q shiftfs; then
 		echo -e "\nShiftfs kernel module is not loaded. Shiftfs is required " \
 			"for host volume mounts into Sysbox containers to have proper ownership " \
 			"(user-ID and group-ID).\n"
