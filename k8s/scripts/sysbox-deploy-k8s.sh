@@ -261,7 +261,8 @@ function get_artifacts_dir() {
 	if [[ "$distro" == "ubuntu-22.04" ]] ||
 		[[ "$distro" == "ubuntu-21.10" ]] ||
 		[[ "$distro" == "ubuntu-20.04" ]] ||
-		[[ "$distro" == "ubuntu-18.04" ]]; then
+		[[ "$distro" == "ubuntu-18.04" ]] ||
+		[[ "$distro" =~ "debian" ]]; then
 		artifacts_dir="${sysbox_artifacts}/bin/generic"
 	elif [[ "$distro" =~ "flatcar" ]]; then
 		local release=$(echo $distro | cut -d"-" -f2)
