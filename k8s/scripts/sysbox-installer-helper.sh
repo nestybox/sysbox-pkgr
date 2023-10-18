@@ -76,13 +76,14 @@ function compare_ge() {
 }
 
 function shiftfs_needed() {
-	# shiftfs is not needed or recommended on kernels >= 5.19
-	# where idmapped mounts are present and stable
+	# shiftfs is not needed for kernels >= 5.19 where idmapped mounts are present
+	# and stable, but is still recommended if it is available. the max supported
+	# version for shiftfs is 6.2, so check against that here
 	local kversion=$(uname -r | cut -d "." -f1-2)
 
 	# do not need full semver comparison since kversion will be X.Y thanks to cut
-	if compare_ge $kversion 5.19; then
-		# kernel is >= 5.19, not needed
+	if compare_ge $kversion 6.2; then
+		# not needed
 		return 1
 	else
 		return 0
