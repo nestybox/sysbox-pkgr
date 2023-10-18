@@ -76,7 +76,7 @@ subgid_file="${host_etc}/subgid"
 
 # Shiftfs
 shiftfs_min_kernel_ver=5.4
-shiftfs_max_kernel_ver=5.18
+shiftfs_max_kernel_ver=6.2
 
 # Current OS distro and kernel release
 os_distro_release=""
@@ -476,11 +476,14 @@ function install_sysbox_deps() {
 		elif semver_ge $kversion 5.17 && semver_lt $kversion 5.18; then
 			echo "Kernel version $kversion is 5.17"
 			cp -r "/opt/shiftfs-k5.17" "$host_run/shiftfs-dkms"
-		elif semver_ge $kversion 5.18 && semver_lt $kversion 5.19; then
-			echo "Kernel version $kversion is 5.18"
+		elif semver_ge $kversion 5.18 && semver_lt $kversion 6.1; then
+			echo "Kernel version $kversion is >= 5.18 and < 6.1"
 			cp -r "/opt/shiftfs-k5.18" "$host_run/shiftfs-dkms"
+		elif semver_ge $kversion 6.1 && semver_lt $kversion 6.3; then
+			echo "Kernel version $kversion is >= 6.1 and < 6.3"
+			cp -r "/opt/shiftfs-k6.1" "$host_run/shiftfs-dkms"
 		else
-			echo "Kernel version $kversion is >= 5.19"
+			echo "Kernel version $kversion, which is above the max required for shiftfs ($shiftfs_max_kernel_ver); skipping shiftfs installation."
 			# dont copy shiftfs, but still proceed to install other deps
 		fi
 	fi
