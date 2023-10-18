@@ -507,22 +507,22 @@ function get_subid_limits() {
 	fi
 
 	set +e
-	res=$(grep "^SUB_UID_MIN" $subid_def_file >/dev/null 2>&1)
+	res=$(grep "^SUB_UID_MIN" $subid_def_file 2>/dev/null)
 	if [ $? -eq 0 ]; then
 		subuid_min=$(echo $res | cut -d " " -f2)
 	fi
 
-	res=$(grep "^SUB_UID_MAX" $subid_def_file >/dev/null 2>&1)
+	res=$(grep "^SUB_UID_MAX" $subid_def_file 2>/dev/null)
 	if [ $? -eq 0 ]; then
 		subuid_max=$(echo $res | cut -d " " -f2)
 	fi
 
-	res=$(grep "^SUB_GID_MIN" $subid_def_file >/dev/null 2>&1)
+	res=$(grep "^SUB_GID_MIN" $subid_def_file 2>/dev/null)
 	if [ $? -eq 0 ]; then
 		subgid_min=$(echo $res | cut -d " " -f2)
 	fi
 
-	res=$(grep "^SUB_GID_MAX" $subid_def_file >/dev/null 2>&1)
+	res=$(grep "^SUB_GID_MAX" $subid_def_file 2>/dev/null)
 	if [ $? -eq 0 ]; then
 		subgid_max=$(echo $res | cut -d " " -f2)
 	fi
