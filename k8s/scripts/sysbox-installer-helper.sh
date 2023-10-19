@@ -25,6 +25,8 @@ set -o pipefail
 set -o nounset
 
 shiftfs_dkms=/run/shiftfs-dkms
+apt=$(which apt-get || true)
+yum=$(which yum || true)
 
 function die() {
 	msg="$*"
@@ -34,10 +36,14 @@ function die() {
 
 function install_package_deps() {
 
-	# Certificates package is required prior to running apt-update.
-	apt-get -y install ca-certificates
-	apt-get update
-	apt-get install -y rsync fuse iptables
+	if [[ ! -z $apt ]]; then
+		# Certificates package is required prior to running apt-update.
+		apt-get -y install ca-certificates
+		apt-get update
+		apt-get install -y rsync fuse iptables
+	elif [[ ! -z $yum ]]; then
+    	yum install -y rsync fuse iptables
+	fi
 }
 
 function install_shiftfs() {
@@ -55,7 +61,12 @@ function install_shiftfs() {
 
 	echo "Installing Shiftfs ..."
 
-	apt-get install -y make dkms
+	if [[ ! -z $apt ]]; then
+		apt-get install -y make dkms
+	elif [[ ! -z $yum ]]; then
+    	yum install -y make dkms
+	fi
+
 	sh -c "cd $shiftfs_dkms && make -f Makefile.dkms"
 
 	if ! shiftfs_installed; then
@@ -63,7 +74,10 @@ function install_shiftfs() {
 		return
 	fi
 
-	apt-get remove --purge -y make dkms
+	if [[ ! -z $apt ]]; then
+		apt-get remove --purge -y make dkms
+	fi
+
 	echo "Shiftfs installation done."
 }
 

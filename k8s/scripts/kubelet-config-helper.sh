@@ -65,6 +65,11 @@ function start_containerd() {
 	systemctl start containerd.service
 }
 
+function restart_containerd() {
+	echo "Restarting containerd on the host ..."
+	systemctl restart containerd.service
+}
+
 function stop_containerd() {
 	echo "Stopping containerd on the host ..."
 	systemctl stop containerd.service
@@ -476,7 +481,7 @@ function adjust_kubelet_exec_instruction() {
 			fi
 		fi
 
-		echo $new_line >>tmp.txt
+		echo "$new_line" >>tmp.txt
 
 	done <"$systemd_file"
 
@@ -539,6 +544,7 @@ function config_kubelet() {
 	if [[ "$kubelet_env_files" == "" ]]; then
 		kubelet_env_file="/etc/default/kubelet"
 		touch "$kubelet_env_file"
+		sed -i "/^[Service]/a EnvironmentFile=/etc/default/kubelet" "$systemd_file"
 	else
 		kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
 	fi
@@ -781,6 +787,12 @@ function adjust_crio_config_dependencies() {
 		# a digest attribute, so here we are eliminating the tag one if digests are
 		# present.
 		pause_image=$(echo $pause_image | sed 's/:.*@/@/')
+
+		# Workaround: the default EKS pause images require auth, use the public ecr pause image url instead with same tag
+		if [[ "$pause_image" =~ "ecr" ]]; then
+   			echo "Use default pause_image.."
+			pause_image=$(echo $pause_image | sed 's|.*:|public.ecr.aws/eks-distro/kubernetes/pause:|')
+		fi
 
 		# Adjust crio.conf with kubelet's 'pause-image' attribute.
 		if egrep -q "pause_image =" $crio_conf_file; then
@@ -1476,6 +1488,7 @@ function do_config_kubelet() {
 		clean_cgroups_kubepods
 		config_kubelet "host-based"
 		adjust_crio_config_dependencies
+		restart_containerd
 		restart_kubelet
 	fi
 }
