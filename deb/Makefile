@@ -71,15 +71,8 @@ DOCKER_BUILD=docker build                              \
 
 DOCKER_RUN=docker run --privileged --rm -i    \
 	-e EDITION                                \
-	-e VERSION                                \
-	-e COMMIT_ID                              \
-	-e BUILT_BY                               \
-	-e HOSTNAME                               \
 	-v $(CURDIR)/build/$(ARCH)/$@:/build      \
 	-v $(GOPATH)/pkg/mod:/go/pkg/mod          \
-	-v $(TEST_VOL1):/var/lib/docker           \
-	-v $(TEST_VOL2):/var/lib/sysbox           \
-	-v $(TEST_VOL3):/mnt/scratch              \
 	-v $(HOME)/.gitconfig:/root/.gitconfig:ro \
 	-v /lib/modules/$(KERNEL_REL):/lib/modules/$(KERNEL_REL):ro \
 	-v /usr/src/$(HEADERS):/usr/src/$(HEADERS):ro \
@@ -95,15 +88,8 @@ DOCKER_BUILD_RELEASE=docker build                                \
 
 DOCKER_RUN_RELEASE=docker run --privileged --rm -i               \
 	-e EDITION                                                   \
-	-e VERSION                                                   \
-	-e COMMIT_ID                                                 \
-	-e BUILT_BY                                                  \
-	-e HOSTNAME                                                  \
 	-v $(CURDIR)/build/$(ARCH)/$(RELEASE_BASELINE_IMAGE):/build  \
 	-v $(GOPATH)/pkg/mod:/go/pkg/mod                             \
-	-v $(TEST_VOL1):/var/lib/docker                              \
-	-v $(TEST_VOL2):/var/lib/sysbox                              \
-	-v $(TEST_VOL3):/mnt/scratch                                 \
 	-v $(HOME)/.gitconfig:/root/.gitconfig:ro                    \
 	-v /lib/modules/$(KERNEL_REL):/lib/modules/$(KERNEL_REL):ro  \
 	-v /usr/src/$(HEADERS):/usr/src/$(HEADERS):ro                \
