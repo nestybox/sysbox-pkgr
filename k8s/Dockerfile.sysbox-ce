@@ -19,6 +19,9 @@ FROM ghcr.io/nestybox/centos7/systemd
 
 ARG sys_arch
 ENV SYS_ARCH=${sys_arch}
+ARG sysbox_version
+ENV SYSBOX_VERSION=${sysbox_version}
+
 ARG DEST=/opt/sysbox
 ARG CRICTL_VERSION="v1.28.0"
 ARG CRIO_V1_26_TAR="cri-o.${SYS_ARCH}.v1.26.0.tar.gz"
