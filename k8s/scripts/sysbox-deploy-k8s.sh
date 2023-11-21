@@ -32,6 +32,8 @@ set -o nounset
 
 # The Sysbox edition to install: Sysbox (CE) or Sysbox-EE.
 sysbox_edition=""
+# The Sysbox version to install; append "-0" if it doesn't have a patch number.
+sysbox_version=$(echo "$SYSBOX_VERSION" | sed '/-[0-9]/!s/.*/&-0/')
 
 # The daemonset Dockerfile places sysbox artifacts here
 sysbox_artifacts="/opt/sysbox"
@@ -283,6 +285,9 @@ function copy_sysbox_to_host() {
 	cp "${artifacts_dir}/sysbox-mgr" "${host_bin}/sysbox-mgr"
 	cp "${artifacts_dir}/sysbox-fs" "${host_bin}/sysbox-fs"
 	cp "${artifacts_dir}/sysbox-runc" "${host_bin}/sysbox-runc"
+
+	# Keep track of the sysbox version installed on the host (upgrade purposes).
+	echo "${sysbox_version}" >${host_var_lib_sysbox_deploy_k8s}/sysbox_installed_version
 }
 
 function rm_sysbox_from_host() {
@@ -293,6 +298,8 @@ function rm_sysbox_from_host() {
 	# Remove sysbox from the /etc/subuid and /etc/subgid files
 	sed -i '/sysbox:/d' "${host_etc}/subuid"
 	sed -i '/sysbox:/d' "${host_etc}/subgid"
+
+	rm -f "${host_var_lib_sysbox_deploy_k8s}/sysbox_installed_version"
 }
 
 function copy_conf_to_host() {
@@ -323,7 +330,6 @@ function rm_systemd_units_from_host() {
 }
 
 function apply_conf() {
-
 	# Note: this requires CAP_SYS_ADMIN on the host
 	echo "Configuring host sysctls ..."
 	sysctl -p "${host_sysctl}/99-sysbox-sysctl.conf"
@@ -790,6 +796,23 @@ function is_kernel_upgraded() {
 	true
 }
 
+function is_sysbox_upgraded() {
+	# If the sysbox version file does not exist, then there's no upgrade needed (sysbox will be
+	# installed from scratch).
+	if [ ! -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed_version ]; then
+		false
+		return
+	fi
+
+	local prev_sysbox_version=$(cat ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed_version)
+	if [[ ${sysbox_version} == ${prev_sysbox_version} ]]; then
+		false
+		return
+	fi
+
+	true
+}
+
 function add_label_to_node() {
 	local label=$1
 	echo "Adding K8s label \"$label\" to node ..."
@@ -823,7 +846,8 @@ function install_precheck() {
 		do_sysbox_install="false"
 	fi
 
-	if is_kernel_upgraded; then
+	# Update sysbox binaries and dependencies if kernel or sysbox version has changed.
+	if is_kernel_upgraded || is_sysbox_upgraded; then
 		do_sysbox_update="true"
 	fi
 }
@@ -1077,8 +1101,13 @@ function main() {
 			add_label_to_node "sysbox-runtime=installing"
 			install_sysbox_deps
 			install_sysbox
-			config_crio_for_sysbox
-			crio_restart_pending=true
+			# Adjust cri-o's config to account for Sysbox presence and tag its restart flag
+			# accordingly. Notice that this is only needed if cri-o is being installed, there's
+			# no need to do anything in case of sysbox being updated.
+			if [[ "$do_crio_install" == "true" ]]; then
+				config_crio_for_sysbox
+				crio_restart_pending=true
+			fi
 			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
 			echo "$os_kernel_release" >${host_var_lib_sysbox_deploy_k8s}/os_kernel_release
 		fi
