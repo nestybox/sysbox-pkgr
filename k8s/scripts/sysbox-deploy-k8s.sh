@@ -797,20 +797,30 @@ function is_kernel_upgraded() {
 }
 
 function is_sysbox_upgraded() {
-	# If the sysbox version file does not exist, then there's no upgrade needed (sysbox will be
-	# installed from scratch).
+	# If Sysbox hasn't been installed yet, then there's no upgrade needed.
+	if [ ! -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed ]; then
+		false
+		return
+	fi
+
+	# If the sysbox version file does not exist, then we must be dealing with an
+	# old Sysbox version (<v0.6.3-0), which did not have this file. In this case
+	# proceed with the upgrade.
 	if [ ! -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed_version ]; then
-		false
+		echo "No previous Sysbox version records found, proceed to upgrade to Sysbox ${sysbox_version} release."
+		true
 		return
 	fi
 
-	local prev_sysbox_version=$(cat ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed_version)
-	if [[ ${sysbox_version} == ${prev_sysbox_version} ]]; then
-		false
+	# Upgrade if Sysbox's new and current versions don't match.
+	local sysbox_installed_version=$(cat ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed_version)
+	if [[ "${sysbox_version}" != "${sysbox_installed_version}" ]]; then
+		echo "Mismatch found between the existing (${sysbox_installed_version}) and the new (${sysbox_version} Sysbox versions. Upgrade to the new one."
+		true
 		return
 	fi
 
-	true
+	false
 }
 
 function add_label_to_node() {
