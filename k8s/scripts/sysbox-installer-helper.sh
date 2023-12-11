@@ -42,7 +42,7 @@ function install_package_deps() {
 		apt-get update
 		apt-get install -y rsync fuse iptables
 	elif [[ ! -z $yum ]]; then
-    	yum install -y rsync fuse iptables
+    		yum install -y rsync fuse iptables
 	fi
 }
 
@@ -64,7 +64,7 @@ function install_shiftfs() {
 	if [[ ! -z $apt ]]; then
 		apt-get install -y make dkms
 	elif [[ ! -z $yum ]]; then
-    	yum install -y make dkms
+    		yum install -y make dkms
 	fi
 
 	sh -c "cd $shiftfs_dkms && make -f Makefile.dkms"
