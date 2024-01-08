@@ -113,9 +113,9 @@ sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins ch
 #
 
 clean-sysbox-ce:
-	-rm -r bin/sysbox-ce
+	-rm -rf bin/sysbox-ce
 
 clean-crio:
-	-rm -r bin/crio
+	-rm -rf bin/crio
 
 clean: clean-sysbox-ce clean-crio
