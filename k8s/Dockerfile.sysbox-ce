@@ -20,11 +20,10 @@ FROM ghcr.io/nestybox/centos7/systemd
 ARG sys_arch
 ENV SYS_ARCH=${sys_arch}
 ARG DEST=/opt/sysbox
-ARG CRICTL_VERSION="v1.24.2"
-ARG CRIO_V1_24_TAR="cri-o.${SYS_ARCH}.v1.24.0.tar.gz"
-ARG CRIO_V1_25_TAR="cri-o.${SYS_ARCH}.v1.25.0.tar.gz"
+ARG CRICTL_VERSION="v1.28.0"
 ARG CRIO_V1_26_TAR="cri-o.${SYS_ARCH}.v1.26.0.tar.gz"
 ARG CRIO_V1_27_TAR="cri-o.${SYS_ARCH}.v1.27.0.tar.gz"
+ARG CRIO_V1_28_TAR="cri-o.${SYS_ARCH}.v1.28.0.tar.gz"
 
 RUN yum install -y curl wget git bc which
 
@@ -72,14 +71,6 @@ COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.
 # Load CRI-O installation artifacts
 #
 
-RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_24_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
-    && mkdir -p /opt/crio-deploy/bin/v1.24 \
-    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.24/.
-
-RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_25_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
-    && mkdir -p /opt/crio-deploy/bin/v1.25 \
-    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.25/.
-
 RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_26_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
     && mkdir -p /opt/crio-deploy/bin/v1.26 \
     && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.26/.
@@ -87,6 +78,10 @@ RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_26_TAR} -O cri
 RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_27_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
     && mkdir -p /opt/crio-deploy/bin/v1.27 \
     && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.27/.
+
+RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_28_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
+    && mkdir -p /opt/crio-deploy/bin/v1.28 \
+    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.28/.
 
 COPY systemd/crio-installer.service /opt/crio-deploy/systemd/crio-installer.service
 COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
@@ -113,7 +108,6 @@ COPY config/etc_containers_registries.d_default.yaml /opt/crio-deploy/config/etc
 # Load CRI-O patched binaries (to generate correct user-ns mappings)
 #
 
-COPY bin/crio/v1.24/crio /opt/crio-deploy/bin/v1.24/crio-patched
-COPY bin/crio/v1.25/crio /opt/crio-deploy/bin/v1.25/crio-patched
 COPY bin/crio/v1.26/crio /opt/crio-deploy/bin/v1.26/crio-patched
 COPY bin/crio/v1.27/crio /opt/crio-deploy/bin/v1.27/crio-patched
+COPY bin/crio/v1.28/crio /opt/crio-deploy/bin/v1.28/crio-patched
