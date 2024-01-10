@@ -72,6 +72,15 @@ function create_sysboxfs_mountpoint() {
     fi
 }
 
+# Ensure WSL2 kernel detected.
+function is_wsl() {
+    case "$(uname -r)" in
+    *microsoft* ) true ;; # WSL 2
+    *Microsoft* ) true ;; # WSL 1
+    * ) false;;
+    esac
+}
+
 # Enables the utilization of unprivileged user-namespaces.
 function enable_unprivileged_userns() {
 
@@ -315,7 +324,11 @@ function config_sysbox() {
     # Allows user-namespaces creation for unprivileged users. This change will
     # persist through system reboots by relying on a sysctl.d config-file to be
     # generated as part of this package's installation process.
-    enable_unprivileged_userns
+    if is_wsl; then
+        echo "WSL2 detected, enable_unprivileged_userns skipped."
+    else
+        enable_unprivileged_userns
+    fi
 
     # Ensure kernel's inotify resources can meet Sysbox's scaling requirements.
     define_inotify_resources
@@ -338,7 +351,11 @@ function config_sysbox() {
     fi
 
     # Check for kernel-headers.
-    check_kernel_headers
+    if is_wsl; then
+        echo "WSL2 detected, check_kernel_headers skipped."
+    else
+        check_kernel_headers
+    fi
 }
 
 case "$1" in
