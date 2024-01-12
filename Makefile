@@ -79,7 +79,7 @@ sysbox-ce-repo:
 
 sources/sysbox:
 	@printf "\n*** Cloning sysbox-ce superproject repository to $(CE_SOURCES) ***\n\n"
-	@git clone --recursive git@github.com:nestybox/sysbox.git sources/sysbox
+	@git clone --recursive https://github.com/nestybox/sysbox.git sources/sysbox
 
 ##@ Testing targets
 
