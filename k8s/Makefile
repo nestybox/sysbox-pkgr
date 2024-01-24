@@ -20,6 +20,9 @@ SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 SYSBOX_CE_VER = $(shell cat ../sources/sysbox/VERSION)
 SYSBOX_CE_VER_FULL = $(shell echo $(SYSBOX_CE_VER) | sed '/-[0-9]/!s/.*/&-0/')
 
+# CRIO versions to build.
+CRIO_VERSIONS = v1.26 v1.27 v1.28
+
 # Obtain the current system architecture.
 UNAME_M := $(shell uname -m)
 ifeq ($(UNAME_M),x86_64)
