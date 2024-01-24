@@ -17,17 +17,40 @@ SYSBOX_BINS = sysbox-runc sysbox-mgr sysbox-fs
 # Obtain the version to build from the Sysbox repo itself. If a full version string
 # is not found in the corresponding VERSION file, append a dummy revision/patch ("0")
 # to match the name of the sysbox's deb image to download.
+# Examples:
+# 1) if VERSION = 0.6.3, then
+#     SYSBOX_CE_VER        = 0.6.3
+#     SYSBOX_CE_VER_SEMVER = 0.6.3
+#     SYSBOX_CE_VER_FULL   = 0.6.3-0
+#
+# 2) if VERSION = 0.6.3-1, then
+#     SYSBOX_CE_VER        = 0.6.3-1
+#     SYSBOX_CE_VER_SEMVER = 0.6.3
+#     SYSBOX_CE_VER_FULL   = 0.6.3-1
+#
 SYSBOX_CE_VER = $(shell cat ../sources/sysbox/VERSION)
+SYSBOX_CE_VER_SEMVER = $(shell echo $(SYSBOX_CE_VER) | cut -d"-" -f1)
 SYSBOX_CE_VER_FULL = $(shell echo $(SYSBOX_CE_VER) | sed '/-[0-9]/!s/.*/&-0/')
 
 # CRIO versions to build.
 CRIO_VERSIONS = v1.26 v1.27 v1.28
+
+# Patch version is used to track changes to the sysbox-deploy-k8s image not related to
+# the Sysbox's version. For example, if we need to rebuild the sysbox-deploy-k8s image
+# due to a change in any of the files in this directory, we bump this patch version.
+# If there's no need for a 'patch' version, then the patch version is set to nil (i.e.,
+# empty). This is useful to distinguish between sysbox-deploy-k8s images that have the
+# same Sysbox version but differ in other components (e.g., crio versions, supported
+# k8s releases, etc.).
+SYSBOX_DEPLOY_K8S_IMAGE_PATCH := 1
 
 # Obtain the current system architecture.
 UNAME_M := $(shell uname -m)
 ifeq ($(UNAME_M),x86_64)
 	SYS_ARCH := amd64
 else ifeq ($(UNAME_M),aarch64)
+	SYS_ARCH := arm64
+else ifeq ($(UNAME_M),arm64)
 	SYS_ARCH := arm64
 else ifeq ($(UNAME_M),arm)
 	SYS_ARCH := armhf
@@ -47,7 +70,7 @@ endif
 fetch-sysbox-ce-bins:
 	$(eval TMPDIR := $(shell mktemp -d))
 	echo "TMPDIR = $(TMPDIR)"
-	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb -P $(TMPDIR)
+	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER_SEMVER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb -P $(TMPDIR)
 	mkdir -p $(TMPDIR)/sysbox-ce-generic
 	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
 	mkdir -p bin/sysbox-ce/generic
@@ -107,7 +130,7 @@ check-crio-artifacts:
 all: sysbox-deploy-k8s-image
 
 sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_CE_VER) \
+	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_CE_VER)$(SYSBOX_DEPLOY_K8S_IMAGE_PATCH) \
 		--build-arg sys_arch=$(SYS_ARCH) \
 		-f Dockerfile.sysbox-ce .
 
