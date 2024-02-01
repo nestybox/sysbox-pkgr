@@ -65,11 +65,6 @@ function start_containerd() {
 	systemctl start containerd.service
 }
 
-function restart_containerd() {
-	echo "Restarting containerd on the host ..."
-	systemctl restart containerd.service
-}
-
 function stop_containerd() {
 	echo "Stopping containerd on the host ..."
 	systemctl stop containerd.service
@@ -544,12 +539,15 @@ function config_kubelet() {
 	if [[ "$kubelet_env_files" == "" ]]; then
 		kubelet_env_file="/etc/default/kubelet"
 		touch "$kubelet_env_file"
-		sed -i "/^[Service]/a EnvironmentFile=/etc/default/kubelet" "$systemd_file"
+		sed -i "/^[Service]/a EnvironmentFile=$kubelet_env_file" "$systemd_file"
 	else
 		kubelet_env_file=$(echo "$kubelet_env_files" | awk '{print $NF}')
 	fi
 
 	backup_config "$kubelet_env_file" "kubelet_env_file"
+
+	# Replace potential dependencies on 'containerd' with 'crio'
+	sed -i "s/containerd.service/crio.service/" /etc/systemd/system/kubelet.service
 
 	# Append the new env-var content to one of the env-files.
 	add_kubelet_env_var "$kubelet_env_file" "$kubelet_env_var"
@@ -1488,7 +1486,7 @@ function do_config_kubelet() {
 		clean_cgroups_kubepods
 		config_kubelet "host-based"
 		adjust_crio_config_dependencies
-		restart_containerd
+		stop_containerd
 		restart_kubelet
 	fi
 }
