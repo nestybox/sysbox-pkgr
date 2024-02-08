@@ -263,7 +263,8 @@ function get_artifacts_dir() {
 		[[ "$distro" == "ubuntu-21.10" ]] ||
 		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
-		[[ "$distro" =~ "debian" ]]; then
+		[[ "$distro" =~ "debian" ]] ||
+		[[ "$distro" == "amzn-2" ]]; then
 		artifacts_dir="${sysbox_artifacts}/bin/generic"
 	elif [[ "$distro" =~ "flatcar" ]]; then
 		local release=$(echo $distro | cut -d"-" -f2)
@@ -325,7 +326,7 @@ function apply_conf() {
 
 	# Note: this requires CAP_SYS_ADMIN on the host
 	echo "Configuring host sysctls ..."
-	sysctl -p "${host_sysctl}/99-sysbox-sysctl.conf"
+	sysctl -ep "${host_sysctl}/99-sysbox-sysctl.conf"
 }
 
 function start_sysbox() {
@@ -671,7 +672,7 @@ function get_container_runtime() {
 }
 
 function get_host_distro() {
-	local distro_name=$(grep -w "^ID" "$host_os_release" | cut -d "=" -f2)
+	local distro_name=$(grep -w "^ID" "$host_os_release" | cut -d "=" -f2| cut -d'"' -f 2)
 	local version_id=$(grep -w "^VERSION_ID" "$host_os_release" | cut -d "=" -f2 | tr -d '"')
 	echo "${distro_name}-${version_id}"
 }
@@ -709,6 +710,7 @@ function is_supported_distro() {
 		[[ "$distro" == "ubuntu-21.10" ]] ||
 		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
+		[[ "$distro" == "amzn-2" ]] ||
 		[[ "$distro" =~ "debian" ]] ||
 		[[ "$distro" =~ "flatcar" ]]; then
 		return

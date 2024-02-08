@@ -43,6 +43,8 @@ function install_crictl() {
 }
 
 function install_crio() {
+	mkdir -p ${ETCDIR}/crio
+	mkdir -p ${OCIDIR}
 	install ${SELINUX} -d -m 755 ${BASHINSTALLDIR}
 	install ${SELINUX} -d -m 755 ${FISHINSTALLDIR}
 	install ${SELINUX} -d -m 755 ${ZSHINSTALLDIR}
