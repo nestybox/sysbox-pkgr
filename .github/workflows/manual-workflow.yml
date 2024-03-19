@@ -31,22 +31,28 @@
 name: Manual Workflow
 
 # Runs on-demand
-on: workflow_dispatch
-
-defaults:
-  run:
-    shell: bash
+on:
+  workflow_dispatch:
+    inputs:
+      body:
+        default: ""
+      test:
+        default: "false"
 
 jobs:
-  sysbox_pkg_test:
-    runs-on: [self-hosted, Linux, X64, "${{ matrix.distro }}"]
-    strategy:
-      fail-fast: false
-      matrix:
-        distro: [ubuntu-focal]
+  docker:
+    runs-on: [self-hosted, Linux]
     steps:
-      - name: precheckout-cleanup
-        run: |
-          sudo rm -rf *
-      - name: checkout
+      - name: Checkout
         uses: actions/checkout@v2
+        with:
+          repository: bbachi/dockerfile-examples
+          path: dockerfile-examples
+          ssh: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCbHblNET0aO8OddoyyEklyNEhQxR57Ny7WVHv/h+hGhJuhj8NTFhRZI+W0ciLlpo2bNi4k6GDoXUU7G3n9NuGtK6ktUzyXZ8yeJ4QYZm8eoqPSE0QyoUP+OEyeFWq9nvdqe5MsbWgzFLjzDByFzTnsk3lvMgi0InzU8XYF0EIOJzM/1Bw3SRUJM0maoDZXNwcqM7SNyYCzHQibSZF742qYcnjcV+0u0jn7Uq1MT9bCGmSm1qnuynb6l9DLlIAXSB+FvupKzDDarqH7Lp7ZcX8Y3qB2rZPiR+lZRXVbKP2NSlyUqDyKaOa0iK7tA3NC+G0JJfQyNJqJLoBkXotIeDinOJAKYavuj7t4wccXyKZqfm3FuKUhVx0mgvltdtAT05I/fadpuOw31JIqBefDHrKPV7TfdfCUFBw+kv6olfKU3qHMLUiwoj3FofmRJh76KGJbDm3wwBIqyeUL9gVkZ5DvR2VHOF6TgpH0X6iVHvl1iiESn0EgCTJWN4bY+7ost+M= rmolina@rodny-dev-vm-2'
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: dockerfile-examples
+          file: dockerfile-examples/Dockerfile9
+          load: true
+          tags: nestybox/sysbox-runner-app-tester:latest
