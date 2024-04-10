@@ -1020,6 +1020,8 @@ function main() {
 		k8s_runtime="crio"
 	fi
 
+	k8s_tains=${SYSBOX_TAINT:-"sysbox-runtime=not-running:NoSchedule"}
+
 	echo "Detected Kubernetes version $k8s_version"
 
 	local edition_tag=${1:-}
@@ -1048,7 +1050,7 @@ function main() {
 		install_precheck
 
 		# Prevent new pods being scheduled till sysbox installation is completed.
-		add_taint_to_node "sysbox-runtime=not-running:NoSchedule"
+		add_taint_to_node "${k8s_tains}"
 
 		# Install CRI-O
 		if [[ "$do_crio_install" == "true" ]]; then
@@ -1111,7 +1113,7 @@ function main() {
 		mkdir -p ${host_var_lib_sysbox_deploy_k8s}
 
 		# Prevent new pods being scheduled during sysbox cleanup phase.
-		add_taint_to_node "sysbox-runtime=not-running:NoSchedule"
+		add_taint_to_node "${k8s_tains}"
 
 		# Switch the K8s runtime away from CRI-O (but only if this daemonset installed CRI-O previously)
 		if [ -f ${host_var_lib_sysbox_deploy_k8s}/crio_installed ] && [[ "$k8s_runtime" == "crio" ]]; then
