@@ -1103,7 +1103,7 @@ function main() {
 
 		add_label_to_node "crio-runtime=running"
 		add_label_to_node "sysbox-runtime=running"
-		rm_taint_from_node "sysbox-runtime=not-running:NoSchedule"
+		rm_taint_from_node "${k8s_tains}"
 
 		echo "The k8s runtime on this node is now CRI-O."
 		echo "$sysbox_edition installation completed."
@@ -1159,7 +1159,7 @@ function main() {
 			restart_crio
 		fi
 
-		rm_taint_from_node "sysbox-runtime=not-running:NoSchedule"
+		rm_taint_from_node "${k8s_tains}"
 
 		echo "The k8s runtime on this node is now $k8s_runtime."
 		;;
