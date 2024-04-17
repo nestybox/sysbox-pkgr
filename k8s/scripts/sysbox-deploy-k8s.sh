@@ -202,6 +202,7 @@ function remove_kubelet_unconfig_service() {
 function config_crio() {
 	echo "Configuring CRI-O ..."
 
+	touch ${host_crio_conf_file}
 	if [ ! -f ${host_crio_conf_file_backup} ]; then
 		cp ${host_crio_conf_file} ${host_crio_conf_file_backup}
 	fi
