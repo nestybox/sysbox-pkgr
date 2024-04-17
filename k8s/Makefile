@@ -80,10 +80,11 @@ fetch-sysbox-ce-bins:
 	rm -rf $(TMPDIR)
 
 #
-# CRI-O artifacts
+# CRI-O artifacts (only built if not already present at ./bin/crio)
 #
 CRIO_BINS_DIR := $(PWD)/bin/crio
-ifeq ($(wildcard $(DIR)),)
+
+ifeq ($(wildcard $(CRIO_BINS_DIR)),)
 build-crio: crio-build-container
 	@echo "NOTE: building CRI-O binaries at ${PWD}/bin/crio"
 	docker run --rm -v $(shell pwd)/bin:/mnt/results crio-bld
