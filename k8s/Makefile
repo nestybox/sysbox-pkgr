@@ -68,8 +68,9 @@ endif
 # the version of the Sysbox binaries to download.
 
 fetch-sysbox-ce-bins:
+	@echo "Fetching Sysbox CE binaries ..."
 	$(eval TMPDIR := $(shell mktemp -d))
-	echo "TMPDIR = $(TMPDIR)"
+	@echo "TMPDIR = $(TMPDIR)"
 	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER_SEMVER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb -P $(TMPDIR)
 	mkdir -p $(TMPDIR)/sysbox-ce-generic
 	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
@@ -81,13 +82,16 @@ fetch-sysbox-ce-bins:
 #
 # CRI-O artifacts
 #
-# **NOTE**: make sure to install libgpgme-dev on your host prior to calling the build-crio target:
-# $ sudo apt-get install -y libgpgme-dev
-#
+CRIO_BINS_EXIST = $(shell [ -d $(PWD)/bin/crio ])
 
+ifeq ($(CRIO_BINS_EXIST),0)
 build-crio: crio-build-container
+	@echo "NOTE: building CRI-O binaries at ${PWD}/bin/crio"
 	docker run --rm -v $(shell pwd)/bin:/mnt/results crio-bld
-
+else
+build-crio:
+	@echo "NOTE: Skipping CRI-O build (found binaries at ${PWD}/bin/crio)"
+endif
 
 crio-build-container:
 	docker build -t crio-bld -f Dockerfile.crio --build-arg sys_arch=$(SYS_ARCH) .
