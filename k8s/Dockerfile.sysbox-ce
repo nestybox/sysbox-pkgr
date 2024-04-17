@@ -24,6 +24,7 @@ ARG CRICTL_VERSION="v1.28.0"
 ARG CRIO_V1_26_TAR="cri-o.${SYS_ARCH}.v1.26.0.tar.gz"
 ARG CRIO_V1_27_TAR="cri-o.${SYS_ARCH}.v1.27.0.tar.gz"
 ARG CRIO_V1_28_TAR="cri-o.${SYS_ARCH}.v1.28.0.tar.gz"
+ARG CRIO_V1_29_TAR="cri-o.${SYS_ARCH}.v1.29.0.tar.gz"
 
 RUN yum install -y curl wget git bc which
 
@@ -83,6 +84,10 @@ RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_28_TAR} -O cri
     && mkdir -p /opt/crio-deploy/bin/v1.28 \
     && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.28/.
 
+RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_29_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
+    && mkdir -p /opt/crio-deploy/bin/v1.29 \
+    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.29/.
+
 COPY systemd/crio-installer.service /opt/crio-deploy/systemd/crio-installer.service
 COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
 COPY scripts/crio-extractor.sh /opt/crio-deploy/scripts/crio-extractor.sh
@@ -111,3 +116,4 @@ COPY config/etc_containers_registries.d_default.yaml /opt/crio-deploy/config/etc
 COPY bin/crio/v1.26/crio /opt/crio-deploy/bin/v1.26/crio-patched
 COPY bin/crio/v1.27/crio /opt/crio-deploy/bin/v1.27/crio-patched
 COPY bin/crio/v1.28/crio /opt/crio-deploy/bin/v1.28/crio-patched
+COPY bin/crio/v1.29/crio /opt/crio-deploy/bin/v1.29/crio-patched

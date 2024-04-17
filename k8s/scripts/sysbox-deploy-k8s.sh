@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright 2019-2021 Nestybox, Inc.
+# Copyright 2019-2023 Nestybox, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -754,7 +754,8 @@ function is_supported_k8s_version() {
 
 	if [[ "$ver" == "v1.26" ]] ||
 		[[ "$ver" == "v1.27" ]] ||
-		[[ "$ver" == "v1.28" ]]; then
+		[[ "$ver" == "v1.28" ]] ||
+		[[ "$ver" == "v1.29" ]]; then
 		return
 	fi
 
