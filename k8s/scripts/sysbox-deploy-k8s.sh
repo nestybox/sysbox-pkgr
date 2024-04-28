@@ -961,7 +961,7 @@ function do_distro_adjustments() {
 }
 
 # determines if running on a GKE cluster by checking metadata endpoint
-function is_gke() {
+function check_is_gke() {
 	# GKE nodes will respond with an HTTP 200 for this URL and Metadata-Flavor header.
 	# Other clouds, URLs, etc. will throw a 404 error. If curl cannot connect the code will be 000.
 	is_cluster=$(curl -s -o /dev/null \
@@ -1041,6 +1041,8 @@ function main() {
 		die "invalid arguments"
 	fi
 
+	local is_gke=$(check_is_gke)
+
 	# Perform distro-specific adjustments.
 	do_distro_adjustments
 
@@ -1061,7 +1063,7 @@ function main() {
 			remove_crio_installer_service
 			config_crio
 			# if running on GKE patch the CRI-O config
-			if is_gke; then
+			if $is_gke; then
 				echo "Configuring CRI-O for GKE"
 				config_crio_for_gke
 			fi
