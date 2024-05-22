@@ -34,6 +34,9 @@ function die() {
 
 function install_package_deps() {
 
+	# Need this to work-around "E: dpkg was interrupted, you must manually run 'dpkg --configure -a' to correct the problem."
+	dpkg --configure -a
+
 	# Certificates package is required prior to running apt-update.
 	apt-get -y install ca-certificates
 	apt-get update
