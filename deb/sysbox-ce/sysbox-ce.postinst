@@ -85,7 +85,8 @@ function is_wsl() {
 function enable_unprivileged_userns() {
 
     local val=$(sysctl kernel.unprivileged_userns_clone)
-    if [[ "${val##* }" = 0 ]]; then
+    local exists=$?
+    if [[ $exists && "${val##* }" = 0 ]]; then
         sysctl -w kernel.unprivileged_userns_clone=1 >/dev/null 2>&1
     fi
 }
