@@ -1036,8 +1036,9 @@ function clean_cgroups_kubepods() {
 	# systemd service.
 	echo "Stopping/eliminating kubelet QoS cgroup kubepod entries..."
 	for i in $(systemctl list-unit-files --no-legend --no-pager -l | grep --color=never -o .*.slice | grep kubepod); do
-		systemctl stop $i
+		systemctl stop $i &
 	done
+	wait
 }
 
 ###############################################################################
@@ -1480,6 +1481,41 @@ function do_config_kubelet() {
 	fi
 }
 
+###############################################################################
+# Scenario 6: k3s worker
+###############################################################################
+function kubelet_k3s_deploymet() {
+	if systemctl is-active --quiet k3s-agent; then
+		return
+	fi
+
+	return 1
+}
+
+function do_config_kubelet_k3s_systemd() {
+	local unit_file="/etc/systemd/system/k3s-agent.service"
+
+	if grep -q '.--container-runtime-endpoint=/var/run/crio/crio.sock' $unit_file; then
+		echo "k3s-agent.service already modified"
+		return
+	fi
+
+	# TODO check if pause image is set in k3s
+	local crio_conf='/etc/crio/crio.conf'
+	if ! grep -q 'rancher/mirrored-pause' $crio_conf; then
+		sed 's|\[crio\.image\]|[crio.image]\n    pause_image = "rancher/mirrored-pause:3.1"|' -i $crio_conf
+		systemctl restart crio || true
+	fi
+
+	# same options as k8s/config/crio-kubelet-options
+	sed 's| agent | agent --kubelet-arg=--runtime-request-timeout=6m --kubelet-arg=--runtime-cgroups=/system.slice/crio.service --kubelet-arg=--image-service-endpoint=unix:///var/run/crio/crio.sock --kubelet-arg=--cgroup-driver=systemd --container-runtime-endpoint=/var/run/crio/crio.sock |' -i $unit_file
+	systemctl daemon-reload
+	systemctl stop k3s-agent || true
+	clean_runtime_state "unix:///run/k3s/containerd/containerd.sock"
+	clean_cgroups_kubepods || true
+	systemctl start k3s-agent
+}
+
 function main() {
 
 	euid=$(id -u)
@@ -1500,7 +1536,8 @@ function main() {
 	# * RKE2: Host-based kubelet managed by rke2-agent's systemd service (Rancher's RKE2 approach).
 	# * Systemd+Docker: Docker-based kubelet managed by a systemd service (Lokomotive's approach).
 	# * Systemd: Host-based kubelet managed by a systemd service (most common approach).
-	#
+	# * Systemd: k3s: when run as agent-only (if k3s is run as control plane + node (i.e., k3s.service) it won't work)
+
 	if kubelet_snap_deployment; then
 		do_config_kubelet_snap
 	elif kubelet_rke_deployment; then
@@ -1509,6 +1546,8 @@ function main() {
 		do_config_kubelet_rke2
 	elif kubelet_docker_systemd_deployment; then
 		do_config_kubelet_docker_systemd
+	elif kubelet_k3s_deploymet; then
+		do_config_kubelet_k3s_systemd
 	else
 		do_config_kubelet
 	fi
