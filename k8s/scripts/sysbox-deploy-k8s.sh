@@ -312,6 +312,18 @@ function rm_conf_from_host() {
 	rm -f "${host_lib_mod}/50-sysbox-mod.conf"
 }
 
+# Update Sysbox's systemd unit files with the received configMap configuration
+# corresponding to the sysbox-mgr and sysbox-fs services.
+function config_systemd_units() {
+	if [ -n "$SYSBOX_MGR_CONFIG" ]; then
+		sed -i "/^ExecStart=/ s|/usr/bin/sysbox-mgr|/usr/bin/sysbox-mgr ${SYSBOX_MGR_CONFIG}|" ${sysbox_artifacts}/systemd/sysbox-mgr.service
+	fi
+
+	if [ -n "$SYSBOX_FS_CONFIG" ]; then
+		sed -i "/^ExecStart=/ s|/usr/bin/sysbox-fs|/usr/bin/sysbox-fs ${SYSBOX_FS_CONFIG}|" ${sysbox_artifacts}/systemd/sysbox-fs.service
+	fi
+}
+
 function copy_systemd_units_to_host() {
 	cp "${sysbox_artifacts}/systemd/sysbox.service" "${host_systemd}/sysbox.service"
 	cp "${sysbox_artifacts}/systemd/sysbox-mgr.service" "${host_systemd}/sysbox-mgr.service"
@@ -357,6 +369,7 @@ function install_sysbox() {
 	echo "Installing $sysbox_edition on host ..."
 	copy_sysbox_to_host
 	copy_conf_to_host
+	config_systemd_units
 	copy_systemd_units_to_host
 	apply_conf
 	start_sysbox
