@@ -302,7 +302,7 @@ function rm_sysbox_from_host() {
 	rm -f "${host_var_lib_sysbox_deploy_k8s}/sysbox_installed_version"
 }
 
-function copy_conf_to_host() {
+function copy_sysbox_env_config_to_host() {
 	cp "${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf" "${host_sysctl}/99-sysbox-sysctl.conf"
 	cp "${sysbox_artifacts}/systemd/50-sysbox-mod.conf" "${host_lib_mod}/50-sysbox-mod.conf"
 }
@@ -312,9 +312,15 @@ function rm_conf_from_host() {
 	rm -f "${host_lib_mod}/50-sysbox-mod.conf"
 }
 
+function config_sysbox_env() {
+	# Set the sysbox edition in the sysbox-mgr and sysbox-fs systemd unit files.
+	sed -i "/^Environment=/ s|SYSBOX_EDITION=.*|SYSBOX_EDITION=${sysbox_edition}|" ${sysbox_artifacts}/systemd/sysbox-mgr.service
+	sed -i "/^Environment=/ s|SYSBOX_EDITION=.*|SYSBOX_EDITION=${sysbox_edition}|" ${sysbox_artifacts}/systemd/sysbox-fs.service
+}
+
 # Update Sysbox's systemd unit files with the received configMap configuration
 # corresponding to the sysbox-mgr and sysbox-fs services.
-function config_systemd_units() {
+function config_sysbox() {
 	if [ -n "$SYSBOX_MGR_CONFIG" ]; then
 		sed -i "/^ExecStart=/ s|/usr/bin/sysbox-mgr|/usr/bin/sysbox-mgr ${SYSBOX_MGR_CONFIG}|" ${sysbox_artifacts}/systemd/sysbox-mgr.service
 	fi
@@ -324,7 +330,7 @@ function config_systemd_units() {
 	fi
 }
 
-function copy_systemd_units_to_host() {
+function copy_sysbox_config_to_host() {
 	cp "${sysbox_artifacts}/systemd/sysbox.service" "${host_systemd}/sysbox.service"
 	cp "${sysbox_artifacts}/systemd/sysbox-mgr.service" "${host_systemd}/sysbox-mgr.service"
 	cp "${sysbox_artifacts}/systemd/sysbox-fs.service" "${host_systemd}/sysbox-fs.service"
@@ -341,7 +347,7 @@ function rm_systemd_units_from_host() {
 	systemctl daemon-reload
 }
 
-function apply_conf() {
+function apply_sysbox_env_config() {
 	# Note: this requires CAP_SYS_ADMIN on the host
 	echo "Configuring host sysctls ..."
 	sysctl -p "${host_sysctl}/99-sysbox-sysctl.conf"
@@ -367,11 +373,12 @@ function install_sysbox() {
 	stop_sysbox
 
 	echo "Installing $sysbox_edition on host ..."
+	config_sysbox_env
+	copy_sysbox_env_config_to_host
+	apply_sysbox_env_config
+	config_sysbox
+	copy_sysbox_config_to_host
 	copy_sysbox_to_host
-	copy_conf_to_host
-	config_systemd_units
-	copy_systemd_units_to_host
-	apply_conf
 	start_sysbox
 }
 
@@ -834,6 +841,45 @@ function is_sysbox_upgraded() {
 	fi
 
 	false
+}
+
+# Check if the sysbox operational config has changed.
+function is_sysbox_config_changed() {
+	local sysbox_mgr_config=""
+	local sysbox_fs_config=""
+	local sysbox_sysctl_config=""
+	local sysbox_mod_config=""
+
+	# Check if there are sysbox config changes.
+
+	if [ -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_mgr_config ]; then
+		sysbox_mgr_config=$(cat ${host_var_lib_sysbox_deploy_k8s}/sysbox_mgr_config)
+	fi
+	if [ -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_fs_config ]; then
+		sysbox_fs_config=$(cat ${host_var_lib_sysbox_deploy_k8s}/sysbox_fs_config)
+	fi
+
+	if [ "$sysbox_mgr_config" != "$SYSBOX_MGR_CONFIG" ] || [ "$sysbox_fs_config" != "$SYSBOX_FS_CONFIG" ]; then
+		echo "Sysbox operational settings have changed -- sysbox-mgr: ${SYSBOX_MGR_CONFIG}, sysbox-fs: ${SYSBOX_FS_CONFIG}"
+		return 0
+	fi
+
+	# Check if there are sysbox-env config changes.
+
+	if [ -f ${host_sysctl}/99-sysbox-sysctl.conf ]; then
+		sysbox_sysctl_config=$(cat ${host_sysctl}/99-sysbox-sysctl.conf)
+	fi
+	if [ -f ${host_lib_mod}/50-sysbox-mod.conf ]; then
+		sysbox_mod_config=$(cat ${host_lib_mod}/50-sysbox-mod.conf)
+	fi
+
+	if [ "$sysbox_sysctl_config" != "$(cat ${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf)" ] || \
+		[ "$sysbox_mod_config" != "$(cat ${sysbox_artifacts}/systemd/50-sysbox-mod.conf)" ]; then
+		echo "Sysbox env settings have changed."
+		return 0
+	fi
+
+	return 1
 }
 
 function add_label_to_node() {
