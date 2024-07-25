@@ -360,7 +360,7 @@ function start_sysbox() {
 }
 
 function stop_sysbox() {
-	if systemctl is-active --quiet sysbox; then
+	if systemctl is-active --quiet sysbox || systemctl is-enabled --quiet sysbox; then
 		echo "Stopping $sysbox_edition ..."
 		systemctl stop sysbox
 	fi
