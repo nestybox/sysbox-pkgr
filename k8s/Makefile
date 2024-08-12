@@ -33,7 +33,7 @@ SYSBOX_CE_VER_SEMVER = $(shell echo $(SYSBOX_CE_VER) | cut -d"-" -f1)
 SYSBOX_CE_VER_FULL = $(shell echo $(SYSBOX_CE_VER) | sed '/-[0-9]/!s/.*/&-0/')
 
 # CRIO versions to build.
-CRIO_VERSIONS = v1.27 v1.28 v1.29 v1.30
+CRIO_VERSIONS = v1.28 v1.29 v1.30
 
 # Patch version is used to track changes to the sysbox-deploy-k8s image not related to
 # the Sysbox's version. For example, if we need to rebuild the sysbox-deploy-k8s image
