@@ -29,6 +29,9 @@ ARG CRIO_V1_27_TAR="cri-o.${SYS_ARCH}.v1.27.0.tar.gz"
 ARG CRIO_V1_28_TAR="cri-o.${SYS_ARCH}.v1.28.0.tar.gz"
 ARG CRIO_V1_29_TAR="cri-o.${SYS_ARCH}.v1.29.0.tar.gz"
 
+RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* \
+    && sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+
 RUN yum install -y curl wget git bc which
 
 RUN curl -Lso /bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/${SYS_ARCH}/kubectl && \
