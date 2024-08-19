@@ -32,6 +32,59 @@ function die() {
 	exit 1
 }
 
+# Compare two versions in SemVer format.
+#
+# Examples:  (1.0.1, 1.0.1) = 0
+#            (1.0.1, 1.0.2) = 2
+#            (1.0.1, 1.0.0) = 1
+#            (1, 1.0) = 0
+#            (3.0.4.10, 3.0.4.2) = 1
+#            (5.0.0-22, 5.0.0-22) = 0
+#            (5.0.0-22, 5.0.0-21) = 1
+#            (5.0.0-21, 5.0.0-22) = 2
+#
+function version_compare() {
+
+	if [[ $1 == $2 ]]; then
+		return 0
+	fi
+
+	local IFS='.|-'
+	local i ver1=($1) ver2=($2)
+
+	# Fill empty fields in ver1 with zeros.
+	for ((i = ${#ver1[@]}; i < ${#ver2[@]}; i++)); do
+		ver1[i]=0
+	done
+
+	for ((i = 0; i < ${#ver1[@]}; i++)); do
+		if [[ -z ${ver2[i]} ]]; then
+			# Fill empty fields in ver2 with zeros.
+			ver2[i]=0
+		fi
+		if ((10#${ver1[i]} > 10#${ver2[i]})); then
+			return 1
+		fi
+		if ((10#${ver1[i]} < 10#${ver2[i]})); then
+			return 2
+		fi
+	done
+
+	return 0
+}
+
+# Compare semantic versions; takes two semantic version numbers of the form
+# x.y.z (or x.y), and returns 0 if the first is greater than or equal to the
+# second, and 1 otherwise.
+function semver_ge() {
+	version_compare $1 $2
+	if [ "$?" -ne "2" ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
 function install_package_deps() {
 
 	# Need this to work-around "E: dpkg was interrupted, you must manually run 'dpkg --configure -a' to correct the problem."
@@ -74,18 +127,13 @@ function shiftfs_installed() {
 	modinfo shiftfs >/dev/null 2>&1
 }
 
-function compare_ge() {
-	echo "$1" "$2" | awk '{exit !($1 >= $2)}'
-}
-
 function shiftfs_needed() {
 	# shiftfs is not needed for kernels >= 5.19 where idmapped mounts are present
 	# and stable, but is still recommended if it is available. the max supported
 	# version for shiftfs is 6.2, so check against that here
 	local kversion=$(uname -r | cut -d "." -f1-2)
 
-	# do not need full semver comparison since kversion will be X.Y thanks to cut
-	if compare_ge $kversion 6.2; then
+	if semver_ge $kversion 6.2; then
 		# not needed
 		return 1
 	else
