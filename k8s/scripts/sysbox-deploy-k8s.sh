@@ -1134,7 +1134,8 @@ function main() {
 		die "invalid arguments"
 	fi
 
-	local is_gke=$(check_is_gke)
+	check_is_gke
+	local is_gke=$?
 
 	# Perform distro-specific adjustments.
 	do_distro_adjustments
