@@ -21,6 +21,7 @@ ARG sys_arch
 ENV SYS_ARCH=${sys_arch}
 ARG DEST=/opt/sysbox
 ARG CRICTL_VERSION="v1.28.0"
+ARG CRIO_V1_27_TAR="cri-o.${SYS_ARCH}.v1.27.0.tar.gz"
 ARG CRIO_V1_28_TAR="cri-o.${SYS_ARCH}.v1.28.0.tar.gz"
 ARG CRIO_V1_29_TAR="cri-o.${SYS_ARCH}.v1.29.0.tar.gz"
 ARG CRIO_V1_30_TAR="cri-o.${SYS_ARCH}.v1.30.0.tar.gz"
@@ -71,6 +72,10 @@ COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.
 # Load CRI-O installation artifacts
 #
 
+RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_27_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
+    && mkdir -p /opt/crio-deploy/bin/v1.27 \
+    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.27/.
+
 RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_28_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
     && mkdir -p /opt/crio-deploy/bin/v1.28 \
     && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.28/.
@@ -108,6 +113,7 @@ COPY config/etc_containers_registries.d_default.yaml /opt/crio-deploy/config/etc
 # Load CRI-O patched binaries (to generate correct user-ns mappings)
 #
 
+COPY bin/crio/v1.27/crio /opt/crio-deploy/bin/v1.27/crio-patched
 COPY bin/crio/v1.28/crio /opt/crio-deploy/bin/v1.28/crio-patched
 COPY bin/crio/v1.29/crio /opt/crio-deploy/bin/v1.29/crio-patched
 COPY bin/crio/v1.30/crio /opt/crio-deploy/bin/v1.30/crio-patched
