@@ -134,7 +134,7 @@ check-crio-artifacts:
 all: sysbox-deploy-k8s-image
 
 sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_CE_VER)-$(SYSBOX_DEPLOY_K8S_IMAGE_PATCH) \
+	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_CE_VER_FULL).$(SYSBOX_DEPLOY_K8S_IMAGE_PATCH)
 		--build-arg sys_arch=$(SYS_ARCH) \
 		--build-arg sysbox_version=v$(SYSBOX_CE_VER_FULL) \
 		-f Dockerfile.sysbox-ce .
