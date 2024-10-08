@@ -35,7 +35,7 @@ RELEASE_BASELINE_IMAGE=ubuntu-jammy
 
 # Go version to utilize in building process.
 GO_BASE_IMAGE=golang
-GO_VERSION:=1.19
+GO_VERSION:=1.22
 GO_IMAGE=$(GO_BASE_IMAGE):$(GO_VERSION)
 
 # Sysbox source-code locations.
