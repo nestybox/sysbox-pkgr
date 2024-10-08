@@ -1063,10 +1063,9 @@ function check_is_gke() {
 	     		-H "Metadata-Flavor: Google" \
 	       		169.254.169.254/computeMetadata/v1/instance/attributes/cluster-name)
 	if [ $is_cluster -ne 200 ]; then
-		false
-		return
+		return 0
 	fi
-	true
+	return 1
 }
 
 # Fixes an issue with crio network bridge on GKE not working.
@@ -1134,8 +1133,6 @@ function main() {
 		die "invalid arguments"
 	fi
 
-	local is_gke=$(check_is_gke)
-
 	# Perform distro-specific adjustments.
 	do_distro_adjustments
 
@@ -1156,7 +1153,7 @@ function main() {
 			remove_crio_installer_service
 			config_crio
 			# if running on GKE patch the CRI-O config
-			if $is_gke; then
+			if check_is_gke; then
 				echo "Configuring CRI-O for GKE"
 				config_crio_for_gke
 			fi
