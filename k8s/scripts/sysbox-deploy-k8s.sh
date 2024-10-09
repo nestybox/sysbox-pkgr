@@ -1077,6 +1077,27 @@ function config_crio_for_gke() {
 	dasel put string -f ${host_crio_conf_file} -p toml -m 'crio.network.plugin_dirs.[]' "/home/kubernetes/bin"
 }
 
+# Delete all sysbox pods in the node to ensure that the newly installed/updated sysbox runtime
+# is used. This is needed because the sysbox pods are not automatically restarted when the sysbox
+# runtime is updated, and these may not work correctly otherwise. Similarly, this routine is also
+# needed after sysbox removal to ensure that the sysbox pods are not left running.
+function delete_sysbox_pods() {
+
+	# Turn off errexit in these steps as we don't want to interrupt the installation/update
+	# process if any of the pods fail to be deleted for any reason.
+	set +e
+
+	echo "Deleting all the preexisting sysbox pods in the node..."
+	kubectl get pod -A -o json | jq -r --arg node "$NODE_NAME" '.items[] |
+        select(.spec.runtimeClassName=="sysbox-runc" and .spec.nodeName==$node) | "\(.metadata.name) \(.metadata.namespace)"' | \
+        while read name namespace; do \
+                echo "Deleting sysbox pod ${name} from namespace ${namespace}..."; \
+                kubectl delete pod/${name} -n ${namespace} --grace-period=1 --force; \
+        done
+
+	set -e
+}
+
 #
 # Main Function
 #
@@ -1147,7 +1168,7 @@ function main() {
 		mkdir -p ${host_var_lib_sysbox_deploy_k8s}
 		install_precheck
 
-		# Prevent new pods being scheduled till sysbox installation is completed.
+		# Prevent new pods being scheduled till sysbox installation/update is completed.
 		add_taint_to_node "${k8s_taints}"
 
 		# Install CRI-O
@@ -1204,12 +1225,20 @@ function main() {
 			echo "Kubelet reconfig completed."
 		fi
 
+		# Remove all the sysbox pods in the node to ensure that the newly installed/updated
+		# sysbox binaries are used.
+		delete_sysbox_pods
+
 		add_label_to_node "crio-runtime=running"
 		add_label_to_node "sysbox-runtime=running"
 		rm_taint_from_node "${k8s_taints}"
 
-		echo "The k8s runtime on this node is now CRI-O."
-		echo "$sysbox_edition installation completed."
+		if [[ "$do_sysbox_install" == "true" ]]; then
+			echo "The k8s runtime on this node is now CRI-O with Sysbox."
+			echo "$sysbox_edition installation completed (version $sysbox_version)."
+		else if [[ "$do_sysbox_update" == "true" ]]; then
+			echo "$sysbox_edition update completed (version $sysbox_version)."
+		fi
 		;;
 
 	cleanup)
@@ -1261,6 +1290,10 @@ function main() {
 		if [[ "$crio_restart_pending" == "true" ]]; then
 			restart_crio
 		fi
+
+		# Remove all the sysbox pods in the node to ensure that no sysbox pods are
+		# left behind in an inconsistent state.
+		delete_sysbox_pods
 
 		rm_taint_from_node "${k8s_taints}"
 
