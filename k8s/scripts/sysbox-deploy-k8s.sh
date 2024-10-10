@@ -91,6 +91,7 @@ sys_arch=""
 do_sysbox_install="true"
 do_sysbox_update="false"
 do_crio_install="true"
+sysbox_install_in_progress="false"
 
 #
 # CRI-O Installation Functions
@@ -915,8 +916,12 @@ function install_precheck() {
 		do_sysbox_install="false"
 	fi
 
-	# Update sysbox binaries and dependencies if kernel or sysbox version has changed.
-	if is_kernel_upgraded || is_sysbox_upgraded; then
+	if kubectl get node $NODE_NAME -o jsonpath='{.metadata.labels.sysbox-runtime}' | grep -q "installing"; then
+		sysbox_install_in_progress="true"
+	fi
+
+	# Update sysbox binaries and dependencies if kernel, sysbox version, or sysbox config has changed.
+	if is_kernel_upgraded || is_sysbox_upgraded || is_sysbox_config_changed; then
 		do_sysbox_update="true"
 	fi
 }
@@ -1227,8 +1232,10 @@ function main() {
 
 		# Remove all the sysbox pods in the node to ensure that the newly installed/updated
 		# sysbox binaries are used. No action will be taken if this daemon-set is being updated
-		# without sysbox binaries being modified (or sysbox-config changed, or kernel changed).
-		if [[ "$do_sysbox_install" == "true" ]] || [[ "$do_sysbox_update" == "true" ]]; then
+		# with no changes to the sysbox runtime or any of its dependencies.
+		if [[ "$do_sysbox_install" == "true" ]] ||
+			[[ "$do_sysbox_update" == "true" ]] ||
+			[[ "$sysbox_install_in_progress" == "true" ]]; then
 			delete_sysbox_pods
 		fi
 
@@ -1236,7 +1243,7 @@ function main() {
 		add_label_to_node "sysbox-runtime=running"
 		rm_taint_from_node "${k8s_taints}"
 
-		if [[ "$do_sysbox_install" == "true" ]]; then
+		if [[ "$do_sysbox_install" == "true" ]] || [[ "$sysbox_install_in_progress" == "true" ]]; then
 			echo "The k8s runtime on this node is now CRI-O with Sysbox."
 			echo "$sysbox_edition installation completed (version $sysbox_version)."
 		elif [[ "$do_sysbox_update" == "true" ]]; then
