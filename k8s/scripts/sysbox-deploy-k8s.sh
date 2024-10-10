@@ -1092,7 +1092,7 @@ function delete_sysbox_pods() {
         select(.spec.runtimeClassName=="sysbox-runc" and .spec.nodeName==$node) | "\(.metadata.name) \(.metadata.namespace)"' | \
         while read name namespace; do \
                 echo "Deleting sysbox pod ${name} from namespace ${namespace}..."; \
-                kubectl delete pod/${name} -n ${namespace} --grace-period=1 --force; \
+                kubectl delete pod/${name} -n ${namespace} --grace-period=1; \
         done
 
 	set -e
