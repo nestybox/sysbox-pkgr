@@ -1186,7 +1186,7 @@ function main() {
 			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/crio_installed
 		fi
 
-		# (Re)Install Sysbox
+		# Install or update Sysbox
 		if [[ "$do_sysbox_install" == "true" ]] ||
 			[[ "$do_sysbox_update" == "true" ]]; then
 			add_label_to_node "sysbox-runtime=installing"
@@ -1226,8 +1226,11 @@ function main() {
 		fi
 
 		# Remove all the sysbox pods in the node to ensure that the newly installed/updated
-		# sysbox binaries are used.
-		delete_sysbox_pods
+		# sysbox binaries are used. No action will be taken if this daemon-set is being updated
+		# without sysbox binaries being modified (or sysbox-config changed, or kernel changed).
+		if [[ "$do_sysbox_install" == "true" ]] || [[ "$do_sysbox_update" == "true" ]]; then
+			delete_sysbox_pods
+		fi
 
 		add_label_to_node "crio-runtime=running"
 		add_label_to_node "sysbox-runtime=running"
@@ -1236,7 +1239,7 @@ function main() {
 		if [[ "$do_sysbox_install" == "true" ]]; then
 			echo "The k8s runtime on this node is now CRI-O with Sysbox."
 			echo "$sysbox_edition installation completed (version $sysbox_version)."
-		else if [[ "$do_sysbox_update" == "true" ]]; then
+		elif [[ "$do_sysbox_update" == "true" ]]; then
 			echo "$sysbox_edition update completed (version $sysbox_version)."
 		fi
 		;;
