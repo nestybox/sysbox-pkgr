@@ -158,9 +158,10 @@ function probe_kernel_mods() {
 		fi
 	fi
 
-	modprobe configfs
-
-	if ! mount | grep -q configfs; then
+	# Ensure that configfs is loaded regardless of the running kernel version. Notice that
+	# we're not enforcing this requirement, and we're simply dumping a log to the user if
+	# configfs is not present.
+	if modprobe configfs && ! mount | grep -q configfs; then
 		echo -e "\nConfigfs kernel module is not loaded. Configfs may be required " \
 			"by certain applications running inside a Sysbox container.\n"
 	fi
