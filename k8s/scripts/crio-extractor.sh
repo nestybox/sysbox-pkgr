@@ -35,8 +35,17 @@ function install_cni() {
 }
 
 function install_conmon() {
-	install ${SELINUX} -D -m 755 -t ${BINDIR} bin/conmon
+	if [ -f bin/conmon ]; then
+		install ${SELINUX} -D -m 755 -t ${BINDIR} bin/conmon
+		if [ ! -f bin/crio-conmon ]; then
+			ln -s ${BINDIR}/conmon ${BINDIR}/crio-conmon
+		fi
+	fi
+	if [ -f bin/crio-conmon ]; then
+		install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crio-conmon
+	fi
 }
+
 
 function install_crictl() {
 	install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crictl
@@ -76,17 +85,27 @@ function install_runc() {
 		if [[ "$curr_runc" != "${BINDIR}/bin/runc" ]]; then
 			echo "Using existing runc (soft-linking ${BINDIR}/runc -> $curr_runc)"
 			ln -s $curr_runc ${BINDIR}/runc
+			ln -s $curr_runc ${BINDIR}/crio-runc
 			mkdir -p ${VAR_LIB_SYSBOX_DEPLOY_K8S} && touch ${VAR_LIB_SYSBOX_DEPLOY_K8S}/linked_runc
 		fi
 	else
 		echo "Installing runc at ${BINDIR}/bin/runc"
-		install ${SELINUX} -D -m 755 -t ${BINDIR} bin/runc
+		if [ -f bin/runc ]; then
+			install ${SELINUX} -D -m 755 -t ${BINDIR} bin/runc
+			if [ ! -f bin/crio-runc ]; then
+				ln -s ${BINDIR}/runc ${BINDIR}/crio-runc
+		fi
+		if [ -f bin/crio-runc ]; then
+			install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crio-runc
+		fi
+		ln -s ${BINDIR}/crio-runc ${BINDIR}/runc
 		mkdir -p ${VAR_LIB_SYSBOX_DEPLOY_K8S} && touch ${VAR_LIB_SYSBOX_DEPLOY_K8S}/installed_runc
 	fi
 }
 
 function install_crun() {
 	install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crun
+	install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crio-crun
 }
 
 function uninstall_all() {
@@ -105,6 +124,7 @@ function uninstall_cni() {
 
 function uninstall_conmon() {
 	rm ${BINDIR}/conmon
+	rm ${BINDIR}/crio-conmon
 }
 
 function uninstall_crictl() {
@@ -135,6 +155,7 @@ function uninstall_runc() {
 	if [ -f ${VAR_LIB_SYSBOX_DEPLOY_K8S}/installed_runc ]; then
 		echo "Removing runc at ${BINDIR}/runc"
 		rm ${BINDIR}/runc
+		rm ${BINDIR}/crio-runc
 		rm ${VAR_LIB_SYSBOX_DEPLOY_K8S}/installed_runc
 	elif [ -f ${VAR_LIB_SYSBOX_DEPLOY_K8S}/linked_runc ]; then
 		echo "Removing runc softlink at ${BINDIR}/runc"
@@ -146,6 +167,7 @@ function uninstall_runc() {
 
 function uninstall_crun() {
 	rm ${BINDIR}/crun
+	rm ${BINDIR}/crio-crun
 }
 
 function main() {
