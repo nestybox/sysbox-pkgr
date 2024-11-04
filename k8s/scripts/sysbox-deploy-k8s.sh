@@ -1175,9 +1175,6 @@ function main() {
 		die "invalid arguments"
 	fi
 
-	check_is_gke
-	local is_gke=$?
-
 	# Perform distro-specific adjustments.
 	do_distro_adjustments
 
@@ -1198,7 +1195,7 @@ function main() {
 			remove_crio_installer_service
 			config_crio
 			# if running on GKE patch the CRI-O config
-			if $is_gke; then
+			if $(check_is_gke); then
 				echo "Configuring CRI-O for GKE"
 				config_crio_for_gke
 			fi
