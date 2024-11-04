@@ -238,10 +238,8 @@ function config_crio() {
 	dasel put string -f ${host_crio_conf_file} -p toml -m "crio.runtime.default_runtime" "crio-runc"
 
 	# Add crio-runc runtime and its monitor-path.
-	dasel put object -f "${host_crio_conf_file}" -p toml -t string -t string "crio.runtime.runtimes.crio-runc" \
-		"runtime_path=/usr/local/bin/crio-runc" "runtime_type=oci"
-	dasel put object -f "${host_crio_conf_file}" -p toml -t string -t string "crio.runtime.runtimes.crio-runc" \
-		"monitor_path=/usr/local/bin/crio-conmon"
+	dasel put object -f "${host_crio_conf_file}" -p toml -t string -t string -t string "crio.runtime.runtimes.crio-runc" \
+		"runtime_path=/usr/local/bin/crio-runc" "runtime_type=oci" "monitor_path=/usr/local/bin/crio-conmon"
 
 	# Create 'crio.image' table (required for 'pause_image' settings).
 	dasel put document -f ${host_crio_conf_file} -p toml -m '.crio.image'
@@ -645,13 +643,9 @@ function config_crio_for_sysbox() {
 		dasel put string -f "${host_crio_conf_file}" -p toml -m 'crio.storage_option.[]' "overlay.mountopt=metacopy=on"
 	fi
 
-	# Add Sysbox to CRI-O's runtime list.
-	dasel put object -f "${host_crio_conf_file}" -p toml -t string -t string "crio.runtime.runtimes.sysbox-runc" \
-		"runtime_path=/usr/bin/sysbox-runc" "runtime_type=oci"
-
-	# Add sysbox-runc's monitor-path.
-	dasel put object -f "${host_crio_conf_file}" -p toml -t string -t string "crio.runtime.runtimes.sysbox-runc" \
-		"monitor_path=/usr/local/bin/crio-conmon"
+	# Add sysbox-runc and its monitoring-path.
+	dasel put object -f "${host_crio_conf_file}" -p toml -t string -t string -t string "crio.runtime.runtimes.sysbox-runc" \
+		"runtime_path=/usr/bin/sysbox-runc" "runtime_type=oci" "monitor_path=/usr/local/bin/crio-conmon"
 
 	# Add sysbox-runc's allowed annotations.
 	dasel put string -f "${host_crio_conf_file}" -p toml "crio.runtime.runtimes.sysbox-runc.allowed_annotations.[0]" \
