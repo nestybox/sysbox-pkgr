@@ -35,14 +35,23 @@ function install_cni() {
 }
 
 function install_conmon() {
+	# Ensure that both 'conmon' and 'crio-conmon' can be resolved and are properly installed
+	# regardless of how they are being packaged (i.e., 'conmon' is not packaged in crio v1.30+,
+	# and 'crio-conmon' is not packaged in v1.30-).
+	#
+	# For scenarios with crio v1.30-
 	if [ -f bin/conmon ]; then
 		install ${SELINUX} -D -m 755 -t ${BINDIR} bin/conmon
 		if [ ! -f bin/crio-conmon ]; then
 			ln -s ${BINDIR}/conmon ${BINDIR}/crio-conmon
 		fi
 	fi
+	# For scenarios with crio v1.30 and v1.30+
 	if [ -f bin/crio-conmon ]; then
 		install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crio-conmon
+		if [ ! -f bin/conmon ]; then
+			ln -s ${BINDIR}/crio-conmon ${BINDIR}/conmon
+		fi
 	fi
 }
 
@@ -89,23 +98,32 @@ function install_runc() {
 			mkdir -p ${VAR_LIB_SYSBOX_DEPLOY_K8S} && touch ${VAR_LIB_SYSBOX_DEPLOY_K8S}/linked_runc
 		fi
 	else
-		echo "Installing runc at ${BINDIR}/bin/runc"
+		# For scenarios with crio v1.30-
 		if [ -f bin/runc ]; then
+			echo "Installing runc at ${BINDIR}/bin/runc"
 			install ${SELINUX} -D -m 755 -t ${BINDIR} bin/runc
 			if [ ! -f bin/crio-runc ]; then
 				ln -s ${BINDIR}/runc ${BINDIR}/crio-runc
+			fi
 		fi
+		# For scenarios with crio v1.30 and v1.30+
 		if [ -f bin/crio-runc ]; then
+			echo "Installing crio-runc at ${BINDIR}/bin/crio-runc"
 			install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crio-runc
+			# Point traditional runc to crio-runc binary.
+			ln -s ${BINDIR}/crio-runc ${BINDIR}/runc
 		fi
-		ln -s ${BINDIR}/crio-runc ${BINDIR}/runc
 		mkdir -p ${VAR_LIB_SYSBOX_DEPLOY_K8S} && touch ${VAR_LIB_SYSBOX_DEPLOY_K8S}/installed_runc
 	fi
 }
 
 function install_crun() {
-	install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crun
-	install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crio-crun
+	if [ -f bin/crun ]; then
+		install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crun
+	fi
+	if [ -f bin/crio-crun ]; then
+		install ${SELINUX} -D -m 755 -t ${BINDIR} bin/crio-crun
+	fi
 }
 
 function uninstall_all() {
@@ -166,8 +184,12 @@ function uninstall_runc() {
 }
 
 function uninstall_crun() {
-	rm ${BINDIR}/crun
-	rm ${BINDIR}/crio-crun
+	if [ -f ${BINDIR}/crun ]; then
+		rm ${BINDIR}/crun
+	fi
+	if [ -f ${BINDIR}/crio-crun ]; then
+		rm ${BINDIR}/crio-crun
+	fi
 }
 
 function main() {
