@@ -7,6 +7,9 @@ FROM ubuntu:jammy
 ARG sys_arch
 ENV SYS_ARCH=${sys_arch}
 
+ARG CRIO_VERSIONS
+ENV CRIO_VERSIONS=${CRIO_VERSIONS}
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
