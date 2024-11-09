@@ -8,10 +8,17 @@
 #
 # Usage: docker run -v $(shell pwd)/bin:/mnt/results crio-bld
 #
+# Note: refer to 'k8s/Makefile' for the CRIO_VERSIONS settings.
+#
 
-declare -a CRIO_VERSIONS=(v1.26 v1.27 v1.28 v1.29)
+# Split CRIO_VERSIONS space-separated string into an array.
+CRIO_VERSIONS_ARRAY=($(echo ${CRIO_VERSIONS} | tr "," "\n"))
 
-for ver in ${CRIO_VERSIONS[@]}; do
+for ver in "${CRIO_VERSIONS_ARRAY[@]}"; do
+	if [ -f "/mnt/results/crio/${ver}/crio" ]; then \
+		printf "\n*** Skip building CRI-O ${ver} -- binary already present ... ***\n\n"
+		continue
+	fi
 	printf "\n*** Building CRI-O ${ver} ... ***\n\n"
 	TMPDIR=$(mktemp -d)
 	chmod 755 ${TMPDIR}
