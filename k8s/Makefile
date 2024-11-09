@@ -42,7 +42,7 @@ CRIO_VERSIONS = v1.27 v1.28 v1.29 v1.30
 # empty). This is useful to distinguish between sysbox-deploy-k8s images that have the
 # same Sysbox version but differ in other components (e.g., crio versions, supported
 # k8s releases, etc.).
-SYSBOX_DEPLOY_K8S_IMAGE_PATCH := ".1"
+SYSBOX_DEPLOY_K8S_IMAGE_PATCH := ""
 
 # Obtain the current system architecture.
 UNAME_M := $(shell uname -m)
