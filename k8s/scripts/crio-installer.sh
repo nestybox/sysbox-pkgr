@@ -82,6 +82,7 @@ function do_install_crio() {
 	# Replace the stock CRI-O binary with the one that has the uid mapping patch
 	# required by Sysbox.
 	mv ${path}/crio-patched ${path}/crio
+	mv ${path}/pinns-patched ${path}/pinns
 
 	# Adjust PATH env-var and crio's binary location if it doesn't match the default
 	# location.
