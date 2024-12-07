@@ -27,4 +27,5 @@ for ver in "${CRIO_VERSIONS_ARRAY[@]}"; do
 	cd ${TMPDIR}/cri-o && make binaries
 	mkdir -p /mnt/results/crio/${ver}
 	cp ${TMPDIR}/cri-o/bin/crio-static /mnt/results/crio/${ver}/crio
+	cp ${TMPDIR}/cri-o/bin/pinns /mnt/results/crio/${ver}/pinns
 done

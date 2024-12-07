@@ -102,6 +102,7 @@ function deploy_crio_installer_service() {
 
 	cp ${crio_artifacts}/bin/${k8s_version}/cri-o.${sys_arch}.tar.gz ${host_local_bin}/cri-o.${sys_arch}.tar.gz
 	cp ${crio_artifacts}/bin/${k8s_version}/crio-patched ${host_local_bin}/crio-patched
+	cp ${crio_artifacts}/bin/${k8s_version}/pinns-patched ${host_local_bin}/pinns-patched
 
 	cp ${crio_artifacts}/scripts/crio-installer.sh ${host_local_bin}/crio-installer.sh
 	cp ${crio_artifacts}/scripts/crio-extractor.sh ${host_local_bin}/crio-extractor.sh
@@ -788,10 +789,10 @@ function is_supported_k8s_version() {
 
 	local ver=$k8s_version
 
-	if [[ "$ver" == "v1.27" ]] ||
-		[[ "$ver" == "v1.28" ]] ||
+	if [[ "$ver" == "v1.28" ]] ||
 		[[ "$ver" == "v1.29" ]] ||
-		[[ "$ver" == "v1.30" ]]; then
+		[[ "$ver" == "v1.30" ]] ||
+		[[ "$ver" == "v1.31" ]] ; then
 		return
 	fi
 
@@ -802,7 +803,8 @@ function is_supported_k8s_version() {
 		[[ "$ver" == "v1.23" ]] ||
 		[[ "$ver" == "v1.24" ]] ||
 		[[ "$ver" == "v1.25" ]] ||
-		[[ "$ver" == "v1.26" ]]; then
+		[[ "$ver" == "v1.26" ]] ||
+		[[ "$ver" == "v1.27" ]] ; then
 		echo "Unsupported kubernetes version: $ver (EOL release)."
 	fi
 
