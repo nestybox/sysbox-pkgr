@@ -271,7 +271,8 @@ function get_artifacts_dir() {
 
 	local distro=$os_distro_release
 
-	if [[ "$distro" == "ubuntu-22.04" ]] ||
+	if [[ "$distro" == "ubuntu-24.04" ]] ||
+		[[ "$distro" == "ubuntu-22.04" ]] ||
 		[[ "$distro" == "ubuntu-21.10" ]] ||
 		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
@@ -742,7 +743,8 @@ function is_supported_distro() {
 
 	local distro=$os_distro_release
 
-	if [[ "$distro" == "ubuntu-22.04" ]] ||
+	if [[ "$distro" == "ubuntu-24.04" ]] ||
+		[[ "$distro" == "ubuntu-22.04" ]] ||
 		[[ "$distro" == "ubuntu-21.10" ]] ||
 		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
