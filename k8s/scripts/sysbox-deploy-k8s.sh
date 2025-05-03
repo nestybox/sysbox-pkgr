@@ -56,7 +56,7 @@ host_var_lib_sysbox_deploy_k8s="${host_var_lib}/sysbox-deploy-k8s"
 #
 # Subid default values.
 #
-# Sysbox supports up 4K sys contaienrs per K8s node, each with 64K subids.
+# Sysbox supports up 4K sys containers per K8s node, each with 64K subids.
 #
 # Historical note: prior to Docker's acquisition of Nesytbox, Sysbox-CE was
 # limited to 16-pods-per-node via variable subid_alloc_min_range below, whereas
