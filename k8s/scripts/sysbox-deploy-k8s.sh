@@ -271,7 +271,8 @@ function get_artifacts_dir() {
 
 	local distro=$os_distro_release
 
-	if [[ "$distro" == "ubuntu-22.04" ]] ||
+	if [[ "$distro" == "ubuntu-24.04" ]] ||
+		[[ "$distro" == "ubuntu-22.04" ]] ||
 		[[ "$distro" == "ubuntu-21.10" ]] ||
 		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
@@ -280,8 +281,6 @@ function get_artifacts_dir() {
 	elif [[ "$distro" =~ "flatcar" ]]; then
 		local release=$(echo $distro | cut -d"-" -f2)
 		artifacts_dir="${sysbox_artifacts}/bin/flatcar-${release}"
-	else
-		die "Sysbox is not supported on this host's distro ($distro)".
 	fi
 
 	echo $artifacts_dir
@@ -742,7 +741,8 @@ function is_supported_distro() {
 
 	local distro=$os_distro_release
 
-	if [[ "$distro" == "ubuntu-22.04" ]] ||
+	if [[ "$distro" == "ubuntu-24.04" ]] ||
+		[[ "$distro" == "ubuntu-22.04" ]] ||
 		[[ "$distro" == "ubuntu-21.10" ]] ||
 		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
@@ -789,10 +789,10 @@ function is_supported_k8s_version() {
 
 	local ver=$k8s_version
 
-	if [[ "$ver" == "v1.28" ]] ||
-		[[ "$ver" == "v1.29" ]] ||
+	if [[ "$ver" == "v1.29" ]] ||
 		[[ "$ver" == "v1.30" ]] ||
-		[[ "$ver" == "v1.31" ]] ; then
+		[[ "$ver" == "v1.31" ]] ||
+		[[ "$ver" == "v1.32" ]] ; then
 		return
 	fi
 
@@ -804,7 +804,8 @@ function is_supported_k8s_version() {
 		[[ "$ver" == "v1.24" ]] ||
 		[[ "$ver" == "v1.25" ]] ||
 		[[ "$ver" == "v1.26" ]] ||
-		[[ "$ver" == "v1.27" ]] ; then
+		[[ "$ver" == "v1.27" ]] ||
+		[[ "$ver" == "v1.28" ]] ; then
 		echo "Unsupported kubernetes version: $ver (EOL release)."
 	fi
 
@@ -1127,7 +1128,7 @@ function main() {
 
 	os_distro_release=$(get_host_distro)
 	if ! is_supported_distro; then
-		die "Sysbox is not supported on this host's distro ($os_distro_release)".
+		echo "Warning: Sysbox is not officially supported on this host's distro ($os_distro_release)".
 	fi
 
 	os_kernel_release=$(get_host_kernel)
