@@ -20,6 +20,8 @@ set -e
 #   |                           |                     |
 #   |   Ubuntu Jammy (22.04)    |        5.15+        |
 #   |                           |                     |
+#   |   Ubuntu Noble (24.04)    |        6.8+         |
+#   |                           |                     |
 #   |   Debian Buster (10)      |        5.5+         |
 #   |                           |                     |
 #   |   Debian Bullseye (11)    |        5.5+         |
@@ -31,6 +33,7 @@ sysbox_support_matrix=(
     ["Ubuntu 20.04"]="5.4"
     ["Ubuntu 21.10"]="5.13"
     ["Ubuntu 22.04"]="5.15"
+    ["Ubuntu 24.04"]="6.8"
     ["Debian 10"]="5.5"
     ["Debian 11"]="5.5"
 )
