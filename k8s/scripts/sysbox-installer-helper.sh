@@ -93,7 +93,7 @@ function install_package_deps() {
 	# Certificates package is required prior to running apt-update.
 	apt-get -y install ca-certificates
 	apt-get update
-	apt-get install -y rsync fuse iptables
+	apt-get install -y rsync fuse3 iptables
 }
 
 function install_shiftfs() {

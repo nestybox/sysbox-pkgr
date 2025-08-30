@@ -49,6 +49,8 @@ host_etc="/mnt/host/etc"
 host_os_release="/mnt/host/os-release"
 host_crio_conf_file="${host_etc}/crio/crio.conf"
 host_crio_conf_file_backup="${host_crio_conf_file}.orig"
+host_containerd_conf_file="${host_etc}/containerd/config.toml"
+host_containerd_conf_file_backup="${host_containerd_conf_file}.orig"
 host_run="/mnt/host/run"
 host_var_lib="/mnt/host/var/lib"
 host_var_lib_sysbox_deploy_k8s="${host_var_lib}/sysbox-deploy-k8s"
@@ -91,6 +93,7 @@ sys_arch=""
 do_sysbox_install="true"
 do_sysbox_update="false"
 do_crio_install="true"
+do_kubelet_use_crio="true"
 sysbox_install_in_progress="false"
 
 #
@@ -666,6 +669,118 @@ function unconfig_crio_for_sysbox() {
 }
 
 #
+# Containerd Configuration Functions
+#
+
+function config_containerd_for_sysbox() {
+	echo "Adding Sysbox to containerd config ..."
+
+	# Backup the original containerd config if not already backed up
+	if [ ! -f "${host_containerd_conf_file_backup}" ]; then
+		cp "${host_containerd_conf_file}" "${host_containerd_conf_file_backup}"
+	fi
+
+	# Determine the correct sysbox-runc path
+	local sysbox_runc_path="/usr/bin/sysbox-runc"
+	if host_flatcar_distro; then
+		sysbox_runc_path="/opt/bin/sysbox-runc"
+	fi
+
+	# Check if sysbox-runc runtime section already exists
+	if grep -q "runtimes.sysbox-runc" "${host_containerd_conf_file}"; then
+		echo "sysbox-runc runtime already configured in containerd config"
+	else
+		echo "Configuring sysbox-runc runtime in containerd config ..."
+
+		# Set the runtime_type
+		dasel put string -f "${host_containerd_conf_file}" -p toml \
+			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.runtime_type" \
+			-v "io.containerd.runc.v2"
+
+		# Set BinaryName option
+		dasel put string -f "${host_containerd_conf_file}" -p toml \
+			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.options.BinaryName" \
+			-v "${sysbox_runc_path}"
+
+		# Set SystemdCgroup option
+		dasel put bool -f "${host_containerd_conf_file}" -p toml \
+			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.options.SystemdCgroup" \
+			-v true
+	fi
+
+	echo "Restarting containerd to apply changes ..."
+	systemctl restart containerd
+
+	# Verify containerd picked up the sysbox-runc runtime
+	# verify_containerd_config
+}
+
+function unconfig_containerd_for_sysbox() {
+	echo "Removing Sysbox from containerd config ..."
+
+	if [ -f "${host_containerd_conf_file}" ]; then
+		# Check if sysbox-runc runtime configuration exists
+		if grep -q "runtimes.sysbox-runc" "${host_containerd_conf_file}"; then
+			echo "Removing sysbox-runc runtime configuration ..."
+
+			# Delete the entire sysbox-runc runtime section using dasel
+			dasel delete -f "${host_containerd_conf_file}" -p toml \
+				-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc"
+
+			echo "Restarting containerd to apply changes ..."
+			systemctl restart containerd
+		else
+			echo "sysbox-runc runtime not found in containerd config"
+		fi
+	fi
+}
+
+function verify_containerd_config() {
+	echo "Verifying containerd is configured with sysbox-runc runtime ..."
+
+	# Give containerd a moment to fully restart and reload config
+	sleep 2
+
+	# Use crictl to check if sysbox-runc runtime is available
+	# We need to use the host's crictl if available, or use our deployed one
+	local crictl_bin="/usr/local/bin/crictl"
+	if [ ! -f "${crictl_bin}" ]; then
+		crictl_bin="/usr/bin/crictl"
+	fi
+
+	if [ ! -f "${crictl_bin}" ]; then
+		echo "Warning: crictl not found, skipping containerd runtime verification"
+		return
+	fi
+
+	# Check if containerd reports sysbox-runc as an available runtime
+	echo "Running: ${crictl_bin} info | grep sysbox-runc"
+	local runtime_check=$(${crictl_bin} info 2>/dev/null | grep -o "sysbox-runc" || true)
+
+	if [ -z "$runtime_check" ]; then
+		echo "Warning: sysbox-runc runtime not detected in containerd config. Checking config file..."
+
+		# Fallback: verify the config file exists and has the right content
+		if [ -f "${host_containerd_conf_file}" ]; then
+			if grep -q "sysbox-runc" "${host_containerd_conf_file}"; then
+				echo "Config file exists and contains sysbox-runc configuration."
+				echo "Note: Runtime may need a few more seconds to be fully registered."
+			else
+				echo "ERROR: Config file exists but doesn't contain sysbox-runc!"
+				return 1
+			fi
+		else
+			echo "ERROR: Containerd config file not found!"
+			return 1
+		fi
+	else
+		echo "Verified: sysbox-runc runtime is registered with containerd."
+	fi
+
+	return 0
+}
+
+#
 # General Helper Functions
 #
 
@@ -920,8 +1035,50 @@ function rm_taint_from_node() {
 	kubectl taint nodes "$NODE_NAME" "$taint"-
 }
 
+function is_containerd_with_userns() {
+
+	# containerd 2.0 introduces support for user-namespaces, but versions 2.0.1
+	# through 2.0.4 have a bug that prevents user-namespaced pods with alternative
+	# runtimes (like Sysbox) from working properly. The bug causes the pod sandbox
+	# to use the alternative runtime, but containers within the sandbox still use
+	# the default runc runtime.
+
+	local runtime_version=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}')
+
+	# Check if it's containerd
+	if ! echo "$runtime_version" | grep -q "containerd://"; then
+		return 1
+	fi
+
+	# Extract version number (e.g., "containerd://2.0.4" -> "2.0.4")
+	local version=$(echo "$runtime_version" | sed 's/containerd:\/\///')
+
+	# Check if version >= 2.0.0
+	version_compare "$version" "2.0.0"
+	local cmp_result=$?
+	if [[ ! $cmp_result =~ ^[01]$ ]]; then
+		return 1
+	fi
+
+	# Exclude buggy versions 2.0.1 through 2.0.4 (inclusive)
+	version_compare "$version" "2.0.1"
+	local cmp_ge_201=$?
+	version_compare "2.0.4" "$version"
+	local cmp_204_ge=$?
+
+	if [[ $cmp_ge_201 =~ ^[01]$ ]] && [[ $cmp_204_ge =~ ^[01]$ ]]; then
+		return 1
+	fi
+
+	return 0
+}
+
 function install_precheck() {
-	if systemctl is-active --quiet crio; then
+
+	if is_containerd_with_userns; then
+		do_crio_install="false"
+		do_kubelet_use_crio="false"
+	elif systemctl is-active --quiet crio; then
 		do_crio_install="false"
 	fi
 
@@ -1186,7 +1343,7 @@ function main() {
 		# Prevent new pods being scheduled till sysbox installation/update is completed.
 		add_taint_to_node "${k8s_taints}"
 
-		# Install CRI-O
+		# Install CRI-O (if necessary)
 		if [[ "$do_crio_install" == "true" ]]; then
 			add_label_to_node "crio-runtime=installing"
 			deploy_crio_installer_service
@@ -1214,6 +1371,10 @@ function main() {
 				config_crio_for_sysbox
 				crio_restart_pending=true
 			fi
+			# Configure containerd for sysbox-runc when using containerd 2.0 with userns support
+			if is_containerd_with_userns; then
+				config_containerd_for_sysbox
+			fi
 			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
 			echo "$os_kernel_release" >${host_var_lib_sysbox_deploy_k8s}/os_kernel_release
 		fi
@@ -1222,22 +1383,26 @@ function main() {
 			restart_crio
 		fi
 
-		# Switch the K8s runtime to CRI-O.
+		# Switch the K8s runtime to CRI-O (if necessary)
 		#
 		# Note: this will configure the Kubelet to use CRI-O and restart it,
 		# thereby killing all pods on the K8s node (including this daemonset).
 		# The K8s control plane will then re-create the pods, but this time
 		# with CRI-O. The operation can take up to 1 minute.
-		if [[ "$k8s_runtime" != "crio" ]]; then
-			echo "yes" >${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
-			deploy_kubelet_config_service
-		fi
+		if [[ "$do_kubelet_use_crio" == "true" ]]; then
+			if [[ "$k8s_runtime" != "crio" ]]; then
+				echo "yes" >${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
+				deploy_kubelet_config_service
+			fi
 
-		# Kubelet config service cleanup
-		if [ -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
-			remove_kubelet_config_service
-			rm -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
-			echo "Kubelet reconfig completed."
+			# Kubelet config service cleanup
+			if [ -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured ]; then
+				remove_kubelet_config_service
+				rm -f ${host_var_lib_sysbox_deploy_k8s}/kubelet_reconfigured
+				echo "Kubelet reconfig completed."
+			fi
+
+			add_label_to_node "crio-runtime=running"
 		fi
 
 		# Remove all the sysbox pods in the node to ensure that the newly installed/updated
@@ -1249,13 +1414,17 @@ function main() {
 			delete_sysbox_pods
 		fi
 
-		add_label_to_node "crio-runtime=running"
 		add_label_to_node "sysbox-runtime=running"
 		rm_taint_from_node "${k8s_taints}"
 
 		if [[ "$do_sysbox_install" == "true" ]] || [[ "$sysbox_install_in_progress" == "true" ]]; then
-			echo "The k8s runtime on this node is now CRI-O with Sysbox."
+			if [[ "$do_kubelet_use_crio" == "true" ]]; then
+				echo "The k8s runtime on this node is CRI-O + Sysbox."
+			else
+				echo "The k8s runtime on this node is containerd + Sysbox."
+			fi
 			echo "$sysbox_edition installation completed (version $sysbox_version)."
+
 		elif [[ "$do_sysbox_update" == "true" ]]; then
 			echo "$sysbox_edition update completed (version $sysbox_version)."
 		fi
@@ -1287,6 +1456,10 @@ function main() {
 		if [ -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed ]; then
 			add_label_to_node "sysbox-runtime=removing"
 			unconfig_crio_for_sysbox
+			# Remove containerd configuration if it was configured for sysbox-runc
+			if is_containerd_with_userns; then
+				unconfig_containerd_for_sysbox
+			fi
 			remove_sysbox
 			remove_sysbox_deps
 			crio_restart_pending=true
@@ -1303,6 +1476,7 @@ function main() {
 			crio_restart_pending=false
 			rm -f ${host_var_lib_sysbox_deploy_k8s}/crio_installed
 			rm_label_from_node "crio-runtime"
+			echo "CRI-O removal completed."
 		fi
 
 		rm -rf ${host_var_lib_sysbox_deploy_k8s}
@@ -1316,8 +1490,6 @@ function main() {
 		delete_sysbox_pods
 
 		rm_taint_from_node "${k8s_taints}"
-
-		echo "The k8s runtime on this node is now $k8s_runtime."
 		;;
 
 	*)
