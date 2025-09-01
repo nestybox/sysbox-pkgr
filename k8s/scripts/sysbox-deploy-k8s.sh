@@ -789,11 +789,10 @@ function is_supported_k8s_version() {
 
 	local ver=$k8s_version
 
-	if [[ "$ver" == "v1.29" ]] ||
-		[[ "$ver" == "v1.30" ]] ||
+	if [[ "$ver" == "v1.30" ]] ||
 		[[ "$ver" == "v1.31" ]] ||
 		[[ "$ver" == "v1.32" ]] ||
-		[[ "$ver" == "v1.33" ]]; then
+		[[ "$ver" == "v1.33" ]] ; then
 		return
 	fi
 
@@ -806,7 +805,8 @@ function is_supported_k8s_version() {
 		[[ "$ver" == "v1.25" ]] ||
 		[[ "$ver" == "v1.26" ]] ||
 		[[ "$ver" == "v1.27" ]] ||
-		[[ "$ver" == "v1.28" ]] ; then
+		[[ "$ver" == "v1.28" ]] ||
+		[[ "$ver" == "v1.29" ]] ; then
 		echo "Unsupported kubernetes version: $ver (EOL release)."
 	fi
 
