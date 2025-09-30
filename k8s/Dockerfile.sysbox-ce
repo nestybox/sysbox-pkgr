@@ -23,11 +23,12 @@ ARG sysbox_version
 ENV SYSBOX_VERSION=${sysbox_version}
 
 ARG DEST=/opt/sysbox
-ARG CRICTL_VERSION="v1.32.0"
+ARG CRICTL_VERSION="v1.33.0"
 ARG CRIO_V1_29_TAR="cri-o.${SYS_ARCH}.v1.29.0.tar.gz"
 ARG CRIO_V1_30_TAR="cri-o.${SYS_ARCH}.v1.30.0.tar.gz"
 ARG CRIO_V1_31_TAR="cri-o.${SYS_ARCH}.v1.31.0.tar.gz"
 ARG CRIO_V1_32_TAR="cri-o.${SYS_ARCH}.v1.32.0.tar.gz"
+ARG CRIO_V1_33_TAR="cri-o.${SYS_ARCH}.v1.33.0.tar.gz"
 
 RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* \
     && sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
@@ -95,6 +96,10 @@ RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_32_TAR} -O cri
     && mkdir -p /opt/crio-deploy/bin/v1.32 \
     && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.32/.
 
+RUN wget https://storage.googleapis.com/cri-o/artifacts/${CRIO_V1_33_TAR} -O cri-o.${SYS_ARCH}.tar.gz \
+    && mkdir -p /opt/crio-deploy/bin/v1.33 \
+    && mv cri-o.${SYS_ARCH}.tar.gz /opt/crio-deploy/bin/v1.33/.
+
 COPY systemd/crio-installer.service /opt/crio-deploy/systemd/crio-installer.service
 COPY systemd/crio-removal.service /opt/crio-deploy/systemd/crio-removal.service
 COPY scripts/crio-extractor.sh /opt/crio-deploy/scripts/crio-extractor.sh
@@ -124,8 +129,10 @@ COPY bin/crio/v1.29/crio /opt/crio-deploy/bin/v1.29/crio-patched
 COPY bin/crio/v1.30/crio /opt/crio-deploy/bin/v1.30/crio-patched
 COPY bin/crio/v1.31/crio /opt/crio-deploy/bin/v1.31/crio-patched
 COPY bin/crio/v1.32/crio /opt/crio-deploy/bin/v1.32/crio-patched
+COPY bin/crio/v1.33/crio /opt/crio-deploy/bin/v1.33/crio-patched
 
 COPY bin/crio/v1.29/pinns /opt/crio-deploy/bin/v1.29/pinns-patched
 COPY bin/crio/v1.30/pinns /opt/crio-deploy/bin/v1.30/pinns-patched
 COPY bin/crio/v1.31/pinns /opt/crio-deploy/bin/v1.31/pinns-patched
 COPY bin/crio/v1.32/pinns /opt/crio-deploy/bin/v1.32/pinns-patched
+COPY bin/crio/v1.33/pinns /opt/crio-deploy/bin/v1.33/pinns-patched
