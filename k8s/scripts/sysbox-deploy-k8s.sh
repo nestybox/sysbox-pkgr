@@ -92,8 +92,8 @@ sys_arch=""
 # Installation flags
 do_sysbox_install="true"
 do_sysbox_update="false"
-do_crio_install="true"
-do_kubelet_use_crio="true"
+do_crio_install="false"  # only set to true if containerd does not support user-namespaces with alternative runtimes.
+do_kubelet_use_crio="false"
 sysbox_install_in_progress="false"
 
 #
@@ -488,40 +488,39 @@ function install_sysbox_deps() {
 
 	local kversion=$(echo $os_kernel_release | cut -d "." -f1-2)
 	if semver_lt $kversion 5.4; then
-		echo "Kernel has version $kversion, which is below the min required for shiftfs ($shiftfs_min_kernel_ver); skipping shiftfs installation."
+		echo "Skipping shiftfs installation (kernel version $kversion is below the min required for shiftfs ($shiftfs_min_kernel_ver))."
 		return
 	fi
 
 	if host_flatcar_distro; then
 		install_sysbox_deps_flatcar
 	else
-		echo "Copying shiftfs sources to host ..."
 		if semver_ge $kversion 5.4 && semver_lt $kversion 5.8; then
-			echo "Kernel version $kversion is >= 5.4 and < 5.8"
 			cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
+			echo "Copied shiftfs-k5.4 sources to host (kernel version $kversion is >= 5.4 and < 5.8)."
 		elif semver_ge $kversion 5.8 && semver_lt $kversion 5.11; then
-			echo "Kernel version $kversion is >= 5.8 and < 5.11"
 			cp -r "/opt/shiftfs-k5.10" "$host_run/shiftfs-dkms"
+			echo "Copied shiftfs-k5.10 sources to host (kernel version $kversion is >= 5.8 and < 5.11)."
 		elif semver_ge $kversion 5.11 && semver_lt $kversion 5.13; then
-			echo "Kernel version $kversion is >= 5.11 and < 5.13"
 			cp -r "/opt/shiftfs-k5.11" "$host_run/shiftfs-dkms"
+			echo "Copied shiftfs-k5.11 sources to host (kernel version $kversion is >= 5.11 and < 5.13)."
 		elif semver_ge $kversion 5.13 && semver_lt $kversion 5.15; then
-			echo "Kernel version $kversion is >= 5.13 and < 5.15"
 			cp -r "/opt/shiftfs-k5.13" "$host_run/shiftfs-dkms"
+			echo "Copied shiftfs-k5.13 sources to host (kernel version $kversion is >= 5.13 and < 5.15)."
 		elif semver_ge $kversion 5.15 && semver_lt $kversion 5.17; then
-			echo "Kernel version $kversion is >= 5.15 and < 5.17"
 			cp -r "/opt/shiftfs-k5.16" "$host_run/shiftfs-dkms"
+			echo "Copied shiftfs-k5.16 sources to host (kernel version $kversion is >= 5.15 and < 5.17)."
 		elif semver_ge $kversion 5.17 && semver_lt $kversion 5.18; then
-			echo "Kernel version $kversion is 5.17"
 			cp -r "/opt/shiftfs-k5.17" "$host_run/shiftfs-dkms"
+			echo "Copied shiftfs-k5.17 sources to host (kernel version $kversion is 5.17)."
 		elif semver_ge $kversion 5.18 && semver_lt $kversion 6.1; then
-			echo "Kernel version $kversion is >= 5.18 and < 6.1"
 			cp -r "/opt/shiftfs-k5.18" "$host_run/shiftfs-dkms"
+			echo "Copied shiftfs-k5.18 sources to host (kernel version $kversion is >= 5.18 and < 6.1)."
 		elif semver_ge $kversion 6.1 && semver_lt $kversion 6.3; then
-			echo "Kernel version $kversion is >= 6.1 and < 6.3"
 			cp -r "/opt/shiftfs-k6.1" "$host_run/shiftfs-dkms"
+			echo "Copied shiftfs-k6.1 sources to host (kernel version $kversion is >= 6.1 and < 6.3)."
 		else
-			echo "Kernel version $kversion, which is above the max required for shiftfs ($shiftfs_max_kernel_ver); skipping shiftfs installation."
+			echo "Skipping shiftfs installation (kernel version $kversion is above the max required for shiftfs ($shiftfs_max_kernel_ver))."
 			# dont copy shiftfs, but still proceed to install other deps
 		fi
 	fi
@@ -1055,10 +1054,13 @@ function is_containerd_with_userns() {
 	# Extract version number (e.g., "containerd://2.0.4" -> "2.0.4")
 	local version=$(echo "$runtime_version" | sed 's/containerd:\/\///')
 
+	echo "Detected containerd version $version."
+
 	# Check if version >= 2.0.0
 	version_compare "$version" "2.0.0"
 	local cmp_result=$?
 	if [[ ! $cmp_result =~ ^[01]$ ]]; then
+		echo "containerd version $version does not support user-namespaces (requires >= 2.0.0)."
 		return 1
 	fi
 
@@ -1069,20 +1071,41 @@ function is_containerd_with_userns() {
 	local cmp_204_ge=$?
 
 	if [[ $cmp_ge_201 =~ ^[01]$ ]] && [[ $cmp_204_ge =~ ^[01]$ ]]; then
+		echo "containerd version $version does not support user-namespaces with alternative runtimes (buggy versions 2.0.1 -> 2.0.4)."
 		return 1
 	fi
 
 	return 0
 }
 
+function runtime_precheck() {
+	do_crio_install="false"
+	do_kubelet_use_crio="false"
+
+	# env var SYSBOX_USE_CRIO forces CRI-O installation (may be set via ConfigMap for testing purposes).
+	if [ -n "${SYSBOX_USE_CRIO:-}" ]; then
+		if ! systemctl is-active --quiet crio; then
+			do_crio_install="true"
+			do_kubelet_use_crio="true"
+			echo "Will install CRI-O as container runtime for Sysbox (SYSBOX_USE_CRIO is set)."
+		fi
+
+	elif is_containerd_with_userns; then
+		echo "Will use containerd as the container runtime for Sysbox (containerd version supports user-namespaces)."
+
+	else
+		if ! systemctl is-active --quiet crio; then
+			do_crio_install="true"
+			do_kubelet_use_crio="true"
+			echo "Will install CRI-O as container runtime for Sysbox (containerd version does NOT support user-namespaces)."
+		fi
+	fi
+}
+
 function install_precheck() {
 
-	if is_containerd_with_userns; then
-		do_crio_install="false"
-		do_kubelet_use_crio="false"
-	elif systemctl is-active --quiet crio; then
-		do_crio_install="false"
-	fi
+	# check if we need to install CRI-O or not
+	runtime_precheck
 
 	if systemctl is-active --quiet sysbox; then
 		do_sysbox_install="false"
@@ -1408,7 +1431,7 @@ function main() {
 		fi
 
 		# Remove all the sysbox pods in the node to ensure that the newly installed/updated
-		# sysbox binaries are used. No action will be taken if this daemon-set is being updated
+		# sysbox binaries are used. No action will be taken if this daemonset is being updated
 		# with no changes to the sysbox runtime or any of its dependencies.
 		if [[ "$do_sysbox_install" == "true" ]] ||
 			[[ "$do_sysbox_update" == "true" ]] ||
@@ -1457,9 +1480,9 @@ function main() {
 		# Uninstall Sysbox
 		if [ -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed ]; then
 			add_label_to_node "sysbox-runtime=removing"
-			unconfig_crio_for_sysbox
-			# Remove containerd configuration if it was configured for sysbox-runc
-			if is_containerd_with_userns; then
+			if [ -f ${host_var_lib_sysbox_deploy_k8s}/crio_installed ]; then
+				unconfig_crio_for_sysbox
+			else
 				unconfig_containerd_for_sysbox
 			fi
 			remove_sysbox
