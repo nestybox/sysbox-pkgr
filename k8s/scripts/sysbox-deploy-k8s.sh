@@ -1482,12 +1482,12 @@ function main() {
 			add_label_to_node "sysbox-runtime=removing"
 			if [ -f ${host_var_lib_sysbox_deploy_k8s}/crio_installed ]; then
 				unconfig_crio_for_sysbox
+				crio_restart_pending=true
 			else
 				unconfig_containerd_for_sysbox
 			fi
 			remove_sysbox
 			remove_sysbox_deps
-			crio_restart_pending=true
 			rm -f ${host_var_lib_sysbox_deploy_k8s}/sysbox_installed
 			rm -f ${host_var_lib_sysbox_deploy_k8s}/os_kernel_release
 			rm_label_from_node "sysbox-runtime"
