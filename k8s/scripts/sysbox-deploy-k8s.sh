@@ -709,9 +709,6 @@ function config_containerd_for_sysbox() {
 
 	echo "Restarting containerd to apply changes ..."
 	systemctl restart containerd
-
-	# Verify containerd picked up the sysbox-runc runtime
-	# verify_containerd_config
 }
 
 function unconfig_containerd_for_sysbox() {
@@ -732,51 +729,6 @@ function unconfig_containerd_for_sysbox() {
 			echo "sysbox-runc runtime not found in containerd config"
 		fi
 	fi
-}
-
-function verify_containerd_config() {
-	echo "Verifying containerd is configured with sysbox-runc runtime ..."
-
-	# Give containerd a moment to fully restart and reload config
-	sleep 2
-
-	# Use crictl to check if sysbox-runc runtime is available
-	# We need to use the host's crictl if available, or use our deployed one
-	local crictl_bin="/usr/local/bin/crictl"
-	if [ ! -f "${crictl_bin}" ]; then
-		crictl_bin="/usr/bin/crictl"
-	fi
-
-	if [ ! -f "${crictl_bin}" ]; then
-		echo "Warning: crictl not found, skipping containerd runtime verification"
-		return
-	fi
-
-	# Check if containerd reports sysbox-runc as an available runtime
-	echo "Running: ${crictl_bin} info | grep sysbox-runc"
-	local runtime_check=$(${crictl_bin} info 2>/dev/null | grep -o "sysbox-runc" || true)
-
-	if [ -z "$runtime_check" ]; then
-		echo "Warning: sysbox-runc runtime not detected in containerd config. Checking config file..."
-
-		# Fallback: verify the config file exists and has the right content
-		if [ -f "${host_containerd_conf_file}" ]; then
-			if grep -q "sysbox-runc" "${host_containerd_conf_file}"; then
-				echo "Config file exists and contains sysbox-runc configuration."
-				echo "Note: Runtime may need a few more seconds to be fully registered."
-			else
-				echo "ERROR: Config file exists but doesn't contain sysbox-runc!"
-				return 1
-			fi
-		else
-			echo "ERROR: Containerd config file not found!"
-			return 1
-		fi
-	else
-		echo "Verified: sysbox-runc runtime is registered with containerd."
-	fi
-
-	return 0
 }
 
 #
