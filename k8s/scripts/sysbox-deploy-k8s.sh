@@ -1088,7 +1088,7 @@ function runtime_precheck() {
 		if ! systemctl is-active --quiet crio; then
 			do_crio_install="true"
 			do_kubelet_use_crio="true"
-			echo "Will install CRI-O as container runtime for Sysbox (SYSBOX_USE_CRIO is set)."
+			echo "Will install CRI-O as container runtime for Sysbox (SYSBOX_USE_CRIO=${SYSBOX_USE_CRIO})."
 		fi
 
 	elif is_containerd_with_userns; then
