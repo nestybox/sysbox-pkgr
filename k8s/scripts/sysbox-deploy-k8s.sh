@@ -1082,8 +1082,9 @@ function runtime_precheck() {
 	do_crio_install="false"
 	do_kubelet_use_crio="false"
 
-	# env var SYSBOX_USE_CRIO forces CRI-O installation (may be set via ConfigMap for testing purposes).
-	if [ -n "${SYSBOX_USE_CRIO:-}" ]; then
+	# env var SYSBOX_USE_CRIO=true|yes forces CRI-O installation
+	# (may be set via ConfigMap for testing purposes).
+	if [[ "${SYSBOX_USE_CRIO:-}" =~ ^([Tt][Rr][Uu][Ee]|[Yy][Ee][Ss])$ ]]; then
 		if ! systemctl is-active --quiet crio; then
 			do_crio_install="true"
 			do_kubelet_use_crio="true"
