@@ -1,0 +1,16 @@
+## This is a workaround to modify the ghcr.io/nestybox/sysbox-deploy-k8s:v0.7.0-0 without building sysbox from scratch
+##
+## docker buildx build \
+## --provenance=false \
+## --sbom=false \
+## -t myrepo/sysbox-deploy-k8s:v0.7.0-0-patched \
+## -f Dockerfile.patch
+
+## BuildKit version
+FROM ghcr.io/nestybox/sysbox-deploy-k8s:v0.7.0-0
+COPY --chmod=755 scripts/sysbox-deploy-k8s.sh /opt/sysbox/scripts/sysbox-deploy-k8s.sh
+
+## Non BuildKit version
+# FROM ghcr.io/nestybox/sysbox-deploy-k8s:v0.7.0-0
+# COPY scripts/sysbox-deploy-k8s.sh /opt/sysbox/scripts/sysbox-deploy-k8s.sh
+# RUN chmod 755 /opt/sysbox/scripts/sysbox-deploy-k8s.sh

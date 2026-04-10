@@ -671,6 +671,26 @@ function unconfig_crio_for_sysbox() {
 # Containerd Configuration Functions
 #
 
+# Returns the dasel selector prefix for the containerd CRI runtime plugin.
+#
+# Containerd 2.x with config scheme version = 2 splits the old monolithic
+# "io.containerd.grpc.v1.cri" plugin into two separate plugins:
+#   - io.containerd.cri.v1.images  (image management)
+#   - io.containerd.cri.v1.runtime (runtime configuration)
+#
+# When the v2 split-plugin scheme is active, writing runtime config under
+# "io.containerd.grpc.v1.cri" has no effect, containerd ignores that section.
+# GKE and AKS pin version = 2 in their containerd configs, which triggers this.
+function get_containerd_cri_plugin_path() {
+	if grep -q "io\.containerd\.cri\.v1\.runtime" "${host_containerd_conf_file}"; then
+		# containerd 2.x split-plugin scheme (version = 2 config)
+		echo "plugins.io\.containerd\.cri\.v1\.runtime"
+	else
+		# legacy monolithic plugin scheme
+		echo "plugins.io\.containerd\.grpc\.v1\.cri"
+	fi
+}
+
 function config_containerd_for_sysbox() {
 	echo "Adding Sysbox to containerd config ..."
 
@@ -691,19 +711,23 @@ function config_containerd_for_sysbox() {
 	else
 		echo "Configuring sysbox-runc runtime in containerd config ..."
 
+		local cri_plugin_path
+		cri_plugin_path=$(get_containerd_cri_plugin_path)
+		echo "Using containerd CRI plugin path: ${cri_plugin_path}"
+
 		# Set the runtime_type
 		dasel put string -f "${host_containerd_conf_file}" -p toml \
-			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.runtime_type" \
+			-s "${cri_plugin_path}.containerd.runtimes.sysbox-runc.runtime_type" \
 			-v "io.containerd.runc.v2"
 
 		# Set BinaryName option
 		dasel put string -f "${host_containerd_conf_file}" -p toml \
-			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.options.BinaryName" \
+			-s "${cri_plugin_path}.containerd.runtimes.sysbox-runc.options.BinaryName" \
 			-v "${sysbox_runc_path}"
 
 		# Set SystemdCgroup option
 		dasel put bool -f "${host_containerd_conf_file}" -p toml \
-			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.options.SystemdCgroup" \
+			-s "${cri_plugin_path}.containerd.runtimes.sysbox-runc.options.SystemdCgroup" \
 			-v true
 	fi
 
@@ -719,9 +743,12 @@ function unconfig_containerd_for_sysbox() {
 		if grep -q "runtimes.sysbox-runc" "${host_containerd_conf_file}"; then
 			echo "Removing sysbox-runc runtime configuration ..."
 
+			local cri_plugin_path
+			cri_plugin_path=$(get_containerd_cri_plugin_path)
+
 			# Delete the entire sysbox-runc runtime section using dasel
 			dasel delete -f "${host_containerd_conf_file}" -p toml \
-				-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc"
+				-s "${cri_plugin_path}.containerd.runtimes.sysbox-runc"
 
 			echo "Restarting containerd to apply changes ..."
 			systemctl restart containerd
