@@ -75,7 +75,7 @@ COPY scripts/sysbox-deploy-k8s.sh /opt/sysbox/scripts/sysbox-deploy-k8s.sh
 COPY scripts/sysbox-installer-helper.sh /opt/sysbox/scripts/sysbox-installer-helper.sh
 COPY scripts/sysbox-removal-helper.sh /opt/sysbox/scripts/sysbox-removal-helper.sh
 
-COPY config/containerd-sysbox-dropin.toml.tmpl /opt/sysbox/config/containerd-sysbox-dropin.toml.tmpl
+COPY config/containerd-sysbox-dropin.toml /opt/sysbox/config/containerd-sysbox-dropin.toml
 
 #
 # Load CRI-O installation artifacts

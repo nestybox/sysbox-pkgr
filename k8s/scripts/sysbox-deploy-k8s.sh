@@ -39,8 +39,10 @@ sysbox_version=$(echo "$SYSBOX_VERSION" | sed '/-[0-9]/!s/.*/&-0/')
 sysbox_artifacts="/opt/sysbox"
 crio_artifacts="/opt/crio-deploy"
 
-# Template for the containerd drop-in used on k3s / RKE2.
-containerd_sysbox_dropin_tmpl="${sysbox_artifacts}/config/containerd-sysbox-dropin.toml.tmpl"
+# Containerd drop-in used on k3s / RKE2. Ships with /usr/bin/sysbox-runc; on
+# Flatcar do_distro_adjustments() rewrites this artifact to /opt/bin/sysbox-runc
+# up-front, so the install path can copy it verbatim.
+containerd_sysbox_dropin_src="${sysbox_artifacts}/config/containerd-sysbox-dropin.toml"
 
 # The daemonset spec will set up these mounts.
 host_systemd="/mnt/host/lib/systemd/system"
@@ -720,18 +722,16 @@ function restart_container_runtime() {
 # untouched. Uses the containerd 2.x config-v3 plugin key.
 function write_containerd_sysbox_dropin() {
 	local dropin_dir="$1"
-	local sysbox_runc_path="$2"
 	local dropin_file="${dropin_dir}/sysbox.toml"
 
-	if [ ! -f "${containerd_sysbox_dropin_tmpl}" ]; then
-		echo "Error: containerd drop-in template not found at ${containerd_sysbox_dropin_tmpl}"
+	if [ ! -f "${containerd_sysbox_dropin_src}" ]; then
+		echo "Error: containerd drop-in source not found at ${containerd_sysbox_dropin_src}"
 		return 1
 	fi
 
 	echo "Writing Sysbox containerd drop-in to ${dropin_file} ..."
 	mkdir -p "${dropin_dir}"
-	sed "s|@SYSBOX_RUNC_PATH@|${sysbox_runc_path}|g" \
-		"${containerd_sysbox_dropin_tmpl}" >"${dropin_file}"
+	cp "${containerd_sysbox_dropin_src}" "${dropin_file}"
 }
 
 function config_containerd_for_sysbox() {
@@ -750,7 +750,7 @@ function config_containerd_for_sysbox() {
 	local dropin_dir
 	dropin_dir="$(k8s_containerd_dropin_dir)"
 	if [ -n "${dropin_dir}" ]; then
-		write_containerd_sysbox_dropin "${dropin_dir}" "${sysbox_runc_path}"
+		write_containerd_sysbox_dropin "${dropin_dir}"
 		echo "Restarting container runtime to apply changes ..."
 		restart_container_runtime
 		return
