@@ -287,8 +287,16 @@ function get_artifacts_dir() {
 		[[ "$distro" =~ "debian" ]]; then
 		artifacts_dir="${sysbox_artifacts}/bin/generic"
 	elif [[ "$distro" =~ "flatcar" ]]; then
-		local release=$(echo $distro | cut -d"-" -f2)
-		artifacts_dir="${sysbox_artifacts}/bin/flatcar-${release}"
+		if [[ ${sysbox_edition} == "Sysbox" ]]; then
+			# Sysbox-CE (sysbox_edition="Sysbox") ships only the generic
+			# binaries; Flatcar 4593+ runs a 6.x kernel with idmap mounts so
+			# the EE-only shiftfs build that normally lives under
+			# bin/flatcar-<release> is not required.
+			artifacts_dir="${sysbox_artifacts}/bin/generic"
+		else
+			local release=$(echo $distro | cut -d"-" -f2)
+			artifacts_dir="${sysbox_artifacts}/bin/flatcar-${release}"
+		fi
 	fi
 
 	echo $artifacts_dir
@@ -498,7 +506,16 @@ function install_sysbox_deps() {
 	fi
 
 	if host_flatcar_distro; then
-		install_sysbox_deps_flatcar
+		# Mirror the non-Flatcar branch: only attempt to install shiftfs when
+		# the host kernel is in the supported range. Flatcar 4593+ ships
+		# kernel 6.x where shiftfs is unavailable (and unnecessary, as the
+		# kernel provides idmap mounts), so the prebuilt shiftfs.ko from
+		# sysbox-flatcar-preview no longer applies.
+		if semver_lt $kversion 6.3; then
+			install_sysbox_deps_flatcar
+		else
+			echo "Skipping shiftfs installation (kernel version $kversion is above the max required for shiftfs ($shiftfs_max_kernel_ver))."
+		fi
 	else
 		if semver_ge $kversion 5.4 && semver_lt $kversion 5.8; then
 			cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
