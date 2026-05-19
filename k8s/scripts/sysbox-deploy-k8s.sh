@@ -1276,11 +1276,6 @@ function do_distro_adjustments() {
 		return
 	fi
 
-	# Ensure that Flatcar installation proceeds only in Sysbox-EE case.
-	if [[ ${sysbox_edition} != "Sysbox-EE" ]]; then
-		die "Flatcar OS distribution is only supported on Sysbox Enterprise-Edition. Exiting ..."
-	fi
-
 	# Adjust global vars.
 	host_bin="/mnt/host/opt/bin"
 	host_local_bin="/mnt/host/opt/local/bin"
@@ -1310,6 +1305,9 @@ function do_distro_adjustments() {
 	sed -i '/^ExecStart=/ s@/usr/bin@/opt/bin@g' ${sysbox_artifacts}/systemd/sysbox.service
 	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@g' ${sysbox_artifacts}/systemd/sysbox-installer-helper.service
 	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@g' ${sysbox_artifacts}/systemd/sysbox-removal-helper.service
+
+	# Adjust the containerd drop-in used on k3s / RKE2.
+	sed -i 's@/usr/bin/sysbox-runc@/opt/bin/sysbox-runc@' ${sysbox_artifacts}/config/containerd-sysbox-dropin.toml
 
 	# Sysctl adjustments.
 	sed -i '/^kernel.unprivileged_userns_clone/ s/^#*/# /' ${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf
