@@ -71,9 +71,9 @@ fetch-sysbox-ce-bins:
 	@echo "Fetching Sysbox CE binaries ..."
 	$(eval TMPDIR := $(shell mktemp -d))
 	@echo "TMPDIR = $(TMPDIR)"
-	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER_SEMVER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb -P $(TMPDIR)
+	wget https://github.com/nestybox/sysbox/releases/download/v$(SYSBOX_CE_VER_SEMVER)/sysbox-ce_$(SYSBOX_CE_VER_SEMVER).linux_$(SYS_ARCH).deb -P $(TMPDIR)
 	mkdir -p $(TMPDIR)/sysbox-ce-generic
-	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
+	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_SEMVER).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
 	mkdir -p bin/sysbox-ce/generic
 	rm -rf bin/sysbox-ce/generic/*
 	cp $(TMPDIR)/sysbox-ce-generic/usr/bin/sysbox-* bin/sysbox-ce/generic/.
