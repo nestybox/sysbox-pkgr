@@ -43,7 +43,7 @@
 # reg-expresions. Anything that doesn't match this pattern will be ignored.
 #
 # - "^## "  Example: "## [0.0.1] - 2019-06-23
-# - "^ * "  Example: " * Extend Sysbox support to Ubuntu-Bionic."
+# - "^[[:space:]]*\* "  Example: " * Extend Sysbox support to Ubuntu-Bionic."
 #
 # Note 2: As per Debian's policy guidelines, the "unreleased" label must be
 # utilized to tag packages that have not been properly released yet. We must keep
@@ -157,7 +157,7 @@ function main() {
             prevTag=${currTag}
             prevUnreleased=${unreleased}
 
-        elif echo "${line}" | egrep -q "^ * "; then
+        elif echo "${line}" | egrep -q "^[[:space:]]*\* "; then
             echo -e "${line}"
         fi
 
