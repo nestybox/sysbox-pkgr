@@ -1255,13 +1255,24 @@ function stop_rke2() {
 
 function get_runtime_kubelet_rke2() {
 	set +e
-	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
-	set -e
+
+	# Try RKE2 v1.32+ config file first
+    local rke2_config="/var/lib/rancher/rke2/agent/etc/kubelet.conf.d/00-rke2-defaults.conf"
+    if [[ -f "$rke2_config" ]]; then
+        runtime=$(grep "^containerRuntimeEndpoint:" "$rke2_config" | awk '{print $2}')
+    fi
+
+    # Fallback to legacy kubelet command line parameter for older versions
+    if [[ -z "$runtime" ]]; then
+        runtime=$(ps -e -o command | grep kubelet | grep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+    fi
 
 	# If runtime is unknown, assume it's Docker
 	if [[ ${runtime} == "" ]]; then
 		runtime="unix:///var/run/dockershim.sock"
 	fi
+
+	set -e
 }
 
 function config_kubelet_rke2() {
