@@ -996,7 +996,10 @@ function is_containerd_with_userns() {
 	# to use the alternative runtime, but containers within the sandbox still use
 	# the default runc runtime.
 
-	local runtime_version=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}')
+	local runtime_version
+	if ! runtime_version=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}'); then
+		die "Failed to get containerd version"
+	fi
 
 	# Check if it's containerd
 	if ! echo "$runtime_version" | grep -q "containerd://"; then
