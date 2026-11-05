@@ -87,6 +87,12 @@ function semver_ge() {
 
 function install_package_deps() {
 
+	# Amazon Linux 2023 and other RPM based distributions.
+	if command -v dnf >/dev/null 2>&1; then
+		dnf install -y rsync fuse3 iptables-nft
+		return
+	fi
+
 	# Need this to work-around "E: dpkg was interrupted, you must manually run 'dpkg --configure -a' to correct the problem."
 	dpkg --configure -a
 
