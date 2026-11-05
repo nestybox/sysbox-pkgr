@@ -51,6 +51,7 @@ host_crio_conf_file="${host_etc}/crio/crio.conf"
 host_crio_conf_file_backup="${host_crio_conf_file}.orig"
 host_containerd_conf_file="${host_etc}/containerd/config.toml"
 host_containerd_conf_file_backup="${host_containerd_conf_file}.orig"
+host_nodeadm_dropin="${host_etc}/eks/nodeadm.d/50-sysbox.yaml"
 host_run="/mnt/host/run"
 host_var_lib="/mnt/host/var/lib"
 host_var_lib_sysbox_deploy_k8s="${host_var_lib}/sysbox-deploy-k8s"
@@ -279,7 +280,8 @@ function get_artifacts_dir() {
 		[[ "$distro" == "ubuntu-21.10" ]] ||
 		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
-		[[ "$distro" =~ "debian" ]]; then
+		[[ "$distro" =~ "debian" ]] ||
+		[[ "$distro" == "amzn-2023" ]]; then
 		artifacts_dir="${sysbox_artifacts}/bin/generic"
 	elif [[ "$distro" =~ "flatcar" ]]; then
 		local release=$(echo $distro | cut -d"-" -f2)
@@ -685,6 +687,8 @@ function config_containerd_for_sysbox() {
 		sysbox_runc_path="/opt/bin/sysbox-runc"
 	fi
 
+	local runtimes=$(containerd_runtimes_selector)
+
 	# Check if sysbox-runc runtime section already exists
 	if grep -q "runtimes.sysbox-runc" "${host_containerd_conf_file}"; then
 		echo "sysbox-runc runtime already configured in containerd config"
@@ -693,19 +697,21 @@ function config_containerd_for_sysbox() {
 
 		# Set the runtime_type
 		dasel put string -f "${host_containerd_conf_file}" -p toml \
-			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.runtime_type" \
+			-s "${runtimes}.sysbox-runc.runtime_type" \
 			-v "io.containerd.runc.v2"
 
 		# Set BinaryName option
 		dasel put string -f "${host_containerd_conf_file}" -p toml \
-			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.options.BinaryName" \
+			-s "${runtimes}.sysbox-runc.options.BinaryName" \
 			-v "${sysbox_runc_path}"
 
 		# Set SystemdCgroup option
 		dasel put bool -f "${host_containerd_conf_file}" -p toml \
-			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.options.SystemdCgroup" \
+			-s "${runtimes}.sysbox-runc.options.SystemdCgroup" \
 			-v true
 	fi
+
+	config_nodeadm_for_sysbox "${sysbox_runc_path}"
 
 	echo "Restarting containerd to apply changes ..."
 	systemctl restart containerd
@@ -714,6 +720,8 @@ function config_containerd_for_sysbox() {
 function unconfig_containerd_for_sysbox() {
 	echo "Removing Sysbox from containerd config ..."
 
+	unconfig_nodeadm_for_sysbox
+
 	if [ -f "${host_containerd_conf_file}" ]; then
 		# Check if sysbox-runc runtime configuration exists
 		if grep -q "runtimes.sysbox-runc" "${host_containerd_conf_file}"; then
@@ -721,13 +729,57 @@ function unconfig_containerd_for_sysbox() {
 
 			# Delete the entire sysbox-runc runtime section using dasel
 			dasel delete -f "${host_containerd_conf_file}" -p toml \
-				-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc"
+				-s "$(containerd_runtimes_selector).sysbox-runc"
 
 			echo "Restarting containerd to apply changes ..."
 			systemctl restart containerd
 		else
 			echo "sysbox-runc runtime not found in containerd config"
 		fi
+	fi
+}
+
+# containerd 2.x reads the CRI runtimes from a different table in a config of
+# version 3 than in a config of version 2.
+function containerd_runtimes_selector() {
+	if grep -qE '^version *= *3' "${host_containerd_conf_file}"; then
+		echo 'plugins.io\.containerd\.cri\.v1\.runtime.containerd.runtimes'
+	else
+		echo 'plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes'
+	fi
+}
+
+# On EKS nodes with nodeadm, such as Amazon Linux 2023, nodeadm writes the
+# containerd config again at every boot. nodeadm-run.service merges the
+# NodeConfig files in /etc/eks/nodeadm.d into it, so a drop-in there keeps
+# sysbox-runc in the config after a reboot.
+function config_nodeadm_for_sysbox() {
+	local sysbox_runc_path=$1
+
+	if [ ! -x "${host_bin}/nodeadm" ]; then
+		return
+	fi
+
+	echo "Adding Sysbox to nodeadm config (${host_nodeadm_dropin#/mnt/host}) ..."
+	mkdir -p "$(dirname "${host_nodeadm_dropin}")"
+	cat >"${host_nodeadm_dropin}" <<EOF
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  containerd:
+    config: |
+      [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.sysbox-runc]
+      runtime_type = "io.containerd.runc.v2"
+      [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.sysbox-runc.options]
+      BinaryName = "${sysbox_runc_path}"
+      SystemdCgroup = true
+EOF
+}
+
+function unconfig_nodeadm_for_sysbox() {
+	if [ -f "${host_nodeadm_dropin}" ]; then
+		echo "Removing Sysbox from nodeadm config (${host_nodeadm_dropin#/mnt/host}) ..."
+		rm -f "${host_nodeadm_dropin}"
 	fi
 }
 
@@ -773,7 +825,7 @@ function get_container_runtime() {
 }
 
 function get_host_distro() {
-	local distro_name=$(grep -w "^ID" "$host_os_release" | cut -d "=" -f2)
+	local distro_name=$(grep -w "^ID" "$host_os_release" | cut -d "=" -f2 | tr -d '"')
 	local version_id=$(grep -w "^VERSION_ID" "$host_os_release" | cut -d "=" -f2 | tr -d '"')
 	echo "${distro_name}-${version_id}"
 }
@@ -813,7 +865,8 @@ function is_supported_distro() {
 		[[ "$distro" == "ubuntu-20.04" ]] ||
 		[[ "$distro" == "ubuntu-18.04" ]] ||
 		[[ "$distro" =~ "debian" ]] ||
-		[[ "$distro" =~ "flatcar" ]]; then
+		[[ "$distro" =~ "flatcar" ]] ||
+		[[ "$distro" == "amzn-2023" ]]; then
 		return
 	fi
 
@@ -1161,6 +1214,12 @@ function do_edition_adjustments() {
 # utilized, so we must keep this point in mind if the files being edited here
 # were to be modified prior to the invocation of this routine.
 function do_distro_adjustments() {
+
+	# Only the kernels of Debian and Ubuntu have this setting, and sysctl fails
+	# on a setting that the kernel does not have.
+	if [ ! -e /proc/sys/kernel/unprivileged_userns_clone ]; then
+		sed -i '/^kernel.unprivileged_userns_clone/ s/^#*/# /' ${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf
+	fi
 
 	local distro=$(get_host_distro)
 	if [[ ! ${distro} =~ "flatcar" ]]; then
