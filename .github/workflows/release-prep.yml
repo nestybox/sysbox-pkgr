@@ -1,0 +1,99 @@
+#
+# Sysbox release preparation.
+#
+# Opens a draft PR against nestybox/sysbox that bumps the VERSION file and
+# adds a new CHANGELOG.md entry (the same two files touched by the past
+# "Release vX.Y.Z" commits). The changelog entry is auto-drafted from the commit
+# subjects of sysbox and its submodules since the previous release; edit it on
+# the PR branch, mark the PR ready, and merge it.
+#
+# Once the PR is merged, run the "release" workflow.
+#
+# Required repository secret:
+#
+# * SYSBOX_RELEASE_TOKEN: token that can push branches and open PRs in
+#   nestybox/sysbox (a PAT is used, rather than GITHUB_TOKEN, so that the
+#   PR triggers the sysbox CI).
+#
+
+name: release-prep
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., 0.7.2)"
+        required: true
+        type: string
+      base_ref:
+        description: "Branch of nestybox/sysbox to prepare the release from"
+        required: false
+        default: master
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sysbox-release-prep
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ inputs.version }}
+      BASE_REF: ${{ inputs.base_ref }}
+      GH_TOKEN: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+    steps:
+      - name: checkout sysbox-pkgr
+        uses: actions/checkout@v4
+
+      # Full history (including submodules) is needed to draft the changelog.
+      - name: checkout sysbox
+        uses: actions/checkout@v4
+        with:
+          repository: nestybox/sysbox
+          ref: ${{ inputs.base_ref }}
+          token: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+          path: sysbox
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: bump version and draft changelog
+        run: release/prepare-release.sh sysbox "${VERSION}"
+
+      - name: open release PR
+        run: |
+          branch="release-v${VERSION}"
+          cd sysbox
+          git switch -c "${branch}"
+          git add VERSION CHANGELOG.md
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -s -m "Release v${VERSION}"
+          git push origin "${branch}"
+
+          cat > "${RUNNER_TEMP}/pr-body.md" <<EOF
+          Automated release preparation for Sysbox v${VERSION}.
+
+          Before merging:
+
+          - [ ] Review and edit the CHANGELOG.md entry. It was drafted from
+                commit subjects, so reword, merge and drop entries as needed.
+          - [ ] Check that the submodule pointers are at the intended commits.
+
+          After merging, run the \`release\` workflow in nestybox/sysbox-pkgr
+          (first with \`publish\` unchecked as a dry run).
+          EOF
+
+          gh pr create --draft \
+              --repo nestybox/sysbox \
+              --base "${BASE_REF}" \
+              --head "${branch}" \
+              --title "Release v${VERSION}" \
+              --body-file "${RUNNER_TEMP}/pr-body.md"

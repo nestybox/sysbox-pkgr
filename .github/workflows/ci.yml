@@ -1,0 +1,60 @@
+#
+# Sysbox packaging CI.
+#
+# Builds the sysbox-ce deb packages and the sysbox-deploy-k8s image (amd64 and
+# arm64) from the tip of nestybox/sysbox master, on packaging-related PRs and
+# nightly, so that packaging breakage is found before release day. Nothing is
+# published.
+#
+# This only verifies that the packages build. It doesn't install or test them.
+#
+# PRs from forks don't get repository secrets, so for those only the deb
+# packages are built (the k8s image needs a private base image).
+#
+
+name: ci
+
+on:
+  pull_request:
+    paths:
+      - "deb/**"
+      - "k8s/**"
+      - "systemd/**"
+      - "release/**"
+      - "Makefile"
+      - ".github/workflows/build.yml"
+      - ".github/workflows/ci.yml"
+  schedule:
+    # Daily at 5am PST (1pm UTC).
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check-scripts:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: check release scripts
+        run: |
+          for script in release/*.sh deb/*.sh deb/build-deb; do
+              bash -n "${script}"
+          done
+          shellcheck --severity=error release/*.sh
+
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: master
+      build_k8s: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    secrets: inherit

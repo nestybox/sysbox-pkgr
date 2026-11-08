@@ -1,0 +1,182 @@
+#
+# Reusable Sysbox package build.
+#
+# Builds the sysbox-ce deb package and, optionally, the sysbox-deploy-k8s image
+# for amd64 and arm64, natively on each architecture. Used by the "release"
+# workflow (to build what gets published) and by the "ci" workflow (to catch
+# packaging breakage before release day).
+#
+# The deb packages are uploaded as artifacts named deb-<arch>.
+#
+# Secret SYSBOX_RELEASE_TOKEN is optional: without it the sysbox repo is
+# checked out anonymously and the k8s image can't be built (its base image
+# is private), so callers without secrets (e.g., fork PRs) must set
+# build_k8s to false.
+#
+
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Ref (preferably a commit) of nestybox/sysbox to build"
+        required: true
+        type: string
+      build_k8s:
+        description: "Also build the sysbox-deploy-k8s image"
+        required: false
+        default: true
+        type: boolean
+      push_images:
+        description: "Push the arch-specific k8s images to ghcr.io"
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      SYSBOX_RELEASE_TOKEN:
+        required: false
+
+env:
+  K8S_IMAGE: ghcr.io/nestybox/sysbox-deploy-k8s
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-deb:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      GOPATH: ${{ github.workspace }}/.gopath
+    steps:
+      - name: checkout sysbox-pkgr
+        uses: actions/checkout@v4
+
+      - name: checkout sysbox
+        uses: actions/checkout@v4
+        with:
+          repository: nestybox/sysbox
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SYSBOX_RELEASE_TOKEN || github.token }}
+          path: sources/sysbox
+          submodules: recursive
+          fetch-depth: 0
+
+      # The packaging process reads the release author and date from the
+      # v<VERSION> tag of the sysbox repo, so it must exist before building.
+      # If it's missing (a release that is yet to be cut) it's created locally
+      # only; the release workflow pushes it when creating the GitHub release.
+      - name: ensure release tag exists locally
+        run: |
+          version=$(tr -d '[:space:]' < sources/sysbox/VERSION)
+          echo "VERSION=${version}" >> "${GITHUB_ENV}"
+          if ! git -C sources/sysbox rev-parse -q --verify \
+                   "refs/tags/v${version}" > /dev/null; then
+              git -C sources/sysbox tag "v${version}" HEAD
+          fi
+
+      # The build container mounts the git config and the go module cache.
+      - name: prepare build environment
+        run: |
+          git config --global user.name "sysbox-release"
+          git config --global user.email "sysbox-release@users.noreply.github.com"
+          mkdir -p "${GOPATH}/pkg/mod"
+
+      - name: build deb package
+        run: EDITION=ce make -C deb generic
+
+      - name: verify deb package
+        run: |
+          deb="deb/build/${{ matrix.arch }}/ubuntu-jammy"
+          deb="${deb}/sysbox-ce_${VERSION}.linux_${{ matrix.arch }}.deb"
+          ls -l "${deb}"
+          dpkg-deb --info "${deb}"
+          echo "DEB_PATH=${deb}" >> "${GITHUB_ENV}"
+
+      - name: upload deb package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: ${{ env.DEB_PATH }}
+          if-no-files-found: error
+
+  build-k8s:
+    if: inputs.build_k8s
+    needs: build-deb
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: checkout sysbox-pkgr
+        uses: actions/checkout@v4
+
+      # Only the VERSION file is needed from the sysbox repo.
+      - name: checkout sysbox
+        uses: actions/checkout@v4
+        with:
+          repository: nestybox/sysbox
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SYSBOX_RELEASE_TOKEN || github.token }}
+          path: sources/sysbox
+
+      - name: download deb package
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: debs
+
+      # The centos7/systemd base image is private.
+      - name: login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+
+      # CRI-O binaries only change when their build inputs do, and building
+      # them is by far the slowest part of the image build.
+      - name: cache CRI-O binaries
+        uses: actions/cache@v4
+        with:
+          path: k8s/bin/crio
+          key: crio-${{ matrix.arch }}-${{ hashFiles('k8s/Makefile', 'k8s/Dockerfile.crio', 'k8s/scripts/crio-build.sh') }}
+
+      # The CRI-O build container writes into k8s/bin as root, so the
+      # directory must exist beforehand to remain writable by the runner.
+      - name: build sysbox-deploy-k8s image
+        run: |
+          version=$(tr -d '[:space:]' < sources/sysbox/VERSION)
+          image_tag=$(make -C k8s --no-print-directory -s print-image-tag)
+          echo "IMAGE_TAG=${image_tag}" >> "${GITHUB_ENV}"
+          mkdir -p k8s/bin
+          make -C k8s --no-print-directory \
+              SYS_ARCH=${{ matrix.arch }} \
+              SYSBOX_CE_DEB="${GITHUB_WORKSPACE}/debs/sysbox-ce_${version}.linux_${{ matrix.arch }}.deb" \
+              sysbox-deploy-k8s-image
+          docker image inspect "${K8S_IMAGE}:${image_tag}" > /dev/null
+
+      - name: restore k8s/bin ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" k8s/bin
+
+      - name: push arch-specific image
+        if: inputs.push_images
+        run: |
+          arch_tag="${K8S_IMAGE}:${IMAGE_TAG}_${{ matrix.arch }}"
+          docker tag "${K8S_IMAGE}:${IMAGE_TAG}" "${arch_tag}"
+          docker push "${arch_tag}"
