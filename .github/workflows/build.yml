@@ -47,7 +47,7 @@ defaults:
 jobs:
   build-deb:
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - arch: amd64
@@ -121,7 +121,7 @@ jobs:
     if: inputs.build_k8s
     needs: build-deb
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - arch: amd64
