@@ -7,6 +7,7 @@
 	fetch_sysbox_ee_bins \
 	check-sysbox-artifacts \
 	check-crio-artifacts \
+	print-image-tag \
 	clean-sysbox-ce clean-crio clean
 
 
@@ -67,11 +68,19 @@ endif
 # binaries into the sysbox-deploy-k8s image. Variable SYSBOX_CE_VER selects
 # the version of the Sysbox binaries to download.
 
+# If SYSBOX_CE_DEB is set to the path of a sysbox-ce deb package for the target
+# architecture, that package is used instead of downloading the released one.
+SYSBOX_CE_DEB ?=
+
 fetch-sysbox-ce-bins:
 	@echo "Fetching Sysbox CE binaries ..."
 	$(eval TMPDIR := $(shell mktemp -d))
 	@echo "TMPDIR = $(TMPDIR)"
+ifeq ($(SYSBOX_CE_DEB),)
 	wget https://storage.googleapis.com/sysbox-releases/v$(SYSBOX_CE_VER_SEMVER)/sysbox-ce/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb -P $(TMPDIR)
+else
+	cp $(SYSBOX_CE_DEB) $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb
+endif
 	mkdir -p $(TMPDIR)/sysbox-ce-generic
 	dpkg -x $(TMPDIR)/sysbox-ce_$(SYSBOX_CE_VER_FULL).linux_$(SYS_ARCH).deb $(TMPDIR)/sysbox-ce-generic
 	mkdir -p bin/sysbox-ce/generic
@@ -140,6 +149,10 @@ sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins ch
 		--build-arg sys_arch=$(SYS_ARCH) \
 		--build-arg sysbox_version=v$(SYSBOX_CE_VER_FULL) \
 		-f Dockerfile.sysbox-ce .
+
+# Prints the tag of the image built by sysbox-deploy-k8s-image.
+print-image-tag:
+	@echo v$(SYSBOX_CE_VER_FULL)$(patsubst "%",%,$(SYSBOX_DEPLOY_K8S_IMAGE_PATCH))
 
 #
 # Cleanup targets

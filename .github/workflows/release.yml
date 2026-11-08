@@ -1,0 +1,216 @@
+#
+# Sysbox release.
+#
+# Builds the sysbox-ce deb packages and the sysbox-deploy-k8s image (amd64 and
+# arm64), and, if "publish" is selected, publishes them:
+#
+# 1. validate    Checks that VERSION / CHANGELOG.md in nestybox/sysbox are
+#                release-ready and that the v<VERSION> tag is not taken.
+# 2. build       Builds the debs and the per-arch k8s images (see build.yml)
+#                from the validated commit. When publishing, the images are
+#                pushed to ghcr.io with an arch suffix (e.g., v0.7.2-0_amd64).
+# 3. release     (publish only) Creates the GitHub release (and the v<VERSION>
+#                tag) in nestybox/sysbox with the debs and checksums attached.
+# 4. k8s-publish (publish only) Combines the per-arch images into the multi-arch
+#                tags (v<VERSION>-<patch> and latest) and opens a PR updating
+#                the sysbox K8s manifests.
+#
+# Without "publish" (the default), only steps 1-2 run and nothing is pushed or
+# created: the debs are kept as workflow artifacts. Do a dry run first.
+#
+# The release can only be cut once per version. If a step after "release"
+# fails, re-run only the failed jobs (the tag already exists, so do not
+# re-dispatch the workflow).
+#
+# Required repository secret:
+#
+# * SYSBOX_RELEASE_TOKEN: classic PAT with "repo" (push, create releases and
+#   PRs in nestybox/sysbox) and "write:packages" (push to
+#   ghcr.io/nestybox/sysbox-deploy-k8s, pull the private centos7/systemd base
+#   image). Fine-grained PATs do not support GitHub Packages.
+#
+# Optional: create a "release" environment with a required reviewer (the
+# other maintainer) to gate the publishing jobs.
+#
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ref of nestybox/sysbox to release"
+        required: false
+        default: master
+        type: string
+      publish:
+        description: "Publish the release (unchecked = dry run)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sysbox-release
+  cancel-in-progress: false
+
+env:
+  K8S_IMAGE: ghcr.io/nestybox/sysbox-deploy-k8s
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      sha: ${{ steps.meta.outputs.sha }}
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - name: checkout sysbox-pkgr
+        uses: actions/checkout@v4
+
+      - name: checkout sysbox
+        uses: actions/checkout@v4
+        with:
+          repository: nestybox/sysbox
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+          path: sources/sysbox
+          fetch-depth: 0
+
+      - name: check release readiness
+        if: inputs.publish
+        run: release/check-release-ready.sh sources/sysbox
+
+      # Dry runs are allowed for versions that were already released.
+      - name: check release readiness (dry run)
+        if: ${{ !inputs.publish }}
+        run: release/check-release-ready.sh sources/sysbox --skip-tag-check
+
+      # The commit is pinned here so that all jobs build the same sources even
+      # if the ref moves while the workflow runs.
+      - name: collect release metadata
+        id: meta
+        run: |
+          echo "version=$(tr -d '[:space:]' < sources/sysbox/VERSION)" \
+              >> "${GITHUB_OUTPUT}"
+          echo "sha=$(git -C sources/sysbox rev-parse HEAD)" \
+              >> "${GITHUB_OUTPUT}"
+          echo "image_tag=$(make -C k8s --no-print-directory -s print-image-tag)" \
+              >> "${GITHUB_OUTPUT}"
+
+  build:
+    needs: validate
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.validate.outputs.sha }}
+      build_k8s: true
+      push_images: ${{ inputs.publish }}
+    secrets: inherit
+
+  release:
+    if: inputs.publish
+    needs: [validate, build]
+    runs-on: ubuntu-22.04
+    environment: release
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+      SHA: ${{ needs.validate.outputs.sha }}
+      GH_TOKEN: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+    steps:
+      - name: checkout sysbox-pkgr
+        uses: actions/checkout@v4
+
+      - name: checkout sysbox
+        uses: actions/checkout@v4
+        with:
+          repository: nestybox/sysbox
+          ref: ${{ needs.validate.outputs.sha }}
+          token: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+          path: sysbox
+
+      - name: download deb packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: deb-*
+          merge-multiple: true
+          path: debs
+
+      - name: generate release notes
+        run: release/release-notes.sh sysbox debs "${RUNNER_TEMP}/notes.md"
+
+      # Creating the release also creates the v<VERSION> tag at ${SHA}.
+      - name: create github release
+        run: |
+          gh release create "v${VERSION}" debs/*.deb \
+              --repo nestybox/sysbox \
+              --target "${SHA}" \
+              --title "Release v${VERSION}" \
+              --notes-file "${RUNNER_TEMP}/notes.md"
+
+  k8s-publish:
+    if: inputs.publish
+    needs: [validate, release]
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+      IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
+      GH_TOKEN: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+    steps:
+      - name: checkout sysbox-pkgr
+        uses: actions/checkout@v4
+
+      - name: login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+
+      # Notice that registry.nestybox.com mirrors ghcr.io, so no separate
+      # publishing step is needed for it.
+      - name: publish multi-arch image
+        run: |
+          for tag in "${IMAGE_TAG}" latest; do
+              docker buildx imagetools create \
+                  -t "${K8S_IMAGE}:${tag}" \
+                  "${K8S_IMAGE}:${IMAGE_TAG}_amd64" \
+                  "${K8S_IMAGE}:${IMAGE_TAG}_arm64"
+              docker buildx imagetools inspect "${K8S_IMAGE}:${tag}"
+          done
+
+      - name: checkout sysbox
+        uses: actions/checkout@v4
+        with:
+          repository: nestybox/sysbox
+          ref: master
+          token: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+          path: sysbox
+
+      - name: open k8s manifests PR
+        run: |
+          release/bump-k8s-manifests.sh sysbox "${IMAGE_TAG}"
+          cd sysbox
+          if git diff --quiet; then
+              echo "K8s manifests already point at ${IMAGE_TAG}."
+              exit 0
+          fi
+          branch="k8s-manifests-v${VERSION}"
+          git switch -c "${branch}"
+          git add sysbox-k8s-manifests/sysbox-install.yaml \
+                  sysbox-k8s-manifests/sysbox-uninstall.yaml
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -s -m "Update sysbox k8s manifest to use release v${VERSION}."
+          git push origin "${branch}"
+          gh pr create \
+              --repo nestybox/sysbox \
+              --base master \
+              --head "${branch}" \
+              --title "Update sysbox k8s manifest to use release v${VERSION}." \
+              --body "Points the Sysbox K8s install/uninstall manifests at sysbox-deploy-k8s:${IMAGE_TAG}."
