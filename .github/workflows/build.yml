@@ -61,6 +61,14 @@ jobs:
       - name: checkout sysbox-pkgr
         uses: actions/checkout@v4
 
+      # The builds are disk-hungry and hosted runners have limited space.
+      - name: free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+              /usr/local/lib/android
+          sudo docker system prune -af
+          df -h
+
       - name: checkout sysbox
         uses: actions/checkout@v4
         with:
@@ -124,6 +132,14 @@ jobs:
     steps:
       - name: checkout sysbox-pkgr
         uses: actions/checkout@v4
+
+      # The builds are disk-hungry and hosted runners have limited space.
+      - name: free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+              /usr/local/lib/android
+          sudo docker system prune -af
+          df -h
 
       # Only the VERSION file is needed from the sysbox repo.
       - name: checkout sysbox
