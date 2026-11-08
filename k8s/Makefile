@@ -33,6 +33,9 @@ SYSBOX_CE_VER = $(shell cat ../sources/sysbox/VERSION)
 SYSBOX_CE_VER_SEMVER = $(shell echo $(SYSBOX_CE_VER) | cut -d"-" -f1)
 SYSBOX_CE_VER_FULL = $(shell echo $(SYSBOX_CE_VER) | sed '/-[0-9]/!s/.*/&-0/')
 
+# Name (without tag) of the sysbox-deploy-k8s image to build.
+K8S_IMAGE ?= ghcr.io/nestybox/sysbox-deploy-k8s
+
 # CRIO versions to build.
 CRIO_VERSIONS = v1.32 v1.33 v1.34 v1.35
 
@@ -145,7 +148,7 @@ check-crio-artifacts:
 all: sysbox-deploy-k8s-image
 
 sysbox-deploy-k8s-image: build-crio check-crio-artifacts fetch-sysbox-ce-bins check-sysbox-artifacts
-	docker build -t ghcr.io/nestybox/sysbox-deploy-k8s:v$(SYSBOX_CE_VER_FULL)$(SYSBOX_DEPLOY_K8S_IMAGE_PATCH) \
+	docker build -t $(K8S_IMAGE):v$(SYSBOX_CE_VER_FULL)$(SYSBOX_DEPLOY_K8S_IMAGE_PATCH) \
 		--build-arg sys_arch=$(SYS_ARCH) \
 		--build-arg sysbox_version=v$(SYSBOX_CE_VER_FULL) \
 		-f Dockerfile.sysbox-ce .

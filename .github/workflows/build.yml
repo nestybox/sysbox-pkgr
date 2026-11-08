@@ -8,9 +8,13 @@
 #
 # The deb packages are uploaded as artifacts named deb-<arch>.
 #
-# Secret SYSBOX_RELEASE_TOKEN is optional: the sysbox repo and the k8s base
-# image are public, so building needs no credentials (e.g., fork PRs). The
-# token is only used to push images, i.e., when push_images is set.
+# Building needs no credentials (the sysbox repo and the k8s base image are
+# public), so this also works for fork PRs. Secret SYSBOX_RELEASE_TOKEN is
+# optional and only used to check out a private sysbox repo.
+#
+# Pushing images (push_images) uses the GITHUB_TOKEN of the calling workflow,
+# whose calling job must grant "packages: write", and the target package must
+# allow this repo to write to it.
 #
 
 name: build
@@ -18,8 +22,18 @@ name: build
 on:
   workflow_call:
     inputs:
+      sysbox_repo:
+        description: "Sysbox repo (owner/name) to build"
+        required: false
+        default: nestybox/sysbox
+        type: string
+      k8s_image:
+        description: "Name of the sysbox-deploy-k8s image (without tag)"
+        required: false
+        default: ghcr.io/nestybox/sysbox-deploy-k8s
+        type: string
       ref:
-        description: "Ref (preferably a commit) of nestybox/sysbox to build"
+        description: "Ref (preferably a commit) of the sysbox repo to build"
         required: true
         type: string
       build_k8s:
@@ -37,7 +51,7 @@ on:
         required: false
 
 env:
-  K8S_IMAGE: ghcr.io/nestybox/sysbox-deploy-k8s
+  K8S_IMAGE: ${{ inputs.k8s_image }}
 
 defaults:
   run:
@@ -71,7 +85,7 @@ jobs:
       - name: checkout sysbox
         uses: actions/checkout@v4
         with:
-          repository: nestybox/sysbox
+          repository: ${{ inputs.sysbox_repo }}
           ref: ${{ inputs.ref }}
           token: ${{ secrets.SYSBOX_RELEASE_TOKEN || github.token }}
           path: sources/sysbox
@@ -144,7 +158,7 @@ jobs:
       - name: checkout sysbox
         uses: actions/checkout@v4
         with:
-          repository: nestybox/sysbox
+          repository: ${{ inputs.sysbox_repo }}
           ref: ${{ inputs.ref }}
           token: ${{ secrets.SYSBOX_RELEASE_TOKEN || github.token }}
           path: sources/sysbox
@@ -161,7 +175,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+          password: ${{ github.token }}
 
       # CRI-O binaries only change when their build inputs do, and building
       # them is by far the slowest part of the image build.
@@ -181,6 +195,7 @@ jobs:
           mkdir -p k8s/bin
           make -C k8s --no-print-directory \
               SYS_ARCH=${{ matrix.arch }} \
+              K8S_IMAGE="${K8S_IMAGE}" \
               SYSBOX_CE_DEB="${GITHUB_WORKSPACE}/debs/sysbox-ce_${version}.linux_${{ matrix.arch }}.deb" \
               sysbox-deploy-k8s-image
           docker image inspect "${K8S_IMAGE}:${image_tag}" > /dev/null
