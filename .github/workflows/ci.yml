@@ -8,8 +8,7 @@
 #
 # This only verifies that the packages build. It doesn't install or test them.
 #
-# PRs from forks don't get repository secrets, so for those only the deb
-# packages are built (the k8s image needs a private base image).
+# No credentials are needed, so this also works for PRs from forks.
 #
 
 name: ci
@@ -56,5 +55,4 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       ref: master
-      build_k8s: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-    secrets: inherit
+      build_k8s: true
