@@ -54,5 +54,6 @@ jobs:
   build:
     uses: ./.github/workflows/build.yml
     with:
+      sysbox_repo: ${{ vars.SYSBOX_REPO || 'nestybox/sysbox' }}
       ref: master
       build_k8s: true

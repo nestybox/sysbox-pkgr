@@ -9,8 +9,14 @@
 # * The VERSION file holds a plain semantic version (e.g., 0.7.2).
 # * The top-most CHANGELOG.md entry is "## [<VERSION>] - <date>" (i.e., not an
 #   "unreleased" entry) and has at least one bullet and no TODO placeholders.
-# * The v<VERSION> tag doesn't exist yet in the sysbox repo (local or origin),
-#   unless --skip-tag-check is given (used by dry runs).
+# * The v<VERSION> tag exists, is an annotated tag carrying a signature, and
+#   points at the commit checked out in <sysbox-dir>. Release tags are created
+#   and signed by a maintainer; this script only checks that a signature is
+#   present, it doesn't verify it (the maintainer's public key isn't available
+#   in CI).
+#
+# With --skip-tag-check the tag conditions are not enforced (used by dry runs,
+# which build from an arbitrary ref, possibly before the tag exists).
 
 set -euo pipefail
 
@@ -22,6 +28,30 @@ skip_tag_check=false
 function fail() {
     echo "release check failed: $*" >&2
     exit 1
+}
+
+# Checks that the v<version> tag is a signed annotated tag at HEAD.
+function check_tag() {
+    local tag="v$1"
+    local tag_ref="refs/tags/${tag}"
+
+    git -C "${sysbox_dir}" rev-parse -q --verify "${tag_ref}" > /dev/null ||
+        fail "tag ${tag} not found; a maintainer must create and push it"
+
+    local tag_type
+    tag_type=$(git -C "${sysbox_dir}" cat-file -t "${tag_ref}")
+    [[ ${tag_type} = "tag" ]] ||
+        fail "tag ${tag} is not annotated (use 'git tag -s')"
+
+    git -C "${sysbox_dir}" cat-file tag "${tag_ref}" |
+        grep -q -- '-----BEGIN \(PGP\|SSH\) SIGNATURE-----' ||
+        fail "tag ${tag} is not signed (use 'git tag -s')"
+
+    local tag_commit head_commit
+    tag_commit=$(git -C "${sysbox_dir}" rev-parse "${tag_ref}^{commit}")
+    head_commit=$(git -C "${sysbox_dir}" rev-parse HEAD)
+    [[ ${tag_commit} = "${head_commit}" ]] ||
+        fail "tag ${tag} points at ${tag_commit}, not at ${head_commit}"
 }
 
 version_file="${sysbox_dir}/VERSION"
@@ -53,17 +83,7 @@ if grep -q 'TODO' <<< "${body}"; then
     fail "CHANGELOG.md entry for ${version} contains TODO placeholders"
 fi
 
-# Check that the release tag is not taken.
-if [[ ${skip_tag_check} = false ]]; then
-    tag="v${version}"
-    if git -C "${sysbox_dir}" rev-parse -q --verify \
-           "refs/tags/${tag}" > /dev/null; then
-        fail "tag ${tag} already exists locally"
-    fi
-    if git -C "${sysbox_dir}" ls-remote --exit-code --tags origin \
-           "refs/tags/${tag}" > /dev/null 2>&1; then
-        fail "tag ${tag} already exists in origin"
-    fi
-fi
+# Check the release tag.
+[[ ${skip_tag_check} = true ]] || check_tag "${version}"
 
 echo "release check passed for Sysbox v${version}"

@@ -5,12 +5,14 @@
 # arm64), and, if "publish" is selected, publishes them:
 #
 # 1. validate    Checks that VERSION / CHANGELOG.md in nestybox/sysbox are
-#                release-ready and that the v<VERSION> tag is not taken.
+#                release-ready and, when publishing, that the signed v<VERSION>
+#                tag exists at the commit to release.
 # 2. build       Builds the debs and the per-arch k8s images (see build.yml)
 #                from the validated commit. When publishing, the images are
 #                pushed to ghcr.io with an arch suffix (e.g., v0.7.2-0_amd64).
-# 3. release     (publish only) Creates the GitHub release (and the v<VERSION>
-#                tag) in nestybox/sysbox with the debs and checksums attached.
+# 3. release     (publish only) Creates the GitHub release for the existing
+#                v<VERSION> tag in nestybox/sysbox, with the debs and checksums
+#                attached.
 # 4. k8s-publish (publish only) Combines the per-arch images into the multi-arch
 #                tags (v<VERSION>-<patch> and latest) and opens a PR updating
 #                the sysbox K8s manifests.
@@ -18,16 +20,34 @@
 # Without "publish" (the default), only steps 1-2 run and nothing is pushed or
 # created: the debs are kept as workflow artifacts. Do a dry run first.
 #
+# Release procedure:
+#
+# 1. Run "release-prep" and merge the PR it opens in nestybox/sysbox.
+# 2. A maintainer creates and pushes the signed, annotated release tag on the
+#    merge commit (tags are not created by CI so that they stay signed by a
+#    maintainer):
+#      git tag -s vX.Y.Z -m "Release vX.Y.Z" <merge-commit>
+#      git push origin vX.Y.Z
+# 3. Run this workflow with ref=vX.Y.Z, first without "publish" (dry run, which
+#    can use any ref and doesn't need the tag), then with it.
+#
 # The release can only be cut once per version. If a step after "release"
-# fails, re-run only the failed jobs (the tag already exists, so do not
-# re-dispatch the workflow).
+# fails, re-run only the failed jobs rather than re-dispatching the workflow.
 #
-# Required repository secret:
+# Required repository secret (only when publishing):
 #
-# * SYSBOX_RELEASE_TOKEN: classic PAT with "repo" (push, create releases and
-#   PRs in nestybox/sysbox) and "write:packages" (push to
-#   ghcr.io/nestybox/sysbox-deploy-k8s). Fine-grained PATs do not support
-#   GitHub Packages. It is only needed when publishing, not for dry runs.
+# * SYSBOX_RELEASE_TOKEN: fine-grained PAT for nestybox/sysbox with
+#   "Contents" and "Pull requests" read/write (create the release, open PRs).
+#
+# Image pushes use the workflow's GITHUB_TOKEN, so the sysbox-deploy-k8s
+# package must grant this repo write access (package settings -> "Manage
+# Actions access").
+#
+# Optional repository variables, used to rehearse the process against scratch
+# targets instead of the real ones:
+#
+# * SYSBOX_REPO (default nestybox/sysbox)
+# * K8S_IMAGE   (default ghcr.io/nestybox/sysbox-deploy-k8s)
 #
 # Optional: create a "release" environment with a required reviewer (the
 # other maintainer) to gate the publishing jobs.
@@ -39,7 +59,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Ref of nestybox/sysbox to release"
+        description: "Ref of the sysbox repo to release (the vX.Y.Z tag when publishing)"
         required: false
         default: master
         type: string
@@ -57,7 +77,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  K8S_IMAGE: ghcr.io/nestybox/sysbox-deploy-k8s
+  SYSBOX_REPO: ${{ vars.SYSBOX_REPO || 'nestybox/sysbox' }}
+  K8S_IMAGE: ${{ vars.K8S_IMAGE || 'ghcr.io/nestybox/sysbox-deploy-k8s' }}
 
 defaults:
   run:
@@ -77,7 +98,7 @@ jobs:
       - name: checkout sysbox
         uses: actions/checkout@v4
         with:
-          repository: nestybox/sysbox
+          repository: ${{ env.SYSBOX_REPO }}
           ref: ${{ inputs.ref }}
           token: ${{ secrets.SYSBOX_RELEASE_TOKEN || github.token }}
           path: sources/sysbox
@@ -107,7 +128,12 @@ jobs:
   build:
     needs: validate
     uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
     with:
+      sysbox_repo: ${{ vars.SYSBOX_REPO || 'nestybox/sysbox' }}
+      k8s_image: ${{ vars.K8S_IMAGE || 'ghcr.io/nestybox/sysbox-deploy-k8s' }}
       ref: ${{ needs.validate.outputs.sha }}
       build_k8s: true
       push_images: ${{ inputs.publish }}
@@ -120,7 +146,6 @@ jobs:
     environment: release
     env:
       VERSION: ${{ needs.validate.outputs.version }}
-      SHA: ${{ needs.validate.outputs.sha }}
       GH_TOKEN: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
     steps:
       - name: checkout sysbox-pkgr
@@ -129,7 +154,7 @@ jobs:
       - name: checkout sysbox
         uses: actions/checkout@v4
         with:
-          repository: nestybox/sysbox
+          repository: ${{ env.SYSBOX_REPO }}
           ref: ${{ needs.validate.outputs.sha }}
           token: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
           path: sysbox
@@ -144,12 +169,12 @@ jobs:
       - name: generate release notes
         run: release/release-notes.sh sysbox debs "${RUNNER_TEMP}/notes.md"
 
-      # Creating the release also creates the v<VERSION> tag at ${SHA}.
+      # The maintainer-signed v<VERSION> tag must already exist in the repo.
       - name: create github release
         run: |
           gh release create "v${VERSION}" debs/*.deb \
-              --repo nestybox/sysbox \
-              --target "${SHA}" \
+              --repo "${SYSBOX_REPO}" \
+              --verify-tag \
               --title "Release v${VERSION}" \
               --notes-file "${RUNNER_TEMP}/notes.md"
 
@@ -157,6 +182,9 @@ jobs:
     if: inputs.publish
     needs: [validate, release]
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
     env:
       VERSION: ${{ needs.validate.outputs.version }}
       IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
@@ -170,7 +198,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+          password: ${{ github.token }}
 
       # Notice that registry.nestybox.com mirrors ghcr.io, so no separate
       # publishing step is needed for it.
@@ -187,7 +215,7 @@ jobs:
       - name: checkout sysbox
         uses: actions/checkout@v4
         with:
-          repository: nestybox/sysbox
+          repository: ${{ env.SYSBOX_REPO }}
           ref: master
           token: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
           path: sysbox
@@ -209,7 +237,7 @@ jobs:
               commit -s -m "Update sysbox k8s manifest to use release v${VERSION}."
           git push origin "${branch}"
           gh pr create \
-              --repo nestybox/sysbox \
+              --repo "${SYSBOX_REPO}" \
               --base master \
               --head "${branch}" \
               --title "Update sysbox k8s manifest to use release v${VERSION}." \
