@@ -26,8 +26,8 @@
 #
 # * SYSBOX_RELEASE_TOKEN: classic PAT with "repo" (push, create releases and
 #   PRs in nestybox/sysbox) and "write:packages" (push to
-#   ghcr.io/nestybox/sysbox-deploy-k8s, pull the private centos7/systemd base
-#   image). Fine-grained PATs do not support GitHub Packages.
+#   ghcr.io/nestybox/sysbox-deploy-k8s). Fine-grained PATs do not support
+#   GitHub Packages. It is only needed when publishing, not for dry runs.
 #
 # Optional: create a "release" environment with a required reviewer (the
 # other maintainer) to gate the publishing jobs.
@@ -79,7 +79,7 @@ jobs:
         with:
           repository: nestybox/sysbox
           ref: ${{ inputs.ref }}
-          token: ${{ secrets.SYSBOX_RELEASE_TOKEN }}
+          token: ${{ secrets.SYSBOX_RELEASE_TOKEN || github.token }}
           path: sources/sysbox
           fetch-depth: 0
 

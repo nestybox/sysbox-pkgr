@@ -8,10 +8,9 @@
 #
 # The deb packages are uploaded as artifacts named deb-<arch>.
 #
-# Secret SYSBOX_RELEASE_TOKEN is optional: without it the sysbox repo is
-# checked out anonymously and the k8s image can't be built (its base image
-# is private), so callers without secrets (e.g., fork PRs) must set
-# build_k8s to false.
+# Secret SYSBOX_RELEASE_TOKEN is optional: the sysbox repo and the k8s base
+# image are public, so building needs no credentials (e.g., fork PRs). The
+# token is only used to push images, i.e., when push_images is set.
 #
 
 name: build
@@ -156,8 +155,8 @@ jobs:
           name: deb-${{ matrix.arch }}
           path: debs
 
-      # The centos7/systemd base image is private.
       - name: login to ghcr.io
+        if: inputs.push_images
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
