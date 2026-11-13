@@ -11,7 +11,7 @@
 # No credentials are needed, so this also works for PRs from forks.
 #
 
-name: ci
+name: package-ci
 
 on:
   pull_request:
