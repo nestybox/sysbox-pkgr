@@ -178,6 +178,17 @@ jobs:
               --title "Release v${VERSION}" \
               --notes-file "${RUNNER_TEMP}/notes.md"
 
+      # Download what was just uploaded and compare it with what was built.
+      - name: verify the uploaded assets
+        run: |
+          mkdir uploaded
+          gh release download "v${VERSION}" --repo "${SYSBOX_REPO}" \
+              --dir uploaded --pattern "*.deb"
+          for deb in debs/*.deb; do
+              cmp "${deb}" "uploaded/$(basename "${deb}")"
+          done
+          echo "uploaded assets match the built packages"
+
   k8s-publish:
     if: inputs.publish
     needs: [validate, release]
