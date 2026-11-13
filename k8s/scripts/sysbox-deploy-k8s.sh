@@ -858,7 +858,9 @@ function is_supported_k8s_version() {
 	if [[ "$ver" == "v1.32" ]] ||
 		[[ "$ver" == "v1.33" ]] ||
 		[[ "$ver" == "v1.34" ]] ||
-		[[ "$ver" == "v1.35" ]] ; then
+		[[ "$ver" == "v1.35" ]] ||
+		[[ "$ver" == "v1.36" ]] ||
+		[[ "$ver" == "v1.37" ]] ; then
 		return
 	fi
 
@@ -1052,6 +1054,13 @@ function runtime_precheck() {
 			do_kubelet_use_crio="true"
 			echo "Will install CRI-O as container runtime for Sysbox (containerd version does NOT support user-namespaces)."
 		fi
+	fi
+
+	# Fail before the node is tainted if this image carries no CRI-O build for
+	# the node's K8s version (e.g., K8s v1.36+ supports containerd 2.x only, so
+	# CRI-O is just a fallback for containerd 2.0.0 -> 2.0.4).
+	if [[ "$do_crio_install" == "true" ]] && [ ! -d "${crio_artifacts}/bin/${k8s_version}" ]; then
+		die "No CRI-O artifacts for Kubernetes $k8s_version in this image; use containerd 2.0.5+ instead."
 	fi
 }
 
