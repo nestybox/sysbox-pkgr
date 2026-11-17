@@ -127,3 +127,9 @@ clean-ce-deb: ## Remove sysbox-ce DEB package
 clean-ce-rpm: ## Remove sysbox-ce RPM package
 	$(eval export EDITION=ce)
 	$(MAKE) -C rpm --no-print-directory clean
+
+generic:
+	echo "Maybe built"
+
+.PHONY: generic
+
