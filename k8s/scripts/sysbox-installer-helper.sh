@@ -26,10 +26,37 @@ set -o nounset
 
 shiftfs_dkms=/run/shiftfs-dkms
 
+# Other package managers running on the host (e.g. node setup agents or unattended-upgrades)
+# can hold the `apt`/`dpkg` locks for a while, so retry lock errors before giving up.
+pkg_lock_retries=60
+pkg_lock_retry_delay=10
+pkg_lock_error="Could not get lock|lock (is|was) locked by another process"
+
 function die() {
 	msg="$*"
 	echo "ERROR: $msg" >&2
 	exit 1
+}
+
+# Run an `apt-get` or `dpkg` command, retrying it while another process holds the `apt`/`dpkg` locks.
+# Any other failure is returned right away.
+function pkg_lock_retry() {
+	local errfile attempt rc
+	errfile=$(mktemp)
+
+	for ((attempt = 1; ; attempt++)); do
+		rc=0
+		"$@" 2>"$errfile" || rc=$?
+		cat "$errfile" >&2
+
+		if [[ $rc -eq 0 ]] || ! grep -qE "$pkg_lock_error" "$errfile" || ((attempt >= pkg_lock_retries)); then
+			rm -f "$errfile"
+			return $rc
+		fi
+
+		echo "Package manager is locked by another process (attempt ${attempt}/${pkg_lock_retries}), retrying in ${pkg_lock_retry_delay}s ..."
+		sleep $pkg_lock_retry_delay
+	done
 }
 
 # Compare two versions in SemVer format.
@@ -88,12 +115,12 @@ function semver_ge() {
 function install_package_deps() {
 
 	# Need this to work-around "E: dpkg was interrupted, you must manually run 'dpkg --configure -a' to correct the problem."
-	dpkg --configure -a
+	pkg_lock_retry dpkg --configure -a
 
 	# Certificates package is required prior to running apt-update.
-	apt-get -y install ca-certificates
-	apt-get update
-	apt-get install -y rsync fuse3 iptables
+	pkg_lock_retry apt-get -y install ca-certificates
+	pkg_lock_retry apt-get update
+	pkg_lock_retry apt-get install -y rsync fuse3 iptables
 }
 
 function install_shiftfs() {
@@ -111,7 +138,7 @@ function install_shiftfs() {
 
 	echo "Installing Shiftfs ..."
 
-	apt-get install -y make dkms
+	pkg_lock_retry apt-get install -y make dkms
 	sh -c "cd $shiftfs_dkms && make -f Makefile.dkms"
 
 	if ! shiftfs_installed; then
@@ -119,7 +146,7 @@ function install_shiftfs() {
 		return
 	fi
 
-	apt-get remove --purge -y make dkms
+	pkg_lock_retry apt-get remove --purge -y make dkms
 	echo "Shiftfs installation done."
 }
 
