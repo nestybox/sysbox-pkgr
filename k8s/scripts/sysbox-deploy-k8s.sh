@@ -39,6 +39,11 @@ sysbox_version=$(echo "$SYSBOX_VERSION" | sed '/-[0-9]/!s/.*/&-0/')
 sysbox_artifacts="/opt/sysbox"
 crio_artifacts="/opt/crio-deploy"
 
+# Containerd drop-in used on k3s / RKE2. Ships with /usr/bin/sysbox-runc; on
+# Flatcar do_distro_adjustments() rewrites this artifact to /opt/bin/sysbox-runc
+# up-front, so the install path can copy it verbatim.
+containerd_sysbox_dropin_src="${sysbox_artifacts}/config/containerd-sysbox-dropin.toml"
+
 # The daemonset spec will set up these mounts.
 host_systemd="/mnt/host/lib/systemd/system"
 host_sysctl="/mnt/host/lib/sysctl.d"
@@ -282,8 +287,16 @@ function get_artifacts_dir() {
 		[[ "$distro" =~ "debian" ]]; then
 		artifacts_dir="${sysbox_artifacts}/bin/generic"
 	elif [[ "$distro" =~ "flatcar" ]]; then
-		local release=$(echo $distro | cut -d"-" -f2)
-		artifacts_dir="${sysbox_artifacts}/bin/flatcar-${release}"
+		if [[ ${sysbox_edition} == "Sysbox" ]]; then
+			# Sysbox-CE (sysbox_edition="Sysbox") ships only the generic
+			# binaries; Flatcar 4593+ runs a 6.x kernel with idmap mounts so
+			# the EE-only shiftfs build that normally lives under
+			# bin/flatcar-<release> is not required.
+			artifacts_dir="${sysbox_artifacts}/bin/generic"
+		else
+			local release=$(echo $distro | cut -d"-" -f2)
+			artifacts_dir="${sysbox_artifacts}/bin/flatcar-${release}"
+		fi
 	fi
 
 	echo $artifacts_dir
@@ -493,7 +506,16 @@ function install_sysbox_deps() {
 	fi
 
 	if host_flatcar_distro; then
-		install_sysbox_deps_flatcar
+		# Mirror the non-Flatcar branch: only attempt to install shiftfs when
+		# the host kernel is in the supported range. Flatcar 4593+ ships
+		# kernel 6.x where shiftfs is unavailable (and unnecessary, as the
+		# kernel provides idmap mounts), so the prebuilt shiftfs.ko from
+		# sysbox-flatcar-preview no longer applies.
+		if semver_lt $kversion 6.3; then
+			install_sysbox_deps_flatcar
+		else
+			echo "Skipping shiftfs installation (kernel version $kversion is above the max required for shiftfs ($shiftfs_max_kernel_ver))."
+		fi
 	else
 		if semver_ge $kversion 5.4 && semver_lt $kversion 5.8; then
 			cp -r "/opt/shiftfs-k5.4" "$host_run/shiftfs-dkms"
@@ -671,18 +693,89 @@ function unconfig_crio_for_sysbox() {
 # Containerd Configuration Functions
 #
 
+# Returns the name of the k3s / RKE2 distribution that owns containerd on
+# this node ("k3s" or "rke2"), or empty if the node runs vanilla containerd.
+# Detection is done via systemd because the kubelet-reported runtime version
+# string ("containerd://X.Y.Z-k3sN") cannot distinguish k3s from rke2.
+function k8s_dist_owning_containerd() {
+	if systemctl is-active --quiet rke2-agent || systemctl is-active --quiet rke2-server; then
+		echo "rke2"
+	elif systemctl is-active --quiet k3s-agent || systemctl is-active --quiet k3s; then
+		echo "k3s"
+	fi
+}
+
+# Returns the containerd config-v3 drop-in directory used by k3s / RKE2 on
+# this node, or empty for vanilla containerd. k3s and RKE2 with containerd
+# 2.x read all *.toml files in this directory and merge them on top of the
+# generated base config, so shipping the Sysbox runtime as a standalone
+# drop-in avoids overwriting the distro's generated config.toml.
+function k8s_containerd_dropin_dir() {
+	local dist
+	dist="$(k8s_dist_owning_containerd)"
+	[ -z "${dist}" ] && return
+	echo "${host_var_lib}/rancher/${dist}/agent/etc/containerd/config-v3.toml.d"
+}
+
+# Restart whichever service owns containerd on this node. For k3s / RKE2 the
+# wrapper service must be restarted because it manages an embedded containerd;
+# vanilla nodes restart containerd directly.
+function restart_container_runtime() {
+	if systemctl is-active --quiet rke2-agent; then
+		systemctl restart rke2-agent
+	elif systemctl is-active --quiet rke2-server; then
+		systemctl restart rke2-server
+	elif systemctl is-active --quiet k3s-agent; then
+		systemctl restart k3s-agent
+	elif systemctl is-active --quiet k3s; then
+		systemctl restart k3s
+	else
+		systemctl restart containerd
+	fi
+}
+
+# Write the Sysbox containerd drop-in used by k3s / RKE2. Emits only the
+# sysbox-runc runtime block so the distro's generated base config is left
+# untouched. Uses the containerd 2.x config-v3 plugin key.
+function write_containerd_sysbox_dropin() {
+	local dropin_dir="$1"
+	local dropin_file="${dropin_dir}/sysbox.toml"
+
+	if [ ! -f "${containerd_sysbox_dropin_src}" ]; then
+		echo "Error: containerd drop-in source not found at ${containerd_sysbox_dropin_src}"
+		return 1
+	fi
+
+	echo "Writing Sysbox containerd drop-in to ${dropin_file} ..."
+	mkdir -p "${dropin_dir}"
+	cp "${containerd_sysbox_dropin_src}" "${dropin_file}"
+}
+
 function config_containerd_for_sysbox() {
 	echo "Adding Sysbox to containerd config ..."
-
-	# Backup the original containerd config if not already backed up
-	if [ ! -f "${host_containerd_conf_file_backup}" ]; then
-		cp "${host_containerd_conf_file}" "${host_containerd_conf_file_backup}"
-	fi
 
 	# Determine the correct sysbox-runc path
 	local sysbox_runc_path="/usr/bin/sysbox-runc"
 	if host_flatcar_distro; then
 		sysbox_runc_path="/opt/bin/sysbox-runc"
+	fi
+
+	# k3s / RKE2 ship containerd with a generated config.toml that is
+	# rewritten on every restart; the supported extension point is the
+	# config-v3 drop-in directory. Use it when present and skip the
+	# /etc/containerd/config.toml path entirely.
+	local dropin_dir
+	dropin_dir="$(k8s_containerd_dropin_dir)"
+	if [ -n "${dropin_dir}" ]; then
+		write_containerd_sysbox_dropin "${dropin_dir}"
+		echo "Restarting container runtime to apply changes ..."
+		restart_container_runtime
+		return
+	fi
+
+	# Backup the original containerd config if not already backed up
+	if [ ! -f "${host_containerd_conf_file_backup}" ]; then
+		cp "${host_containerd_conf_file}" "${host_containerd_conf_file_backup}"
 	fi
 
 	# Check if sysbox-runc runtime section already exists
@@ -713,6 +806,22 @@ function config_containerd_for_sysbox() {
 
 function unconfig_containerd_for_sysbox() {
 	echo "Removing Sysbox from containerd config ..."
+
+	# k3s / RKE2: just delete the drop-in we created.
+	local dropin_dir
+	dropin_dir="$(k8s_containerd_dropin_dir)"
+	if [ -n "${dropin_dir}" ]; then
+		local dropin_file="${dropin_dir}/sysbox.toml"
+		if [ -f "${dropin_file}" ]; then
+			echo "Removing Sysbox containerd drop-in ${dropin_file} ..."
+			rm -f "${dropin_file}"
+			echo "Restarting container runtime to apply changes ..."
+			restart_container_runtime
+		else
+			echo "sysbox-runc drop-in not found"
+		fi
+		return
+	fi
 
 	if [ -f "${host_containerd_conf_file}" ]; then
 		# Check if sysbox-runc runtime configuration exists
@@ -1167,11 +1276,6 @@ function do_distro_adjustments() {
 		return
 	fi
 
-	# Ensure that Flatcar installation proceeds only in Sysbox-EE case.
-	if [[ ${sysbox_edition} != "Sysbox-EE" ]]; then
-		die "Flatcar OS distribution is only supported on Sysbox Enterprise-Edition. Exiting ..."
-	fi
-
 	# Adjust global vars.
 	host_bin="/mnt/host/opt/bin"
 	host_local_bin="/mnt/host/opt/local/bin"
@@ -1201,6 +1305,9 @@ function do_distro_adjustments() {
 	sed -i '/^ExecStart=/ s@/usr/bin@/opt/bin@g' ${sysbox_artifacts}/systemd/sysbox.service
 	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@g' ${sysbox_artifacts}/systemd/sysbox-installer-helper.service
 	sed -i '/^ExecStart=/ s@/usr/local/bin@/opt/local/bin@g' ${sysbox_artifacts}/systemd/sysbox-removal-helper.service
+
+	# Adjust the containerd drop-in used on k3s / RKE2.
+	sed -i 's@/usr/bin/sysbox-runc@/opt/bin/sysbox-runc@' ${sysbox_artifacts}/config/containerd-sysbox-dropin.toml
 
 	# Sysctl adjustments.
 	sed -i '/^kernel.unprivileged_userns_clone/ s/^#*/# /' ${sysbox_artifacts}/systemd/99-sysbox-sysctl.conf
