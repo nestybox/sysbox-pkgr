@@ -54,6 +54,12 @@ host_containerd_conf_file_backup="${host_containerd_conf_file}.orig"
 host_run="/mnt/host/run"
 host_var_lib="/mnt/host/var/lib"
 host_var_lib_sysbox_deploy_k8s="${host_var_lib}/sysbox-deploy-k8s"
+# Containerd config sections (dasel selectors) holding the CRI runtimes.
+# Config version 3 (the containerd 2.x default) moved them to
+# the 'io.containerd.cri.v1.runtime' plugin,
+# and ignores runtimes left in the version 2 section.
+containerd_cri_v2_section='plugins.io\.containerd\.grpc\.v1\.cri.containerd'
+containerd_cri_v3_section='plugins.io\.containerd\.cri\.v1\.runtime.containerd'
 
 #
 # Subid default values.
@@ -671,6 +677,56 @@ function unconfig_crio_for_sysbox() {
 # Containerd Configuration Functions
 #
 
+# Prints the section holding the CRI runtimes for the host's containerd config version.
+function containerd_cri_section() {
+	local version
+	version=$(dasel -f "${host_containerd_conf_file}" -p toml -s version 2>/dev/null || true)
+
+	if [[ "${version}" == "3" ]]; then
+		echo "${containerd_cri_v3_section}"
+	else
+		echo "${containerd_cri_v2_section}"
+	fi
+}
+
+# Checks whether the given selector exists in the host's containerd config.
+function containerd_conf_has() {
+	dasel -f "${host_containerd_conf_file}" -p toml -s "$1" >/dev/null 2>&1
+}
+
+# Deletes the sysbox-runc runtime from the given section of the host's containerd config,
+# along with the tables it leaves empty.
+function containerd_conf_delete_sysbox_runtime() {
+	local section=$1
+	local table
+
+	dasel delete -f "${host_containerd_conf_file}" -p toml -s "${section}.runtimes.sysbox-runc"
+
+	for table in "${section}.runtimes" "${section}"; do
+		if containerd_conf_has "${table}" &&
+			[[ -z "$(dasel -f "${host_containerd_conf_file}" -p toml -s "${table}" | tr -d '[:space:]')" ]]; then
+			dasel delete -f "${host_containerd_conf_file}" -p toml -s "${table}"
+		fi
+	done
+}
+
+# Prints the default runtime's SystemdCgroup option, which sysbox-runc must share as it
+# needs to use the same cgroup driver as the kubelet. Containerd defaults it to false.
+function containerd_default_systemd_cgroup() {
+	local section=$1
+	local runtime value
+
+	runtime=$(dasel -f "${host_containerd_conf_file}" -p toml -s "${section}.default_runtime_name" 2>/dev/null || true)
+	value=$(dasel -f "${host_containerd_conf_file}" -p toml \
+		-s "${section}.runtimes.${runtime:-runc}.options.SystemdCgroup" 2>/dev/null || true)
+
+	if [[ "${value}" == "true" ]]; then
+		echo "true"
+	else
+		echo "false"
+	fi
+}
+
 function config_containerd_for_sysbox() {
 	echo "Adding Sysbox to containerd config ..."
 
@@ -685,26 +741,41 @@ function config_containerd_for_sysbox() {
 		sysbox_runc_path="/opt/bin/sysbox-runc"
 	fi
 
+	local section
+	section=$(containerd_cri_section)
+	local runtime="${section}.runtimes.sysbox-runc"
+
+	# Older installers always wrote the runtime to the version 2 section, which a
+	# version 3 config ignores.
+	if [[ "${section}" != "${containerd_cri_v2_section}" ]] &&
+		containerd_conf_has "${containerd_cri_v2_section}.runtimes.sysbox-runc"; then
+		echo "Removing sysbox-runc runtime from the containerd config version 2 section ..."
+		containerd_conf_delete_sysbox_runtime "${containerd_cri_v2_section}"
+	fi
+
 	# Check if sysbox-runc runtime section already exists
-	if grep -q "runtimes.sysbox-runc" "${host_containerd_conf_file}"; then
+	if containerd_conf_has "${runtime}"; then
 		echo "sysbox-runc runtime already configured in containerd config"
 	else
 		echo "Configuring sysbox-runc runtime in containerd config ..."
 
+		local systemd_cgroup
+		systemd_cgroup=$(containerd_default_systemd_cgroup "${section}")
+
 		# Set the runtime_type
 		dasel put string -f "${host_containerd_conf_file}" -p toml \
-			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.runtime_type" \
+			-s "${runtime}.runtime_type" \
 			-v "io.containerd.runc.v2"
 
 		# Set BinaryName option
 		dasel put string -f "${host_containerd_conf_file}" -p toml \
-			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.options.BinaryName" \
+			-s "${runtime}.options.BinaryName" \
 			-v "${sysbox_runc_path}"
 
 		# Set SystemdCgroup option
 		dasel put bool -f "${host_containerd_conf_file}" -p toml \
-			-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc.options.SystemdCgroup" \
-			-v true
+			-s "${runtime}.options.SystemdCgroup" \
+			-v "${systemd_cgroup}"
 	fi
 
 	echo "Restarting containerd to apply changes ..."
@@ -715,20 +786,51 @@ function unconfig_containerd_for_sysbox() {
 	echo "Removing Sysbox from containerd config ..."
 
 	if [ -f "${host_containerd_conf_file}" ]; then
-		# Check if sysbox-runc runtime configuration exists
-		if grep -q "runtimes.sysbox-runc" "${host_containerd_conf_file}"; then
-			echo "Removing sysbox-runc runtime configuration ..."
+		local removed="false"
+		local section
 
-			# Delete the entire sysbox-runc runtime section using dasel
-			dasel delete -f "${host_containerd_conf_file}" -p toml \
-				-s "plugins.io\.containerd\.grpc\.v1\.cri.containerd.runtimes.sysbox-runc"
+		# Check both sections, as older installers may have left the runtime in the
+		# version 2 section of a version 3 config.
+		for section in "${containerd_cri_v2_section}" "${containerd_cri_v3_section}"; do
+			if containerd_conf_has "${section}.runtimes.sysbox-runc"; then
+				echo "Removing sysbox-runc runtime configuration ..."
+				containerd_conf_delete_sysbox_runtime "${section}"
+				removed="true"
+			fi
+		done
 
+		if [[ "${removed}" == "true" ]]; then
 			echo "Restarting containerd to apply changes ..."
 			systemctl restart containerd
 		else
 			echo "sysbox-runc runtime not found in containerd config"
 		fi
 	fi
+}
+
+# Waits for the kubelet to report the sysbox-runc runtime handler, so that a containerd
+# config without a working sysbox-runc runtime fails the installation instead of the pods.
+function wait_for_sysbox_runtime_handler() {
+	local handlers attempt
+
+	for ((attempt = 1; attempt <= 60; attempt++)); do
+		handlers=$(kubectl get node "$NODE_NAME" -o jsonpath='{.status.runtimeHandlers[*].name}')
+
+		# The kubelet only reports runtime handlers since K8s v1.30.
+		if [[ -z "${handlers// /}" ]]; then
+			echo "Kubelet doesn't report runtime handlers, skipping the sysbox-runc runtime check."
+			return
+		fi
+
+		if [[ " ${handlers} " == *" sysbox-runc "* ]]; then
+			echo "Kubelet reports the sysbox-runc runtime handler."
+			return
+		fi
+
+		sleep 2
+	done
+
+	die "Kubelet doesn't report the sysbox-runc runtime handler. Check that containerd loads it from /etc/containerd/config.toml on the host."
 }
 
 #
@@ -1381,6 +1483,16 @@ function main() {
 			fi
 
 			add_label_to_node "crio-runtime=running"
+		fi
+
+		# Repair containerd configs where the sysbox-runc runtime is missing from the section
+		# containerd reads (e.g. left in the version 2 section by older installers), then
+		# make sure the kubelet sees it before letting pods onto the node.
+		if [[ "$do_kubelet_use_crio" != "true" ]] && is_containerd_with_userns; then
+			if ! containerd_conf_has "$(containerd_cri_section).runtimes.sysbox-runc"; then
+				config_containerd_for_sysbox
+			fi
+			wait_for_sysbox_runtime_handler
 		fi
 
 		# Remove all the sysbox pods in the node to ensure that the newly installed/updated
